@@ -195,35 +195,16 @@
     margin: 0 !important;
     padding: 0 !important;
   }
-
-  /* Add to your existing styles */
-  .spinner-border-sm {
-    width: 1rem;
-    height: 1rem;
-    border-width: 0.2em;
-    vertical-align: middle;
-  }
-
-  /* Ensure button text doesn't jump when loading */
-  .btn {
-    min-width: 120px;
-    position: relative;
-  }
-
-  /* Center the spinner and text */
-  .btn .spinner-border {
-    margin-right: 0.5rem;
-  }
 </style>
 <div class="content-section active" data-section="kgup-realtime">
-<!-- <div class="text-center" style="display: none" id="loading_circle">
+<div class="text-center" style="display: none" id="loading_circle">
   <div
     class="d-flex justify-content-center align-items-center flex-column h-100 w-100 m-0 p-0 h_80vh"
   >
     <img src="{{url_for('static', filename='images/loading_circle.gif')}}" />
     <p class="m-0 p-0 wait_text">Please wait while the data is loaded...</p>
   </div>
-</div> -->
+</div>
 <div class="container-fluid row m-0 p-0" id="app">
   <!-- messages --->
   <div class="col-sm-12 m-0 p-0" id="alert_messages"></div>

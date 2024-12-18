@@ -13,7 +13,7 @@ export const aic = {
     async loadAICData(range = 'week') {
         try {
             console.log('Loading AIC data for range:', range);
-            // this.toggleLoading(true);
+            this.toggleLoading(true);
             const response = await fetch(`/get_aic_data?range=${range}`);
             const result = await response.json();
             console.log('AIC data received:', result);
@@ -26,11 +26,11 @@ export const aic = {
                 console.error('Failed to load AIC data:', result.message || 'No data received');
                 this.displayMessage("No data available for the selected period", "warning");
             }
-            // this.toggleLoading(false);
+            this.toggleLoading(false);
         } catch (error) {
             console.error('Error loading AIC data:', error);
             this.displayMessage("Error loading AIC data", "danger");
-            // this.toggleLoading(false);
+            this.toggleLoading(false);
         }
     },
 
