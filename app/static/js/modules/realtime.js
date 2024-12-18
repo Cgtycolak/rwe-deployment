@@ -419,7 +419,7 @@ export const realtime = {
             today.setHours(0, 0, 0, 0);
             const endDate = new Date(app.global.end);
             if (endDate >= today) {
-                displayMessage("Only data up to one day before the current date can be viewed.", "warning");
+                displayMessage("Only data up to one day before the current date can be viewed for realtime data.", "warning");
                 return;
             }
 
@@ -529,52 +529,204 @@ export const realtime = {
 
     displayDifferenceChart: function (dppData, realtimeData) {
         // Prepare data for the difference chart
-        const hours = [...Array(24).keys()].map(h => h.toString().padStart(2, '0') + ':00');
         const differences = [];
+        
+        // Get unique dates from both datasets
+        const dates = [...new Set([
+            ...dppData.map(d => d.DATE),
+            ...realtimeData.map(d => d.DATE)
+        ])].sort();
 
-        hours.forEach(hour => {
-            const dppValue = dppData.find(d => d.HOUR === hour)?.TOTAL || 0;
-            const realtimeValue = realtimeData.find(d => d.HOUR === hour)?.TOTAL || 0;
-            differences.push({
-                hour: hour,
-                // Reverse the difference calculation: Realtime - DPP
-                difference: realtimeValue - dppValue
+        // For each date and hour combination
+        dates.forEach(date => {
+            // Create 24 hours for each date
+            [...Array(24).keys()].forEach(h => {
+                const hour = `${h.toString().padStart(2, '0')}:00`;
+                
+                // Find matching records for this date and hour
+                const dppRecord = dppData.find(d => d.DATE === date && d.HOUR === hour);
+                const realtimeRecord = realtimeData.find(d => d.DATE === date && d.HOUR === hour);
+                
+                const dppValue = dppRecord ? parseFloat(dppRecord.TOTAL) || 0 : 0;
+                const realtimeValue = realtimeRecord ? parseFloat(realtimeRecord.TOTAL) || 0 : 0;
+                
+                differences.push({
+                    datetime: `${date} ${hour}`,
+                    date: date,
+                    hour: hour,
+                    difference: realtimeValue - dppValue,
+                    dppValue: dppValue,
+                    realtimeValue: realtimeValue
+                });
             });
         });
 
         // Create the bar chart using Plotly
         const trace = {
-            x: differences.map(d => d.hour),
+            x: differences.map(d => d.datetime),
             y: differences.map(d => d.difference),
             type: 'bar',
             name: 'Realtime - DPP Difference',
+            hovertemplate: 
+                '<b>Date:</b> %{customdata.date}<br>' +
+                '<b>Hour:</b> %{customdata.hour}<br>' +
+                '<b>Difference:</b> %{y:.2f} MW<br>' +
+                '<b>Realtime:</b> %{customdata.realtime:.2f} MW<br>' +
+                '<b>DPP:</b> %{customdata.dpp:.2f} MW<br>' +
+                '<extra></extra>',
+            customdata: differences.map(d => ({
+                date: d.date,
+                hour: d.hour,
+                realtime: d.realtimeValue,
+                dpp: d.dppValue
+            })),
             marker: {
-                // Positive values (blue) now mean realtime is higher than planned
-                // Negative values (red) now mean realtime is lower than planned
-                color: 'rgba(200, 20, 50, 1)'
+                color: differences.map(d => d.difference > 0 ? 'rgba(0, 128, 0, 0.7)' : 'rgba(200, 20, 50, 0.7)')
             }
         };
 
         const layout = {
-            title: 'Difference between Realtime and Planned Generation',
+            title: {
+                text: 'Difference between Realtime and Planned Generation',
+                font: {
+                    size: 24
+                },
+                y: 0.97,
+                x: 0.5,
+                xanchor: 'center',
+                yanchor: 'top'
+            },
             xaxis: {
-                title: 'Hour',
-                tickangle: -45
+                title: 'Date and Hour',
+                tickangle: -45,
+                tickformat: '%Y-%m-%d %H:%M',
+                tickmode: 'auto',
+                nticks: 24,
+                rangeslider: {
+                    visible: true,
+                    thickness: 0.1
+                },
+                domain: [0, 1],
+                automargin: true,
+                fixedrange: false
             },
             yaxis: {
                 title: 'Difference (MW)',
                 zeroline: true,
                 zerolinecolor: 'gray',
-                zerolinewidth: 1
+                zerolinewidth: 1,
+                automargin: true,
+                fixedrange: false
             },
             barmode: 'relative',
             showlegend: true,
             legend: {
+                x: 1.0,
+                y: 1.0,
+                xanchor: 'right',
+                yanchor: 'top',
+                bgcolor: 'rgba(255, 255, 255, 0.8)',
+                bordercolor: 'lightgray',
+                borderwidth: 1
+            },
+            margin: {
+                l: 80,
+                r: 30,
+                t: 100,
+                b: 80,
+                pad: 0
+            },
+            updatemenus: [{
+                type: 'buttons',
+                showactive: true,
                 x: 0,
-                y: 1.2
+                y: 1.12,
+                xanchor: 'left',
+                yanchor: 'top',
+                bgcolor: 'white',
+                bordercolor: '#c7c7c7',
+                borderwidth: 1,
+                buttons: [{
+                    label: '1 Day',
+                    method: 'relayout',
+                    args: ['xaxis.range', [
+                        differences[0].datetime,
+                        differences[23].datetime
+                    ]]
+                }, {
+                    label: 'All Days',
+                    method: 'relayout',
+                    args: ['xaxis.range', [
+                        differences[0].datetime,
+                        differences[differences.length - 1].datetime
+                    ]]
+                }]
+            }],
+            annotations: [{
+                text: 'Green: Realtime > Planned | Red: Realtime < Planned',
+                showarrow: false,
+                x: 0,
+                y: 1.05,
+                xref: 'paper',
+                yref: 'paper',
+                font: {
+                    size: 12,
+                    color: 'gray'
+                }
+            }],
+            autosize: true
+        };
+
+        const config = {
+            responsive: true,
+            displayModeBar: true,
+            modeBarButtons: [[
+                'zoom2d',
+                'pan2d',
+                'resetScale2d',
+                'toImage'
+            ]],
+            displaylogo: false,
+            toImageButtonOptions: {
+                format: 'png',
+                filename: 'difference_chart',
+                height: 800,
+                width: 1200,
+                scale: 2
+            },
+            fillContainer: true
+        };
+
+        // Update trace for better visibility
+        trace.marker.line = {
+            width: 1,
+            color: 'rgba(0,0,0,0.3)'
+        };
+
+        // Create the plot
+        Plotly.newPlot('difference_chart', [trace], layout, config);
+
+        // Function to properly size the chart
+        const resizeChart = () => {
+            const container = document.querySelector('.difference-chart-container');
+            if (container) {
+                const width = container.clientWidth;
+                const height = container.clientHeight;
+                
+                Plotly.relayout('difference_chart', {
+                    width: width,
+                    height: height
+                });
             }
         };
 
-        Plotly.newPlot('difference_chart', [trace], layout);
+        // Remove any existing resize listener
+        window.removeEventListener('resize', resizeChart);
+        
+        // Add resize listener
+        window.addEventListener('resize', resizeChart);
+        
+        // Initial resize with a delay to ensure container is ready
+        setTimeout(resizeChart, 50);
     }
 };
