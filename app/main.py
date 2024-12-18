@@ -262,7 +262,7 @@ def get_realtime_data():
         if end_date.date() >= today:
             return jsonify({
                 'code': 400, 
-                'message': 'Only data up to one day before the current date can be viewed.'
+                'message': 'Only data up to one day before the current date can be viewed for realtime data.'
             }), 400
 
         all_data = []
@@ -328,7 +328,7 @@ def get_realtime_data():
         if 'En son bir gün öncesine' in error_message:
             return jsonify({
                 'code': 400,
-                'message': 'Only data up to one day before the current date can be viewed.'
+                'message': 'Only data up to one day before the current date can be viewed for realtime data.'
             }), 400
         return jsonify({'code': 500, 'message': 'Unable to load realtime data.'}), 500
 

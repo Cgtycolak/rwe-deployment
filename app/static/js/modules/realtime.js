@@ -419,7 +419,7 @@ export const realtime = {
             today.setHours(0, 0, 0, 0);
             const endDate = new Date(app.global.end);
             if (endDate >= today) {
-                displayMessage("Only data up to one day before the current date can be viewed.", "warning");
+                displayMessage("Only data up to one day before the current date can be viewed for realtime data.", "warning");
                 return;
             }
 
