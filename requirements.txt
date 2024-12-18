@@ -7,7 +7,7 @@ Flask-Session==0.8.0
 idna==3.10
 itsdangerous==2.2.0
 Jinja2==3.1.4
-MarkupSafe==3.0.2
+MarkupSafe==2.1.5
 msgspec==0.18.6
 numpy==2.0.2
 pandas==2.2.3
@@ -20,3 +20,4 @@ six==1.17.0
 tzdata==2024.2
 urllib3==2.2.3
 Werkzeug==2.2.0
+gunicorn==21.2.0
