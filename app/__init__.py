@@ -9,6 +9,9 @@ load_dotenv()
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
+# Use PORT from environment variable if available
+port = int(os.getenv('PORT', 10000))
+
 # Configure app
 app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
 app.config['SESSION_PERMANENT'] = False
@@ -54,4 +57,7 @@ def handle_method_not_allowed(e):
 @app.errorhandler(500)
 def handle_internal_server_error(e):
     return render_template('errors/error_500.html'), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=port)
 
