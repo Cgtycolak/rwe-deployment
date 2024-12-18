@@ -292,15 +292,15 @@ export const realtime = {
         const summaryTable = $("#realtime_fuel_types_table");
         summaryTable.empty();
 
-        // Get unique hours
+        // Get unique dates and hours
+        const dates = [...new Set(data.map((row) => row.DATE))].sort();
         const hours = [...new Set(data.map((row) => row.HOUR))].sort();
 
         // Create headers with tooltips
         const thead = $("<thead>").addClass("table-dark");
         const headerRow = $("<tr>");
         headerRow.append($("<th title='Power Plant'>Power Plant</th>"));
-
-        // Add Total column first
+        headerRow.append($("<th title='Date'>Date</th>")); // Add date column
         headerRow.append($("<th title='Total'>Total</th>"));
 
         // Add hour columns
@@ -311,47 +311,46 @@ export const realtime = {
         thead.append(headerRow);
         summaryTable.append(thead);
 
-        // Group data by PowerPlant
+        // Group data by PowerPlant and Date
         const groupedData = {};
         data.forEach((row) => {
-            const plantName = row.PowerPlant;
-            if (!groupedData[plantName]) {
-                groupedData[plantName] = {
-                    PowerPlant: plantName,
+            const key = `${row.PowerPlant}_${row.DATE}`;
+            if (!groupedData[key]) {
+                groupedData[key] = {
+                    PowerPlant: row.PowerPlant,
+                    Date: row.DATE,
                     hours: {},
                     total: 0
                 };
             }
             const value = parseFloat(row[fuelType]) || 0;
-            groupedData[plantName].hours[row.HOUR] = value;
-            groupedData[plantName].total += value;
+            groupedData[key].hours[row.HOUR] = value;
+            groupedData[key].total += value;
         });
 
         // Create body with tooltips
         const tbody = $("<tbody>");
-        Object.values(groupedData).forEach((group) => {
-            const tr = $("<tr>");
-            tr.append($(`<td class="org-name" title="${group.PowerPlant}">${group.PowerPlant}</td>`));
+        Object.values(groupedData)
+            .sort((a, b) => a.Date.localeCompare(b.Date))
+            .forEach((group) => {
+                const tr = $("<tr>");
+                tr.append($(`<td class="org-name" title="${group.PowerPlant}">${group.PowerPlant}</td>`));
+                tr.append($(`<td title="${group.Date}">${group.Date}</td>`));
+                tr.append($(`<td title="${group.total.toFixed(2)}">${group.total.toFixed(2)}</td>`));
 
-            // Add total first
-            tr.append($(`<td title="${group.total.toFixed(2)}">${group.total.toFixed(2)}</td>`));
+                // Get all values for this plant/date to determine min/max
+                const hourValues = Object.values(group.hours).map(v => parseFloat(v) || 0);
+                const minMax = this.getMaxAndMin(hourValues);
 
-            // Get all values for this plant to determine min/max
-            const hourValues = Object.values(group.hours).map(v => parseFloat(v) || 0);
-            const minMax = this.getMaxAndMin(hourValues);
+                hours.forEach((hour) => {
+                    const value = group.hours[hour] || 0;
+                    const background = this.getTableNumColor(value, minMax);
+                    const style = background ? ` style="background:${background};"` : '';
+                    tr.append($(`<td title="${value.toFixed(2)}"${style}>${value.toFixed(2)}</td>`));
+                });
 
-            hours.forEach((hour) => {
-                const value = group.hours[hour] || 0;
-
-                // Get background color based on value
-                const background = this.getTableNumColor(value, minMax);
-                const style = background ? ` style="background:${background};"` : '';
-
-                tr.append($(`<td title="${value.toFixed(2)}"${style}>${value.toFixed(2)}</td>`));
+                tbody.append(tr);
             });
-
-            tbody.append(tr);
-        });
 
         summaryTable.append(tbody);
     },
@@ -412,6 +411,15 @@ export const realtime = {
             const durationError = isInvalidDuration(app.global.start, app.global.end);
             if (durationError) {
                 displayMessage(durationError, "warning");
+                return;
+            }
+
+            // Check if end date is today or in the future
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const endDate = new Date(app.global.end);
+            if (endDate >= today) {
+                displayMessage("Only data up to one day before the current date can be viewed.", "warning");
                 return;
             }
 

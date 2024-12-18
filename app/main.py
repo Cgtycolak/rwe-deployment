@@ -246,57 +246,90 @@ def get_realtime_data():
         if valid_dates['code'] != 200:
             return jsonify(valid_dates), 400
 
-        res = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/realtime-generation',
-            json={
-                "startDate": asutc(valid_dates['end_date']),
-                "endDate": asutc(valid_dates['end_date']),
-                "powerPlantId": str(powerplant_id)
-            },
-            headers={'TGT': tgt_token}
-        )
-        res.raise_for_status()
+        # Convert date strings to datetime objects
+        if isinstance(valid_dates['start_date'], str):
+            start_date = datetime.strptime(valid_dates['start_date'], '%Y-%m-%d')
+        else:
+            start_date = valid_dates['start_date']
+            
+        if isinstance(valid_dates['end_date'], str):
+            end_date = datetime.strptime(valid_dates['end_date'], '%Y-%m-%d')
+        else:
+            end_date = valid_dates['end_date']
 
-        # Process the data
-        data = res.json().get('items', [])
-        
-        # Filter data to only include rows from the selected date range
-        selected_date = valid_dates['end_date'].strftime('%Y-%m-%d')
-        filtered_data = []
-        
-        for row in data:
-            if row['date'].startswith(selected_date):
-                processed_row = {
-                    'PowerPlant': plant_name,
-                    'DATE': row['date'].split('T')[0],
-                    'HOUR': row['hour'],
-                    'TOTAL': row.get('total'),
-                    'NG': row.get('naturalGas'),
-                    'WIND': row.get('wind'), 
-                    'LIGNITE': row.get('lignite'),
-                    'HARDCOAL': row.get('blackCoal'),
-                    'IMPORTCOAL': row.get('importCoal'),
-                    'FUELOIL': row.get('fueloil'),
-                    'HEPP': row.get('dammedHydro'),
-                    'ROR': row.get('river'),
-                    'NAPHTHA': row.get('naphta'),
-                    'BIO': row.get('biomass'),
-                    'GEOTHERMAL': row.get('geothermal')
+        # Check if end date is today or tomorrow
+        today = datetime.now().date()
+        if end_date.date() >= today:
+            return jsonify({
+                'code': 400, 
+                'message': 'Only data up to one day before the current date can be viewed.'
+            }), 400
+
+        all_data = []
+        current_date = start_date
+        while current_date <= end_date:
+            try:
+                request_data = {
+                    "startDate": f"{current_date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+                    "endDate": f"{current_date.strftime('%Y-%m-%d')}T23:59:59+03:00",
+                    "powerPlantId": str(powerplant_id)
                 }
-                filtered_data.append(processed_row)
+                res = session.post(
+                    'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/realtime-generation',
+                    json=request_data,
+                    headers={'TGT': tgt_token}
+                )
+                res.raise_for_status()
+                day_data = res.json().get('items', [])
+                all_data.extend(day_data)
+                
+            except Exception as e:
+                print(f"Error fetching data for {current_date.date()}: {str(e)}")
+            
+            current_date += timedelta(days=1)
 
-        # Define columns order with DATE added
+        # Process all collected data
+        processed_data = []
+        for row in all_data:
+            processed_row = {
+                'PowerPlant': plant_name,
+                'DATE': row['date'].split('T')[0],
+                'HOUR': row['hour'],
+                'TOTAL': row.get('total', 0),
+                'NG': row.get('naturalGas', 0),
+                'WIND': row.get('wind', 0),
+                'LIGNITE': row.get('lignite', 0),
+                'HARDCOAL': row.get('blackCoal', 0),
+                'IMPORTCOAL': row.get('importCoal', 0),
+                'FUELOIL': row.get('fueloil', 0),
+                'HEPP': row.get('dammedHydro', 0),
+                'ROR': row.get('river', 0),
+                'NAPHTHA': row.get('naphta', 0),
+                'BIO': row.get('biomass', 0),
+                'GEOTHERMAL': row.get('geothermal', 0)
+            }
+            processed_data.append(processed_row)
+
+        # Sort data by date and hour
+        processed_data.sort(key=lambda x: (x['DATE'], x['HOUR']))
+
         columns = ['PowerPlant', 'DATE', 'HOUR', 'TOTAL', 'NG', 'WIND', 'LIGNITE', 'HARDCOAL',
                   'IMPORTCOAL', 'FUELOIL', 'HEPP', 'ROR', 'NAPHTHA', 'BIO', 'GEOTHERMAL']
 
         return jsonify({
             'code': 200,
-            'data': filtered_data,
+            'data': processed_data,
             'columns': columns
         })
 
     except Exception as e:
         print('Error From get_realtime_data:', str(e))
+        error_message = str(e)
+        if 'En son bir gün öncesine' in error_message:
+            return jsonify({
+                'code': 400,
+                'message': 'Only data up to one day before the current date can be viewed.'
+            }), 400
         return jsonify({'code': 500, 'message': 'Unable to load realtime data.'}), 500
 
 @main.route('/get_aic_data', methods=['GET'])

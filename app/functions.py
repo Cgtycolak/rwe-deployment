@@ -15,9 +15,15 @@ def get_tgt_token(username, password):
         return response.text.strip()
     raise Exception("Failed to obtain TGT token.")
 
-def asutc(datetime_obj):
-    timezone = current_app.config.get('TIMEZONE')
-    return datetime_obj.replace(tzinfo=pytz.utc).astimezone(timezone).isoformat(sep='T')
+def asutc(date_str):
+    """Convert date string to UTC format required by the API"""
+    if isinstance(date_str, str):
+        # If it's already in the format we want, return it
+        if 'T' in date_str and '+' in date_str:
+            return date_str
+        # Otherwise, format it properly
+        return f"{date_str}T00:00:00+03:00"
+    return date_str.strftime("%Y-%m-%dT00:00:00+03:00")
 
 # return dates inputs or invalid response object to return jsonifined
 def invalidates_or_none(start, end):

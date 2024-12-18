@@ -336,86 +336,57 @@ export class DPPDayReport {
             });
         }
     }
-    getDaysData(fuelProp, specificDay = null) {
+    getDaysData(fuelProp) {
         let propFound = false;
         const res = {
             rows: {},
-            headers: [],
+            headers: ['_orgName', '_orgFullName', '_uevcbName', '_date', '_Total'],
         };
         if (fuelProp) {
             for (let dayDate in this.data) {
-                // if specific day (chart) continue until found
-                if (specificDay && dayDate != specificDay) {
-                    continue;
-                }
                 res.rows[dayDate] = [];
                 for (let orgId in this.data[dayDate]) {
                     const org = this.data[dayDate][orgId];
                     for (let uevcbId in org.uevcbids) {
                         const uevcb = org.uevcbids[uevcbId];
-                        /* get the only fuel obj needed */
-                        if (
-                            uevcb.reports.hasOwnProperty(fuelProp) &&
-                            uevcb.reports[fuelProp]
-                        ) {
-                            propFound = true; /* any time prop Found this will be true */
+                        if (uevcb.reports.hasOwnProperty(fuelProp) && uevcb.reports[fuelProp]) {
+                            propFound = true;
 
                             const uevcbDayFuel = uevcb.reports[fuelProp];
+                            const hours = Object.keys(uevcbDayFuel);
 
-                            // calc headers and make sure equal (note the table tds use this also as object props also charts may need clear which hours and which other data)
-                            const currentHeaders = [
-                                "_orgName",
-                                "_orgFullName",
-                                "_uevcbName",
-                                "_Total",
-                                ...Object.keys(uevcbDayFuel),
-                            ];
-                            if (res.headers.length == 0) {
-                                // set the headers 1time at begning
-                                res.headers = currentHeaders;
-                            }
-
-                            // only append valid rows that have same headers (usally if no prev issues no row ignored)
-                            if (arraysAreEqual(res.headers, currentHeaders)) {
-                                let total = 0.00;
-                                for (let hour in uevcbDayFuel) {
-                                    const hourVal = parseFloat(uevcbDayFuel[hour]);
-                                    if (!isNaN(hourVal)) {
-                                        total += hourVal;
-                                    }
+                            // Add hours to headers if not already present
+                            hours.forEach(hour => {
+                                if (!res.headers.includes(hour)) {
+                                    res.headers.push(hour);
                                 }
-                                total = parseFloat(total.toFixed(3));
-                                const rowObj = {
-                                    _orgName: org.orgName,
-                                    _orgFullName: org.orgFullName,
-                                    _uevcbName: uevcb.uevcbName,
-                                    _Total: total,
-                                    ...uevcbDayFuel,
-                                };
-                                console.log('rowObj', rowObj);
-                                res.rows[dayDate].push(rowObj);
-                            } else {
-                                console.warn(
-                                    "Note the are row ignored that includes diff headers for uevcb:",
-                                    uevcb
-                                );
+                            });
+
+                            let total = 0;
+                            for (let hour in uevcbDayFuel) {
+                                const hourVal = parseFloat(uevcbDayFuel[hour]);
+                                if (!isNaN(hourVal)) {
+                                    total += hourVal;
+                                }
                             }
+                            total = parseFloat(total.toFixed(3));
+
+                            const rowObj = {
+                                _orgName: org.orgName,
+                                _orgFullName: org.orgFullName,
+                                _uevcbName: uevcb.uevcbName,
+                                _date: dayDate.split('T')[0],
+                                _Total: total,
+                                ...uevcbDayFuel,
+                            };
+                            res.rows[dayDate].push(rowObj);
                         }
                     }
                 }
-                // if specific and found it break not continue
-                if (specificDay && dayDate == specificDay) {
-                    break;
-                }
             }
             if (propFound === false) {
-                /* here no uevcbid obj have this prop so clear the object (note incase 10 days will got 10 empty days while in begning the prop wrong) (incase high wrong i not know will see this warn and headers) */
                 console.warn("Prop not found at any uevcb removed empty day array");
                 res.rows = {};
-            }
-            /* order rows by total prop DESC */
-            for (let day in res.rows) {
-                res.rows[day].sort((current, next) => next._Total - current._Total);
             }
         } else {
             console.warn("fuel type not provided");
@@ -440,68 +411,73 @@ export class DPPDayReport {
                     const colPropN = colProp.startsWith("_")
                         ? colProp.replace("_", "")
                         : colProp;
+                    // Rename 'date' to 'Date'
+                    const displayName = colPropN === 'date' ? 'Date' : colPropN;
                     // Add title for header tooltip
-                    return `<th title="${colPropN}">${colPropN}</th>`;
+                    return `<th title="${displayName}">${displayName}</th>`;
                 })
                 .join("");
             headers += "</tr>";
 
-            let tableHTML = "";
+            let tableHTML = "<tbody>";
+            tableHTML += headers;
+
+            // Sort rows by date and organization
+            const sortedRows = [];
             for (let dayDate in data.rows) {
-                tableHTML += "<tbody>";
-                tableHTML += `
-                    <tr>
-                        <td colspan="${data.headers.length}" class="day-header">
-                            <span class="day_table_info">
-                                <strong>${dayDate}</strong> | ${targetFuel}
-                            </span>
-                        </td>
-                    </tr>`;
-                tableHTML += headers;
-
-                // Sort rows by organization and UEVCB
-                const sortedRows = data.rows[dayDate].sort((a, b) => {
-                    if (a._orgName !== b._orgName) {
-                        return a._orgName.localeCompare(b._orgName);
-                    }
-                    return a._uevcbName.localeCompare(b._uevcbName);
-                });
-
-                sortedRows.forEach((rowObj) => {
-                    const minAndMax = this.getMaxAndMin(rowObj);
-
-                    tableHTML += "<tr>";
-                    data.headers.forEach((headColKey) => {
-                        let val;
-                        if (headColKey.startsWith('_')) {
-                            if (headColKey === '_Total') {
-                                val = parseFloat(rowObj[headColKey] || 0).toFixed(2);
-                            } else {
-                                val = rowObj[headColKey] || '';
-                            }
-                        } else {
-                            val = parseFloat(rowObj[headColKey] || 0).toFixed(2);
-                        }
-
-                        const background = !headColKey.startsWith('_')
-                            ? this.getTableNumColor(val, minAndMax)
-                            : '';
-
-                        let cellClass = '';
-                        if (headColKey === '_orgName') {
-                            cellClass = 'org-name';
-                        }
-
-                        // Add title attribute for tooltip on hover
-                        const title = val ? ` title="${val}"` : '';
-                        const tdStyle = background ? ` style="background:${background};"` : '';
-
-                        tableHTML += `<td class="${cellClass}"${title}${tdStyle}>${val}</td>`;
+                data.rows[dayDate].forEach(rowObj => {
+                    sortedRows.push({
+                        ...rowObj,
+                        _date: dayDate.split('T')[0] // Format date when adding to sorted rows
                     });
-                    tableHTML += "</tr>";
                 });
-                tableHTML += "</tbody>";
             }
+            
+            // Sort by date and organization name
+            sortedRows.sort((a, b) => {
+                if (a._date !== b._date) {
+                    return a._date.localeCompare(b._date);
+                }
+                return a._orgName.localeCompare(b._orgName);
+            });
+
+            sortedRows.forEach((rowObj) => {
+                const minAndMax = this.getMaxAndMin(rowObj);
+
+                tableHTML += "<tr>";
+                data.headers.forEach((headColKey) => {
+                    let val;
+                    if (headColKey === '_date') {
+                        val = rowObj._date; // Date is already formatted
+                    } else if (headColKey.startsWith('_')) {
+                        if (headColKey === '_Total') {
+                            val = parseFloat(rowObj[headColKey] || 0).toFixed(2);
+                        } else {
+                            val = rowObj[headColKey] || '';
+                        }
+                    } else {
+                        val = parseFloat(rowObj[headColKey] || 0).toFixed(2);
+                    }
+
+                    const background = !headColKey.startsWith('_')
+                        ? this.getTableNumColor(val, minAndMax)
+                        : '';
+
+                    let cellClass = '';
+                    if (headColKey === '_orgName') {
+                        cellClass = 'org-name';
+                    }
+
+                    // Add title attribute for tooltip on hover
+                    const title = val ? ` title="${val}"` : '';
+                    const tdStyle = background ? ` style="background:${background};"` : '';
+
+                    tableHTML += `<td class="${cellClass}"${title}${tdStyle}>${val}</td>`;
+                });
+                tableHTML += "</tr>";
+            });
+
+            tableHTML += "</tbody>";
             this.daysTable.html(tableHTML);
         }
     }
