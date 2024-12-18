@@ -19,7 +19,7 @@ const app = {
         
         // Initialize AIC module with helper functions
         this.aic.setup({
-            toggleLoading,
+            // toggleLoading,
             displayMessage
         });
         this.aic.init();

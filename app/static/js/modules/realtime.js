@@ -1,4 +1,4 @@
-import { postData, toggleLoading, displayMessage, isInvalidDuration } from '../utils/helpers.js';
+import { postData, toggleLoading, displayMessage, isInvalidDuration, toggleButtonLoading } from '../utils/helpers.js';
 import { getEndpoints } from '../config/endpoints.js';
 import { THead } from '../classes/THead.js';
 import { TBody } from '../classes/TBody.js';
@@ -357,8 +357,8 @@ export const realtime = {
 
     async loadPowerPlants(app) {
         try {
+            toggleButtonLoading('#load_powerplants');
             this.powerplants = null;
-            toggleLoading(true);
             displayMessage();
 
             const endpoints = getEndpoints();
@@ -389,16 +389,17 @@ export const realtime = {
             } else {
                 displayMessage(res.message || "Unable to load power plants", "danger");
             }
-            toggleLoading(false);
         } catch (error) {
             console.error("loadPowerPlants Error", error);
             displayMessage("System error while loading power plants.", "danger");
-            toggleLoading(false);
+        } finally {
+            toggleButtonLoading('#load_powerplants', false);
         }
     },
 
     async getRealtimeData(app) {
         try {
+            toggleButtonLoading('#load_realtime');
             const powerplantSelect = $("#powerplant_select");
             const selectedPlants = powerplantSelect.val();
 
@@ -423,7 +424,7 @@ export const realtime = {
                 return;
             }
 
-            toggleLoading(true);
+            // toggleLoading(true);
             displayMessage();
 
             const reqData = {
@@ -496,11 +497,13 @@ export const realtime = {
             } else {
                 displayMessage(res.message || "Unable to load realtime data", "danger");
             }
-            toggleLoading(false);
+            // toggleLoading(false);
         } catch (error) {
             console.error("getRealtimeData Error", error);
             displayMessage("System error while loading realtime data.", "danger");
-            toggleLoading(false);
+            // toggleLoading(false);
+        } finally {
+            toggleButtonLoading('#load_realtime', false);
         }
     },
 

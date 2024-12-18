@@ -1,5 +1,5 @@
 import { DPPDayReport } from '../classes/DPPDayReport.js';
-import { postData, toggleLoading, displayMessage, isInvalidDuration } from '../utils/helpers.js';
+import { postData, toggleLoading, displayMessage, isInvalidDuration, toggleButtonLoading } from '../utils/helpers.js';
 import { getEndpoints } from '../config/endpoints.js';
 import { THead } from '../classes/THead.js';
 import { TBody } from '../classes/TBody.js';
@@ -170,10 +170,10 @@ export const dpp = {
 
     async loadOrgs(app) {
         try {
+            toggleButtonLoading('#load_orgs');
             // cascade clear all orgs and childs before new request
             app.dpp.orgs = null;
 
-            toggleLoading(true);
             const orgSelect = $("#org_select");
             if (orgSelect.length) {
                 // clear old orgs, adis and filters before any handle
@@ -225,16 +225,17 @@ export const dpp = {
             } else {
                 displayMessage("System error unable to load organizations.", "danger");
             }
-            toggleLoading(false);
         } catch (error) {
             console.error("loadOrgs Error", error);
-            displayMessage("System error while loading orgs", "danger");
-            toggleLoading(false);
+            displayMessage("System error while loading organizations.", "danger");
+        } finally {
+            toggleButtonLoading('#load_orgs', false);
         }
     },
 
     async getOrgbasedOptions(app) {
         try {
+            toggleButtonLoading('#load_uevcbids');
             // cascade clear all uevcbids and it cascade remove it childs capturing
             app.dpp.uevcbids = null;
 
@@ -252,7 +253,6 @@ export const dpp = {
                 );
                 if (!durationError) {
                     if (orgElm.val().length > 0) {
-                        toggleLoading(true);
                         displayMessage();
                         const orgIds = orgElm.val();
                         const reqData = {
@@ -283,7 +283,6 @@ export const dpp = {
                                 "danger"
                             );
                         }
-                        toggleLoading(false);
                     } else {
                         displayMessage(
                             "Unable to load UEVCB options please select organizations",
@@ -298,13 +297,15 @@ export const dpp = {
             }
         } catch (error) {
             console.error("getOrgbasedOptions Error", error);
-            displayMessage("System error while loading uevcbids.", "danger");
-            toggleLoading(false);
+            displayMessage("System error while loading UEVCB options.", "danger");
+        } finally {
+            toggleButtonLoading('#load_uevcbids', false);
         }
     },
 
     async getDPPTableData(app) {
         try {
+            toggleButtonLoading('#load_dpp');
             app.dpp.columns = null;
             app.dpp.rows = null;
             app.dayReport = null;
@@ -313,7 +314,6 @@ export const dpp = {
             if (!durationError) {
                 const orgsData = app.dpp.getOrgsData();
                 if (Object.keys(orgsData).length > 0) {
-                    toggleLoading(true);
                     displayMessage();
 
                     const reqData = {
@@ -413,7 +413,6 @@ export const dpp = {
                             "danger"
                         );
                     }
-                    toggleLoading(false);
                 } else {
                     // reload org when error detected (by selected invalid uevcb of modifed orgs) (note this click is UX it so just notify user he selet uevcb for removed org by him so load the selected orgs uevcb for him to notice and continue)
                     $("#load_uevcbids").click();
@@ -428,7 +427,8 @@ export const dpp = {
         } catch (error) {
             console.error("getDPPTableData Error", error);
             displayMessage("System error while loading DPP data.", "danger");
-            toggleLoading(false);
+        } finally {
+            toggleButtonLoading('#load_dpp', false);
         }
     }
 };
