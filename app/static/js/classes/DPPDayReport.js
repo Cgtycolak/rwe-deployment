@@ -392,7 +392,6 @@ export class DPPDayReport {
                                     _Total: total,
                                     ...uevcbDayFuel,
                                 };
-                                console.log('rowObj', rowObj);
                                 res.rows[dayDate].push(rowObj);
                             } else {
                                 console.warn(
