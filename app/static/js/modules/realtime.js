@@ -358,7 +358,7 @@ export const realtime = {
     async loadPowerPlants(app) {
         try {
             this.powerplants = null;
-            toggleLoading(true);
+            // toggleLoading(true);
             displayMessage();
 
             const endpoints = getEndpoints();
@@ -389,11 +389,11 @@ export const realtime = {
             } else {
                 displayMessage(res.message || "Unable to load power plants", "danger");
             }
-            toggleLoading(false);
+            // toggleLoading(false);
         } catch (error) {
             console.error("loadPowerPlants Error", error);
             displayMessage("System error while loading power plants.", "danger");
-            toggleLoading(false);
+            // toggleLoading(false);
         }
     },
 
@@ -423,7 +423,7 @@ export const realtime = {
                 return;
             }
 
-            toggleLoading(true);
+            // toggleLoading(true);
             displayMessage();
 
             const reqData = {
@@ -496,11 +496,11 @@ export const realtime = {
             } else {
                 displayMessage(res.message || "Unable to load realtime data", "danger");
             }
-            toggleLoading(false);
+            // toggleLoading(false);
         } catch (error) {
             console.error("getRealtimeData Error", error);
             displayMessage("System error while loading realtime data.", "danger");
-            toggleLoading(false);
+            // toggleLoading(false);
         }
     },
 

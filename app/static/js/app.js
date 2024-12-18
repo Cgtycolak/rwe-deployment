@@ -1,6 +1,6 @@
 import { dpp } from './modules/dpp.js';
 import { realtime } from './modules/realtime.js';
-import { postData, toggleLoading, displayMessage, updateGlobal, switcher } from './utils/helpers.js';
+import { postData, toggleLoading, displayMessage, updateGlobal, switcher, toggleButtonLoading } from './utils/helpers.js';
 import { HTMLSearchableSelect } from './classes/HTMLSearchableSelect.js';
 import { aic } from './modules/aic.js';
 
@@ -19,7 +19,7 @@ const app = {
         
         // Initialize AIC module with helper functions
         this.aic.setup({
-            toggleLoading,
+            // toggleLoading,
             displayMessage
         });
         this.aic.init();
@@ -47,17 +47,40 @@ function setupEvents() {
     $("#global_start").on("change", (e) => updateGlobal(e, app));
     $("#global_end").on("change", (e) => updateGlobal(e, app));
 
-    // DPP events
-    $("#load_orgs").on("click", () => app.dpp.loadOrgs(app));
-    $("#load_uevcbids").on("click", () => app.dpp.getOrgbasedOptions(app));
-    $("#load_dpp").on("click", () => app.dpp.getDPPTableData(app));
+    // DPP events with loading states
+    $("#load_orgs").on("click", async (e) => {
+        toggleButtonLoading(e.currentTarget, true);
+        await app.dpp.loadOrgs(app);
+        toggleButtonLoading(e.currentTarget, false);
+    });
+
+    $("#load_uevcbids").on("click", async (e) => {
+        toggleButtonLoading(e.currentTarget, true);
+        await app.dpp.getOrgbasedOptions(app);
+        toggleButtonLoading(e.currentTarget, false);
+    });
+
+    $("#load_dpp").on("click", async (e) => {
+        toggleButtonLoading(e.currentTarget, true);
+        await app.dpp.getDPPTableData(app);
+        toggleButtonLoading(e.currentTarget, false);
+    });
 
     // Switch events
     $(".switch_selector").on("click", switcher);
 
-    // Realtime events  
-    $("#load_powerplants").on("click", () => app.realtime.loadPowerPlants(app));
-    $("#load_realtime").on("click", () => app.realtime.getRealtimeData(app));
+    // Realtime events with loading states
+    $("#load_powerplants").on("click", async (e) => {
+        toggleButtonLoading(e.currentTarget, true);
+        await app.realtime.loadPowerPlants(app);
+        toggleButtonLoading(e.currentTarget, false);
+    });
+
+    $("#load_realtime").on("click", async (e) => {
+        toggleButtonLoading(e.currentTarget, true);
+        await app.realtime.getRealtimeData(app);
+        toggleButtonLoading(e.currentTarget, false);
+    });
 }
 
 // Wait for document and plugins to be ready

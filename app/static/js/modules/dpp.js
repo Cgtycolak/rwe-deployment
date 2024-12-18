@@ -173,7 +173,7 @@ export const dpp = {
             // cascade clear all orgs and childs before new request
             app.dpp.orgs = null;
 
-            toggleLoading(true);
+            // toggleLoading(true);
             const orgSelect = $("#org_select");
             if (orgSelect.length) {
                 // clear old orgs, adis and filters before any handle
@@ -225,11 +225,11 @@ export const dpp = {
             } else {
                 displayMessage("System error unable to load organizations.", "danger");
             }
-            toggleLoading(false);
+            // toggleLoading(false);
         } catch (error) {
             console.error("loadOrgs Error", error);
             displayMessage("System error while loading orgs", "danger");
-            toggleLoading(false);
+            // toggleLoading(false);
         }
     },
 
@@ -252,7 +252,7 @@ export const dpp = {
                 );
                 if (!durationError) {
                     if (orgElm.val().length > 0) {
-                        toggleLoading(true);
+                        // toggleLoading(true);
                         displayMessage();
                         const orgIds = orgElm.val();
                         const reqData = {
@@ -283,7 +283,7 @@ export const dpp = {
                                 "danger"
                             );
                         }
-                        toggleLoading(false);
+                        // toggleLoading(false);
                     } else {
                         displayMessage(
                             "Unable to load UEVCB options please select organizations",
@@ -313,7 +313,7 @@ export const dpp = {
             if (!durationError) {
                 const orgsData = app.dpp.getOrgsData();
                 if (Object.keys(orgsData).length > 0) {
-                    toggleLoading(true);
+                    // toggleLoading(true);
                     displayMessage();
 
                     const reqData = {
@@ -413,7 +413,7 @@ export const dpp = {
                             "danger"
                         );
                     }
-                    toggleLoading(false);
+                    // toggleLoading(false);
                 } else {
                     // reload org when error detected (by selected invalid uevcb of modifed orgs) (note this click is UX it so just notify user he selet uevcb for removed org by him so load the selected orgs uevcb for him to notice and continue)
                     $("#load_uevcbids").click();
