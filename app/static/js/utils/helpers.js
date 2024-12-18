@@ -152,3 +152,20 @@ export function updateGlobal(e, app) {
         app.global[prop] = selectedVal || null;
     }
 }
+
+export function toggleButtonLoading(buttonSelector, isLoading = true) {
+    const button = $(buttonSelector);
+    if (isLoading) {
+        // Store original text and disable button
+        const originalText = button.html();
+        button.attr('data-original-text', originalText);
+        button.prop('disabled', true);
+        button.html(`<span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span> Loading...`);
+    } else {
+        // Restore original text and enable button
+        const originalText = button.attr('data-original-text');
+        button.html(originalText);
+        button.prop('disabled', false);
+        button.removeAttr('data-original-text');
+    }
+}
