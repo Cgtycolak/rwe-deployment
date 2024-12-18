@@ -8,4 +8,4 @@ services:
       - key: PYTHON_VERSION
         value: 3.9.0
       - key: SECRET_KEY
-        generateValue: true 
+        generateValue: true
