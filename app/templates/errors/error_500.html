@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Internal Server Error{% endblock %}
+{% block page_description %}The server have error please try again later.{% endblock %}
+{% block body %}
+<div class="container text-center shadow-lg pt-4 pb-4 mt-2">
+    <img src="{{url_for('static', filename='images/error-icon.png')}}" height="300">
+    <h5>Internal Server Error</h5>
+</div>
+{% endblock %}

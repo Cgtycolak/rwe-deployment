@@ -1,0 +1,43 @@
+.DS_Store
+
+# Byte-compiled files
+*.pyc
+__pycache__/
+
+# Virtual environment
+venv/
+
+# Environment variables
+.env
+
+# IDE configurations
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Test output
+.coverage
+*.pytest_cache/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Node.js / Electron specific
+node_modules/
+dist/
+build/
+*.exe
+*.dmg
+*.app
+*.deb
+*.rpm
+
+# Add these lines to your existing .gitignore
+flask_session/
+.flask_session/

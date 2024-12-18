@@ -1,0 +1,9 @@
+flask==2.2.0
+Werkzeug==2.2.0
+Flask-Session==0.8.0
+pyodbc==5.1.0
+requests==2.32.3
+pytz==2024.2
+pandas==2.2.3
+numpy==2.0.2
+dotenv==1.0.1

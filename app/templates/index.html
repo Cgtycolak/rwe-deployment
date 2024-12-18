@@ -1,0 +1,760 @@
+{% extends 'base.html' %} {% block body %}
+<style>
+  .btn_vsm {
+    font-size: 0.55rem;
+    line-height: 0.7 !important;
+    padding: 4px;
+    border-radius: 50% !important;
+  }
+  .lh_0 {
+    line-height: 0px;
+  }
+  .mxh_112 {
+    max-height: 112px !important;
+    overflow: auto !important;
+  }
+  .h_80vh {
+    height: 80vh;
+  }
+  .wait_text {
+    font-weight: bold;
+    text-shadow: 2px 2px 4px #000000;
+    color: white;
+    font-size: 1.2rem;
+  }
+  .bg1 {
+    background: rgb(150, 220, 20, 0.2) !important;
+  }
+  .mxw_precent_100 {
+    max-width: 100% !important;
+  }
+  .dynamic_table_cont {
+    max-height: 80vh !important;
+  }
+  .cont_overflow_99 {
+    max-width: 99% !important;
+    overflow: auto;
+  }
+  .switch_arg {
+    display: none;
+  }
+  .switch_arg.active {
+    display: block;
+  }
+  .switch_arg[data-switch="fuel_types_chart"] #dpp_chart_btns {
+    display: none !important;
+  }
+
+  /* Compact table styles for all tables */
+  .table {
+    font-size: 0.85rem;
+  }
+
+  .table th,
+  .table td {
+    padding: 0.3rem !important;
+    white-space: nowrap;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #6c757d !important;
+    opacity: 0.95;
+  }
+
+  .table th {
+    font-weight: 500;
+    color: white;
+  }
+
+  /* Add tooltip on hover for truncated text */
+  .table td[title],
+  .table th[title] {
+    cursor: help;
+  }
+
+  /* Day header styling */
+  .day-header {
+    font-size: 0.9rem;
+    padding: 0.4rem !important;
+    background: mintcream !important;
+    font-weight: 500;
+  }
+
+  /* Organization name styling */
+  .org-name {
+    font-weight: 500;
+  }
+
+  /* Adjust table container heights */
+  .dynamic_table_cont {
+    max-height: 75vh !important;
+  }
+
+  .option-checkbox {
+    vertical-align: middle;
+    margin-right: 5px;
+  }
+
+  select option {
+    padding: 5px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Specific styling for table headers */
+  .table-dark {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+  }
+
+  .table-dark th {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+  }
+
+  /* Add these new styles */
+  .btn-group {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1rem;
+  }
+
+  .switch_selector, .btn[data-switch] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.75rem;
+  }
+
+  .switch_selector i, .btn[data-switch] i {
+    font-size: 1rem;
+  }
+
+  /* Fix button container alignment */
+  .d-flex.justify-content-start.align-items-center.p-2.border.mx-2.shadow {
+    justify-content: center !important;
+  }
+</style>
+<div class="content-section active" data-section="kgup-realtime">
+<div class="text-center" style="display: none" id="loading_circle">
+  <div
+    class="d-flex justify-content-center align-items-center flex-column h-100 w-100 m-0 p-0 h_80vh"
+  >
+    <img src="{{url_for('static', filename='images/loading_circle.gif')}}" />
+    <p class="m-0 p-0 wait_text">Please wait while the data is loaded...</p>
+  </div>
+</div>
+<div class="container-fluid row m-0 p-0" id="app">
+  <!-- messages --->
+  <div class="col-sm-12 m-0 p-0" id="alert_messages"></div>
+  <!-- Aside -->
+  <div class="col-sm-3 m-0 p-0 border">
+    <div class="row m-0 p-0">
+      <!-- Global Args -->
+      <div class="col-sm-12 m-0 p-0">
+        <div class="border row m-0">
+          <div class="col-sm-12 p-2">
+            <label>Start Date:</label>
+            <input
+              id="global_start"
+              data-prop="start"
+              value=""
+              class="form-control"
+              type="date"
+            />
+          </div>
+          <div class="col-sm-12 p-2">
+            <label>End Date:</label>
+            <input
+              id="global_end"
+              data-prop="end"
+              value=""
+              class="form-control"
+              type="date"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- DPP Args -->
+      <div class="col-sm-12 m-0 p-0">
+        <div class="p-2 border table_args" data-table="dpp">
+          <div class="text-center mb-2">
+            <button
+              id="load_orgs"
+              title="Please select start date and end date to load the organziations."
+              class="btn btn-outline-primary btn-sm btn-block"
+            >
+              Load Organizations
+            </button>
+          </div>
+          <div id="dpp_args" style="display: none">
+            <!-- Organization Name -->
+            <div class="mb-2 text-dark">
+              <div
+                class="d-flex justify-content-end flex-column border shadow p-2"
+              >
+                <!-- Search bar for organizations -->
+                <div class="input-group mb-2">
+                  <input
+                    type="text"
+                    class="form-control form-control-sm"
+                    id="org_search"
+                    placeholder="Search organizations..."
+                    oninput="filterOptions('org_select', this.value)"
+                  />
+                  <div class="input-group-append">
+                    <button
+                      class="btn btn-sm btn-outline-secondary"
+                      type="button"
+                    >
+                      <i class="fa fa-search"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Quick filters -->
+                <div class="mb-2">
+                  <div class="form-check form-check-inline">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="select_all_orgs"
+                      onchange="toggleAllOptions('org_select', this.checked)"
+                    />
+                    <label class="form-check-label small" for="select_all_orgs"
+                      >Select All</label
+                    >
+                  </div>
+                </div>
+
+                <!-- setup look and config of html searchable select by only data-attr -->
+                <select
+                  class="form-control"
+                  name="org"
+                  id="org_select"
+                  multiple="multiple"
+                  data-name="Organziations"
+                  data-label=""
+                  data-search-placeholder=""
+                  data-cont-style="background:lavender !important;"
+                  data-search-style=""
+                  data-search-extra-attrs="title"
+                  data-label-style=""
+                  data-counter=""
+                  data-minimizable=""
+                  data-select-checkbox=""
+                  data-select-checkbox-style=""
+                ></select>
+
+                <div class="my-2 text-center">
+                  <button
+                    id="load_uevcbids"
+                    class="btn btn-sm btn-outline-primary btn-block"
+                  >
+                    Load UEVCBIDS
+                  </button>
+                </div>
+              </div>
+            </div>
+            <!-- Organization End -->
+            <!-- UECVBIDS -->
+            <div class="mb-2 text-dark">
+              <div
+                class="d-flex justify-content-end flex-column border shadow p-2"
+              >
+                <!-- Add search bar for UEVCBIDS -->
+                <div class="input-group mb-2">
+                  <input
+                    type="text"
+                    class="form-control form-control-sm"
+                    id="uevcbid_search"
+                    placeholder="Search UEVCBIDS..."
+                    oninput="filterOptions('adi_select', this.value)"
+                  />
+                  <div class="input-group-append">
+                    <button
+                      class="btn btn-sm btn-outline-secondary"
+                      type="button"
+                    >
+                      <i class="fa fa-search"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="mb-2">
+                  <div class="form-check form-check-inline">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="select_all_uevcbids"
+                      onchange="toggleAllOptions('adi_select', this.checked)"
+                    />
+                    <label
+                      class="form-check-label small"
+                      for="select_all_uevcbids"
+                      >Select All</label
+                    >
+                  </div>
+                </div>
+
+                <select
+                  class="form-control"
+                  id="adi_select"
+                  multiple="multiple"
+                  data-name="UEVCBIDS"
+                  data-label=""
+                  data-search-placeholder=""
+                  data-cont-style="background:lavender !important;"
+                  data-search-style=""
+                  data-label-style=""
+                  data-counter=""
+                  data-minimizable=""
+                  data-select-checkbox=""
+                  data-select-checkbox-style=""
+                ></select>
+              </div>
+            </div>
+            <!-- UECVBIDS End -->
+
+            <!-- Display Table Step 3 -->
+            <div class="text-center mb-2">
+              <button
+                class="btn btn-outline-primary btn-sm btn-block"
+                id="load_dpp"
+                title="Recreate Table."
+              >
+                Display Table
+              </button>
+            </div>
+
+            <div class="mb-2">
+              <!-- note API ask for org and related UEVCBIDS -->
+              <div
+                id="org_filters"
+                class="mt-2 d-flex justify-content-start align-items-start flex-wrap"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Realtime Args -->
+      <div class="col-sm-12 m-0 p-0">
+        <div class="p-2 border table_args" data-table="realtime">
+          <div class="text-center mb-2">
+            <button
+              id="load_powerplants"
+              class="btn btn-outline-primary btn-sm btn-block"
+            >
+              Load Power Plants
+            </button>
+          </div>
+          <div id="realtime_args_content" style="display: none">
+            <!-- Power Plant Selection -->
+            <div class="mb-2 text-dark">
+              <div
+                class="d-flex justify-content-end flex-column border shadow p-2"
+              >
+                <!-- Search bar for power plants -->
+                <div class="input-group mb-2">
+                  <input
+                    type="text"
+                    class="form-control form-control-sm"
+                    id="powerplant_search"
+                    placeholder="Search power plants..."
+                    oninput="filterOptions('powerplant_select', this.value)"
+                  />
+                  <div class="input-group-append">
+                    <button
+                      class="btn btn-sm btn-outline-secondary"
+                      type="button"
+                    >
+                      <i class="fa fa-search"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Quick filters -->
+                <div class="mb-2">
+                  <div class="form-check form-check-inline">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="select_all_plants"
+                      onchange="toggleAllOptions('powerplant_select', this.checked)"
+                    />
+                    <label
+                      class="form-check-label small"
+                      for="select_all_plants"
+                      >Select All</label
+                    >
+                  </div>
+                </div>
+
+                <select
+                  class="form-control"
+                  name="powerplant"
+                  id="powerplant_select"
+                  multiple="multiple"
+                  data-name="Power Plants"
+                  data-label=""
+                  data-search-placeholder=""
+                  data-cont-style="background:lavender !important;"
+                  data-search-style=""
+                  data-search-extra-attrs="title"
+                  data-label-style=""
+                  data-counter=""
+                  data-minimizable=""
+                  data-select-checkbox=""
+                  data-select-checkbox-style=""
+                ></select>
+              </div>
+            </div>
+
+            <!-- Display Table Button -->
+            <div class="text-center mb-2">
+              <button
+                class="btn btn-outline-primary btn-sm btn-block"
+                id="load_realtime"
+                title="Display Realtime Data"
+              >
+                Display Table
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Global Arg Table Filters -->
+      <div class="col-sm-12 m-0 p-0" id="table_filters"></div>
+    </div>
+  </div>
+  <!-- Main -->
+  <div class="col-sm-9 m-0 p-0 shadow">
+    <!-- Dynamic Tables -->
+    <div class="m-0 p-0 flex" id="tables_cont">
+      <div class="m-0 p-0 table_args" data-table="dpp">
+        <div class="m-0 p-0 dpp_options" style="display: none">
+          <div
+            class="d-flex justify-content-center align-items-center p-2 border mx-2 shadow"
+          >
+            <button
+              class="btn btn-sm btn-outline-primary mr-1 switch_selector"
+              title="Display day report chart for specific fuel type"
+              data-group="dpp_nested"
+              data-switch="fuel_types_chart"
+            >
+              <i class="fas fa-chart-bar"></i> Chart
+            </button>
+            <button
+              class="btn btn-sm btn-primary mr-1 switch_selector"
+              data-group="dpp_nested"
+              data-switch="fuel_types_table"
+              title="Display all fuel_types reports in one table for specific fuel type"
+            >
+              <i class="fas fa-calendar-alt"></i> Fuel Types
+            </button>
+            <button
+              class="btn btn-sm btn-outline-primary mr-1 switch_selector"
+              data-group="dpp_nested"
+              data-switch="all_table"
+              title="Display all data in one table for all fuels"
+            >
+              <i class="fas fa-table"></i> All Data
+            </button>
+          </div>
+        </div>
+        <!-- 1 Chart for one day report for specific fuel type -->
+        <div class="m-0 p-0 dpp_options" style="display: none">
+          <div
+            class="m-0 p-0 switch_arg"
+            data-switch="fuel_types_chart"
+            data-group="dpp_nested"
+            style="display: none"
+          >
+            <div class="m-0 mx-2 p-2 row">
+              <div class="col-sm-12 m-0 p-0">
+                <div
+                  id="plotly_chart"
+                  style="
+                    min-height: 550px;
+                    height: 80vh;
+                    min-width: 600px;
+                    width: 100%;
+                  "
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2 table to display all selected fuel_types reports for specific fuel type -->
+        <div class="m-0 p-0 dpp_options" style="display: none">
+          <div
+            class="m-0 p-0 switch_arg"
+            data-switch="fuel_types_table"
+            data-group="dpp_nested"
+          >
+            <div id="dpp_chart_btns"></div>
+            <div
+              id="fuel_types_report_table_cont"
+              class="table-responsive dynamic_table_cont mx-2 cont_overflow_99"
+            >
+              <table
+                id="dpp_fuel_types_table"
+                class="table table-hover table-bordered"
+              ></table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3 display all data rows returned from api includes all fuels the original -->
+        <div
+          id="all_dpp_data_table_cont"
+          class="table-responsive dynamic_table_cont mx-2 cont_overflow_99 switch_arg"
+          data-switch="all_table"
+          data-group="dpp_nested"
+          style="display: none"
+        >
+          <table id="dpp_table" class="table table-hover table-bordered">
+            <thead
+              class="table-dark"
+              style="
+                position: sticky;
+                opacity: 0.8;
+                top: 0;
+                border: 2px solid #3069cabd;
+              "
+            ></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Realtime table container -->
+      <div class="table_args" data-table="realtime">
+        <div class="m-0 p-0 realtime_options" style="display: none">
+          <div
+            class="d-flex justify-content-center align-items-center p-2 border mx-2 shadow"
+          >
+            <button
+              class="btn btn-sm btn-outline-primary mr-1 switch_selector"
+              title="Display realtime chart"
+              data-group="realtime_nested"
+              data-switch="realtime_chart"
+            >
+              <i class="fas fa-chart-bar"></i> Chart
+            </button>
+            <button
+              class="btn btn-sm btn-primary mr-1 switch_selector"
+              data-group="realtime_nested"
+              data-switch="realtime_fuel_types"
+              title="Display fuel types table"
+            >
+              <i class="fas fa-calendar-alt"></i> Fuel Types
+            </button>
+            <button
+              class="btn btn-sm btn-outline-primary mr-1 switch_selector"
+              data-group="realtime_nested"
+              data-switch="realtime_all"
+              title="Display all data"
+            >
+              <i class="fas fa-table"></i> All Data
+            </button>
+            <button
+              class="btn btn-sm btn-outline-primary mx-1"
+              data-switch="realtime_difference"
+              data-group="realtime_nested"
+            >
+              <i class="fas fa-chart-line"></i> Difference
+            </button>
+          </div>
+        </div>
+
+        <!-- 1. Chart View -->
+        <div class="m-0 p-0 realtime_options" style="display: none">
+          <div
+            class="m-0 p-0 switch_arg"
+            data-switch="realtime_chart"
+            data-group="realtime_nested"
+            style="display: none"
+          >
+            <div class="m-0 mx-2 p-2 row">
+              <div class="col-sm-12 m-0 p-0">
+                <div
+                  id="realtime_plotly_chart"
+                  style="
+                    min-height: 550px;
+                    height: 80vh;
+                    min-width: 600px;
+                    width: 100%;
+                  "
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Fuel Types Table -->
+        <div class="m-0 p-0 realtime_options" style="display: none">
+          <div
+            class="m-0 p-0 switch_arg"
+            data-switch="realtime_fuel_types"
+            data-group="realtime_nested"
+          >
+            <div id="realtime_fuel_buttons"></div>
+            <div
+              id="realtime_fuel_types_table_cont"
+              class="table-responsive dynamic_table_cont mx-2 cont_overflow_99"
+            >
+              <table
+                id="realtime_fuel_types_table"
+                class="table table-hover table-bordered"
+              ></table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. All Data Table -->
+        <div
+          id="realtime_all_table_cont"
+          class="table-responsive dynamic_table_cont mx-2 cont_overflow_99 switch_arg"
+          data-switch="realtime_all"
+          data-group="realtime_nested"
+          style="display: none"
+        >
+          <table id="realtime_table" class="table table-hover table-bordered">
+            <thead
+              class="table-dark"
+              style="
+                position: sticky;
+                opacity: 0.8;
+                top: 0;
+                border: 2px solid #3069cabd;
+              "
+            ></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <!-- 4. Add the Difference Chart View here -->
+        <div
+          class="switch_arg"
+          data-switch="realtime_difference"
+          data-group="realtime_nested"
+        >
+          <div id="difference_chart" class="plotly-chart"></div>
+        </div>
+      </div>
+      <div
+        id="y_table_cont"
+        class="table_args table-responsive dynamic_table_cont"
+        data-table="y"
+        style="display: none"
+      >
+        3
+      </div>
+    </div>
+  </div>
+
+  <!-- AIC-REALTIME-GENERATION section -->
+  <div class="content-section" data-section="aic-realtime" style="display: none">
+    <div class="container-fluid">
+        <!-- Time range buttons -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-center gap-2">
+                    <button class="btn btn-outline-primary aic-range-btn" data-range="week">
+                        <i class="fas fa-calendar-week"></i> Weekly
+                    </button>
+                    <button class="btn btn-outline-primary aic-range-btn" data-range="month">
+                        <i class="fas fa-calendar-alt"></i> Monthly
+                    </button>
+                    <button class="btn btn-outline-primary aic-range-btn" data-range="year">
+                        <i class="fas fa-calendar"></i> Yearly
+                    </button>
+                    <button class="btn btn-outline-primary aic-range-btn" data-range="5year">
+                        <i class="fas fa-calendar-plus"></i> 5 Years
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!-- Chart container -->
+        <div class="row">
+            <div class="col-12">
+                <div id="aic_realtime_chart" style="width:100%; height:700px;"></div>
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <!-- i want to add anoth -->
+</div>
+{% endblock body %} {% block page_scripts %}
+<script type="module">
+  // Pass endpoints data directly as a JavaScript object
+  const endpointsData = {{urls|tojson|safe}};
+
+  import app from '{{url_for("static", filename="js/app.js")}}';
+
+  // Initialize app with endpoints
+  window.app = app;
+  window.app.endpoints = endpointsData;
+</script>
+<script>
+  function toggleAllOptions(selectId, checked) {
+    const select = document.getElementById(selectId);
+    Array.from(select.options).forEach((option) => {
+      option.selected = checked;
+    });
+  }
+
+  function filterOptions(selectId, searchText) {
+    const select = document.getElementById(selectId);
+    Array.from(select.options).forEach((option) => {
+      const text = option.text.toLowerCase();
+      const value = option.value.toLowerCase();
+      const title = option.title ? option.title.toLowerCase() : "";
+      const searchLower = searchText.toLowerCase();
+
+      if (
+        text.includes(searchLower) ||
+        value.includes(searchLower) ||
+        title.includes(searchLower)
+      ) {
+        option.style.display = "";
+      } else {
+        option.style.display = "none";
+      }
+    });
+  }
+
+  // Add checkbox to each option
+  function addCheckboxesToOptions() {
+    const selects = ["org_select", "adi_select", "powerplant_select"];
+    selects.forEach((selectId) => {
+      const select = document.getElementById(selectId);
+      Array.from(select.options).forEach((option) => {
+        if (!option.getAttribute("data-checkbox-added")) {
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.className = "option-checkbox";
+          checkbox.style.marginRight = "5px";
+          option.prepend(checkbox);
+          option.setAttribute("data-checkbox-added", "true");
+        }
+      });
+    });
+  }
+
+  // Call this function when the page loads
+  document.addEventListener("DOMContentLoaded", addCheckboxesToOptions);
+</script>
+{% endblock page_scripts %}

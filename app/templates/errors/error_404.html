@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}Page not Found{% endblock %}
+{% block page_description %}There are no page for the following URL you have used please check url and try again{% endblock %}
+{% block body %}
+<div class="container text-center shadow-lg pt-4 pb-4 mt-2">
+    <img src="{{url_for('static', filename='images/error-icon.png')}}" height="300">
+    <h5>Page Not Found</h5>
+</div>
+{% endblock %}
+
