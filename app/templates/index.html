@@ -141,6 +141,60 @@
   .d-flex.justify-content-start.align-items-center.p-2.border.mx-2.shadow {
     justify-content: center !important;
   }
+
+  /* Add these styles to your existing style block */
+  .switch_arg[data-switch="realtime_difference"] {
+    position: relative;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden;
+  }
+
+  #difference_chart {
+    position: relative;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+  }
+
+  /* Container adjustments */
+  .container-fluid {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Ensure the parent containers don't add unwanted margins */
+  .table_args[data-table="realtime"],
+  .realtime_options,
+  .switch_arg {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  .difference-chart-container {
+    width: 95%;
+    height: 85vh;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  #difference_chart {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Remove any previous conflicting styles */
+  .switch_arg[data-switch="realtime_difference"] {
+    width: 100% !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
 </style>
 <div class="content-section active" data-section="kgup-realtime">
 <div class="text-center" style="display: none" id="loading_circle">
@@ -645,12 +699,10 @@
         </div>
 
         <!-- 4. Add the Difference Chart View here -->
-        <div
-          class="switch_arg"
-          data-switch="realtime_difference"
-          data-group="realtime_nested"
-        >
-          <div id="difference_chart" class="plotly-chart"></div>
+        <div class="switch_arg" data-switch="realtime_difference" data-group="realtime_nested">
+            <div class="difference-chart-container">
+                <div id="difference_chart"></div>
+            </div>
         </div>
       </div>
       <div
