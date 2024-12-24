@@ -199,7 +199,7 @@ def get_powerplants():
         session.mount('https://', HTTPAdapter(max_retries=retries))
         
         res = session.get(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/powerplant-list',
+            current_app.config['POWERPLANT_URL'],
             headers={'TGT': tgt_token}
         )
         res.raise_for_status()
@@ -234,7 +234,7 @@ def get_realtime_data():
 
         # Get powerplant details
         plant_res = session.get(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/powerplant-list',
+            current_app.config['POWERPLANT_URL'],
             headers={'TGT': tgt_token}
         )
         plant_res.raise_for_status()
@@ -275,7 +275,7 @@ def get_realtime_data():
                     "powerPlantId": str(powerplant_id)
                 }
                 res = session.post(
-                    'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/realtime-generation',
+                    current_app.config['REALTIME_URL'],
                     json=request_data,
                     headers={'TGT': tgt_token}
                 )
@@ -364,7 +364,7 @@ def get_aic_data():
         
         # Fetch AIC data
         res = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/aic',
+            current_app.config['AIC_URL'],
             json={
                 "startDate": start_str,
                 "endDate": end_str,

@@ -26,10 +26,18 @@ app.config['BASEURL_1'] = 'https://seffaflik.epias.com.tr/electricity-service/'
 app.config['ORGANIZATION_LIST'] = 'v1/generation/data/organization-list'
 app.config['UEVCB_ENDPOINT'] = 'v1/generation/data/uevcb-list'
 app.config['DPP_ENDPOINT'] = 'v1/generation/data/dpp'
+app.config['POWERPLANT_ENDPOINT'] = 'v1/generation/data/powerplant-list'
+app.config['REALTIME_ENDPOINT'] = 'v1/generation/data/realtime-generation'
+app.config['FUEL_TYPE_GENERATION_ENDPOINT'] = 'v1/generation/data/fueltype-generation'
+app.config['AIC_ENDPOINT'] = 'v1/generation/data/aic'
 
 app.config['ORGANIZATION_LIST_URL'] = app.config['BASEURL_1'] + app.config['ORGANIZATION_LIST']
 app.config['UEVCB_URL'] = app.config['BASEURL_1'] + app.config['UEVCB_ENDPOINT']
 app.config['DPP_URL'] = app.config['BASEURL_1'] + app.config['DPP_ENDPOINT']
+app.config['POWERPLANT_URL'] = app.config['BASEURL_1'] + app.config['POWERPLANT_ENDPOINT']
+app.config['REALTIME_URL'] = app.config['BASEURL_1'] + app.config['REALTIME_ENDPOINT']
+app.config['FUEL_TYPE_GENERATION_URL'] = app.config['BASEURL_1'] + app.config['FUEL_TYPE_GENERATION_ENDPOINT']
+app.config['AIC_URL'] = app.config['BASEURL_1'] + app.config['AIC_ENDPOINT']
 
 # Setup session
 flaskSession = Session(app)
