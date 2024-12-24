@@ -430,5 +430,42 @@ export const dpp = {
         } finally {
             toggleButtonLoading('#load_dpp', false);
         }
+    },
+
+    downloadExcel() {
+        try {
+            if (!this._rows || !this.columns) {
+                console.warn("No data available to download");
+                displayMessage("No data available to download", "warning");
+                return;
+            }
+
+            // Convert data to worksheet format
+            const ws_data = [this.columns];
+            // Check if _rows is an object with data property or an array
+            const rowsToProcess = Array.isArray(this._rows) ? this._rows : (this._rows.data || []);
+            
+            rowsToProcess.forEach(row => {
+                const rowData = this.columns.map(col => row[col] || '');
+                ws_data.push(rowData);
+            });
+
+            // Create workbook and worksheet
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(ws_data);
+
+            // Add worksheet to workbook
+            XLSX.utils.book_append_sheet(wb, ws, "DPP Data");
+
+            // Generate filename with current date
+            const date = new Date().toISOString().split('T')[0];
+            const filename = `dpp_data_${date}.xlsx`;
+
+            // Save file
+            XLSX.writeFile(wb, filename);
+        } catch (error) {
+            console.error("Error downloading Excel:", error);
+            displayMessage("Error generating Excel file", "danger");
+        }
     }
 };

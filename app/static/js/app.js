@@ -51,6 +51,7 @@ function setupEvents() {
     $("#load_orgs").on("click", () => app.dpp.loadOrgs(app));
     $("#load_uevcbids").on("click", () => app.dpp.getOrgbasedOptions(app));
     $("#load_dpp").on("click", () => app.dpp.getDPPTableData(app));
+    $("#download_dpp_excel").on("click", () => app.dpp.downloadExcel());
 
     // Switch events
     $(".switch_selector").on("click", switcher);
@@ -58,6 +59,11 @@ function setupEvents() {
     // Realtime events  
     $("#load_powerplants").on("click", () => app.realtime.loadPowerPlants(app));
     $("#load_realtime").on("click", () => app.realtime.getRealtimeData(app));
+    $("#download_realtime_excel").on("click", () => app.realtime.downloadExcel());
+
+    // AIC events
+    $("#load_aic").on("click", () => app.aic.loadAICData());
+    $("#download_aic_excel").on("click", () => app.aic.downloadExcel());
 }
 
 // Wait for document and plugins to be ready

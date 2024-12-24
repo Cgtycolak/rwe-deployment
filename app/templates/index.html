@@ -523,6 +523,13 @@
             >
               <i class="fas fa-table"></i> All Data
             </button>
+            <button
+              class="btn btn-sm btn-outline-success ml-auto"
+              id="download_dpp_excel"
+              title="Download DPP data as Excel"
+            >
+              <i class="fas fa-file-excel"></i> Export
+            </button>
           </div>
         </div>
         <!-- 1 Chart for one day report for specific fuel type -->
@@ -628,6 +635,13 @@
               data-group="realtime_nested"
             >
               <i class="fas fa-chart-line"></i> Difference
+            </button>
+            <button
+              class="btn btn-sm btn-outline-success ml-auto"
+              id="download_realtime_excel"
+              title="Download realtime data as Excel"
+            >
+              <i class="fas fa-file-excel"></i> Export
             </button>
           </div>
         </div>
@@ -750,6 +764,10 @@
   <!-- i want to add anoth -->
 </div>
 {% endblock body %} {% block page_scripts %}
+<!-- First load external libraries -->
+<script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
+
+<!-- Then load our application script -->
 <script type="module">
   // Pass endpoints data directly as a JavaScript object
   const endpointsData = {{urls|tojson|safe}};
@@ -760,6 +778,7 @@
   window.app = app;
   window.app.endpoints = endpointsData;
 </script>
+
 <script>
   function toggleAllOptions(selectId, checked) {
     const select = document.getElementById(selectId);

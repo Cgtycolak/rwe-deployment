@@ -731,5 +731,38 @@ export const realtime = {
         
         // Initial resize with a delay to ensure container is ready
         setTimeout(resizeChart, 50);
+    },
+
+    downloadExcel() {
+        try {
+            if (!this.rows || !this.columns) {
+                displayMessage("No data available to download", "warning");
+                return;
+            }
+
+            // Convert data to worksheet format
+            const ws_data = [this.columns];
+            this.rows.forEach(row => {
+                const rowData = this.columns.map(col => row[col] || '');
+                ws_data.push(rowData);
+            });
+
+            // Create workbook and worksheet
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(ws_data);
+
+            // Add worksheet to workbook
+            XLSX.utils.book_append_sheet(wb, ws, "Realtime Data");
+
+            // Generate filename with current date
+            const date = new Date().toISOString().split('T')[0];
+            const filename = `realtime_data_${date}.xlsx`;
+
+            // Save file
+            XLSX.writeFile(wb, filename);
+        } catch (error) {
+            console.error("Error downloading Excel:", error);
+            displayMessage("Error generating Excel file", "danger");
+        }
     }
 };
