@@ -6,4 +6,5 @@ bind = f"0.0.0.0:{port}"
 workers = 4
 threads = 2
 timeout = 120
-worker_class = "sync" 
+worker_class = "sync"
+wsgi_app = "wsgi:app" 
