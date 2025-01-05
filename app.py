@@ -1,5 +1,9 @@
 from app import app
+from flask_cors import CORS
 import os
+
+# Enable CORS
+CORS(app)
 
 #development
 # if __name__ == '__main__':
