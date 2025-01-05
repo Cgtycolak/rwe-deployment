@@ -176,8 +176,17 @@ export const aic = {
         }
     },
 
+    cleanup() {
+        // Clear chart if it exists
+        const chartElement = document.getElementById('aic_realtime_chart');
+        if (chartElement) {
+            Plotly.purge(chartElement);
+        }
+    },
+
     init() {
         console.log('Initializing AIC module');
+        this.cleanup(); // Clean up before initializing
         // Add click handlers for range buttons
         document.querySelectorAll('.aic-range-btn').forEach(button => {
             button.addEventListener('click', () => {

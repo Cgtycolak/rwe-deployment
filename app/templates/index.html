@@ -23,7 +23,7 @@
     font-size: 1.2rem;
   }
   .bg1 {
-    background: rgb(150, 220, 20, 0.2) !important;
+    background: #2d3436 !important;
   }
   .mxw_precent_100 {
     max-width: 100% !important;
@@ -63,7 +63,7 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    background: #6c757d !important;
+    background: #2d3436 !important;
     opacity: 0.95;
   }
 
@@ -109,13 +109,13 @@
 
   /* Specific styling for table headers */
   .table-dark {
-    background-color: #6c757d !important;
-    border-color: #6c757d !important;
+    background-color: #2d3436 !important;
+    border-color: #2d3436 !important;
   }
 
   .table-dark th {
-    background-color: #6c757d !important;
-    border-color: #6c757d !important;
+    background-color: #2d3436 !important;
+    border-color: #2d3436 !important;
   }
 
   /* Add these new styles */
@@ -195,575 +195,945 @@
     margin: 0 !important;
     padding: 0 !important;
   }
+
+  /* Add these styles */
+  .content-section[data-section="generation-comparison"] {
+    padding: 20px;
+    background: white;
+  }
+
+  .switch_arg[data-group="comparison_view"] {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+
+  #comparison_loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(255,255,255,0.9);
+    padding: 20px;
+    border-radius: 8px;
+    z-index: 1000;
+    text-align: center;
+  }
+
+  .table-responsive {
+    position: relative;
+    min-height: 200px;
+  }
+
+  /* Add specific styles for AIC section */
+  .content-section[data-section="aic-realtime"] {
+    padding: 20px;
+    background: white;
+  }
+
+  .aic-range-btn.active {
+    background-color: #0d6efd;
+    color: white;
+    border-color: #0d6efd;
+  }
+
+  /* Add these styles to your existing CSS */
+  .table td {
+    transition: all 0.2s ease-in-out;
+  }
+
+  .table td:hover {
+    opacity: 0.8;
+  }
+
+  /* Make the table more modern */
+  .table {
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  }
+
+  .table thead th {
+    background-color: #2d3436 !important;
+    color: white !important;
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 0.9rem;
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(0, 0, 0, 0.2) !important;
+  }
+
+  .table tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.02);
+  }
+
+  .table td {
+    padding: 12px;
+    vertical-align: middle;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  }
+
+  /* Add styles for differences table */
+  #comparison_differences_table thead th {
+    background-color: #2d3436 !important;
+    color: white !important;
+  }
+
+  /* Consistent table header colors */
+  .table-primary th, .table-success th, .table-dark th {
+    background-color: #2d3436 !important;
+    color: white !important;
+    border-color: rgba(0, 0, 0, 0.2) !important;
+  }
+
+  /* Add grid lines */
+  .table-bordered {
+    border: 1px solid rgba(0, 0, 0, 0.2);
+  }
+
+  .table-bordered th,
+  .table-bordered td {
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  }
+
+  /* Improve cell hover effect */
+  .table td:hover {
+    opacity: 0.9;
+    transition: all 0.2s ease;
+  }
+
+  /* Add to your existing styles */
+  #load_comparison_data {
+    min-width: 120px;  /* Prevent button size change during loading */
+    position: relative;
+  }
+
+  #load_comparison_data .loading-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  #load_comparison_data:disabled {
+    cursor: not-allowed;
+    opacity: 0.8;
+  }
+
+  .spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+    border-width: 0.15em;
+  }
+
+  /* Update existing styles */
+  .table thead th,
+  .table-primary thead th,
+  .table-success thead th,
+  .table-dark thead th,
+  .table thead.table-primary,
+  .table thead.table-success,
+  .table thead.table-dark {
+    background-color: #2d3436 !important;
+    color: white !important;
+    border-color: #2d3436 !important;
+  }
+
+  /* Ensure all table headers have the same styling */
+  .table-primary,
+  .table-success,
+  .table-dark {
+    --bs-table-bg: #2d3436 !important;
+    --bs-table-striped-bg: #2d3436 !important;
+    --bs-table-active-bg: #2d3436 !important;
+    --bs-table-hover-bg: #2d3436 !important;
+    border-color: #2d3436 !important;
+    color: white !important;
+  }
+
+  /* Override any Bootstrap default styles */
+  .table > :not(caption) > * > * {
+    background-color: var(--bs-table-bg);
+  }
+
+  /* Ensure header opacity is consistent */
+  .table thead {
+    background: #2d3436 !important;
+    opacity: 1 !important;
+  }
 </style>
-<div class="content-section active" data-section="kgup-realtime">
-<!-- <div class="text-center" style="display: none" id="loading_circle">
-  <div
-    class="d-flex justify-content-center align-items-center flex-column h-100 w-100 m-0 p-0 h_80vh"
-  >
-    <img src="{{url_for('static', filename='images/loading_circle.gif')}}" />
-    <p class="m-0 p-0 wait_text">Please wait while the data is loaded...</p>
-  </div>
-</div> -->
-<div class="container-fluid row m-0 p-0" id="app">
-  <!-- messages --->
-  <div class="col-sm-12 m-0 p-0" id="alert_messages"></div>
-  <!-- Aside -->
-  <div class="col-sm-3 m-0 p-0 border">
-    <div class="row m-0 p-0">
-      <!-- Global Args -->
-      <div class="col-sm-12 m-0 p-0">
-        <div class="border row m-0">
-          <div class="col-sm-12 p-2">
-            <label>Start Date:</label>
-            <input
-              id="global_start"
-              data-prop="start"
-              value=""
-              class="form-control"
-              type="date"
-            />
-          </div>
-          <div class="col-sm-12 p-2">
-            <label>End Date:</label>
-            <input
-              id="global_end"
-              data-prop="end"
-              value=""
-              class="form-control"
-              type="date"
-            />
-          </div>
-        </div>
-      </div>
 
-      <!-- DPP Args -->
-      <div class="col-sm-12 m-0 p-0">
-        <div class="p-2 border table_args" data-table="dpp">
-          <div class="text-center mb-2">
-            <button
-              id="load_orgs"
-              title="Please select start date and end date to load the organziations."
-              class="btn btn-outline-primary btn-sm btn-block"
-            >
-              Load Organizations
-            </button>
-          </div>
-          <div id="dpp_args" style="display: none">
-            <!-- Organization Name -->
-            <div class="mb-2 text-dark">
-              <div
-                class="d-flex justify-content-end flex-column border shadow p-2"
-              >
-                <!-- Search bar for organizations -->
-                <div class="input-group mb-2">
-                  <input
-                    type="text"
-                    class="form-control form-control-sm"
-                    id="org_search"
-                    placeholder="Search organizations..."
-                    oninput="filterOptions('org_select', this.value)"
-                  />
-                  <div class="input-group-append">
-                    <button
-                      class="btn btn-sm btn-outline-secondary"
-                      type="button"
+<div class="container-fluid">
+    <!-- KGUP-Realtime section -->
+    <div class="content-section" data-section="kgup-realtime">
+        <div class="container-fluid row m-0 p-0" id="app">
+            <!-- messages --->
+            <div class="col-sm-12 m-0 p-0" id="alert_messages"></div>
+            <!-- Aside -->
+            <div class="col-sm-3 m-0 p-0 border">
+                <div class="row m-0 p-0">
+                    <!-- Global Args -->
+                    <div class="col-sm-12 m-0 p-0">
+                        <div class="border row m-0">
+                            <div class="col-sm-12 p-2">
+                                <label>Start Date:</label>
+                                <input
+                                    id="global_start"
+                                    data-prop="start"
+                                    value=""
+                                    class="form-control"
+                                    type="date"
+                                />
+                            </div>
+                            <div class="col-sm-12 p-2">
+                                <label>End Date:</label>
+                                <input
+                                    id="global_end"
+                                    data-prop="end"
+                                    value=""
+                                    class="form-control"
+                                    type="date"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- DPP Args -->
+                    <div class="col-sm-12 m-0 p-0">
+                        <div class="p-2 border table_args" data-table="dpp">
+                            <div class="text-center mb-2">
+                                <button
+                                    id="load_orgs"
+                                    title="Please select start date and end date to load the organziations."
+                                    class="btn btn-outline-primary btn-sm btn-block"
+                                >
+                                    Load Organizations
+                                </button>
+                            </div>
+                            <div id="dpp_args" style="display: none">
+                                <!-- Organization Name -->
+                                <div class="mb-2 text-dark">
+                                    <div
+                                        class="d-flex justify-content-end flex-column border shadow p-2"
+                                    >
+                                        <!-- Search bar for organizations -->
+                                        <div class="input-group mb-2">
+                                            <input
+                                                type="text"
+                                                class="form-control form-control-sm"
+                                                id="org_search"
+                                                placeholder="Search organizations..."
+                                                oninput="filterOptions('org_select', this.value)"
+                                            />
+                                            <div class="input-group-append">
+                                                <button
+                                                    class="btn btn-sm btn-outline-secondary"
+                                                    type="button"
+                                                >
+                                                    <i class="fa fa-search"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Quick filters -->
+                                        <div class="mb-2">
+                                            <div class="form-check form-check-inline">
+                                                <input
+                                                    class="form-check-input"
+                                                    type="checkbox"
+                                                    id="select_all_orgs"
+                                                    onchange="toggleAllOptions('org_select', this.checked)"
+                                                />
+                                                <label class="form-check-label small" for="select_all_orgs"
+                                                    >Select All</label
+                                                >
+                                            </div>
+                                        </div>
+
+                                        <!-- setup look and config of html searchable select by only data-attr -->
+                                        <select
+                                            class="form-control"
+                                            name="org"
+                                            id="org_select"
+                                            multiple="multiple"
+                                            data-name="Organziations"
+                                            data-label=""
+                                            data-search-placeholder=""
+                                            data-cont-style="background:lavender !important;"
+                                            data-search-style=""
+                                            data-search-extra-attrs="title"
+                                            data-label-style=""
+                                            data-counter=""
+                                            data-minimizable=""
+                                            data-select-checkbox=""
+                                            data-select-checkbox-style=""
+                                        ></select>
+
+                                        <div class="my-2 text-center">
+                                            <button
+                                                id="load_uevcbids"
+                                                class="btn btn-sm btn-outline-primary btn-block"
+                                            >
+                                                Load UEVCBIDS
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Organization End -->
+                                <!-- UECVBIDS -->
+                                <div class="mb-2 text-dark">
+                                    <div
+                                        class="d-flex justify-content-end flex-column border shadow p-2"
+                                    >
+                                        <!-- Add search bar for UEVCBIDS -->
+                                        <div class="input-group mb-2">
+                                            <input
+                                                type="text"
+                                                class="form-control form-control-sm"
+                                                id="uevcbid_search"
+                                                placeholder="Search UEVCBIDS..."
+                                                oninput="filterOptions('adi_select', this.value)"
+                                            />
+                                            <div class="input-group-append">
+                                                <button
+                                                    class="btn btn-sm btn-outline-secondary"
+                                                    type="button"
+                                                >
+                                                    <i class="fa fa-search"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div class="mb-2">
+                                            <div class="form-check form-check-inline">
+                                                <input
+                                                    class="form-check-input"
+                                                    type="checkbox"
+                                                    id="select_all_uevcbids"
+                                                    onchange="toggleAllOptions('adi_select', this.checked)"
+                                                />
+                                                <label
+                                                    class="form-check-label small"
+                                                    for="select_all_uevcbids"
+                                                    >Select All</label
+                                                >
+                                            </div>
+                                        </div>
+
+                                        <select
+                                            class="form-control"
+                                            id="adi_select"
+                                            multiple="multiple"
+                                            data-name="UEVCBIDS"
+                                            data-label=""
+                                            data-search-placeholder=""
+                                            data-cont-style="background:lavender !important;"
+                                            data-search-style=""
+                                            data-label-style=""
+                                            data-counter=""
+                                            data-minimizable=""
+                                            data-select-checkbox=""
+                                            data-select-checkbox-style=""
+                                        ></select>
+                                    </div>
+                                </div>
+                                <!-- UECVBIDS End -->
+
+                                <!-- Display Table Step 3 -->
+                                <div class="text-center mb-2">
+                                    <button
+                                        class="btn btn-outline-primary btn-sm btn-block"
+                                        id="load_dpp"
+                                        title="Recreate Table."
+                                    >
+                                        Display Table
+                                    </button>
+                                </div>
+
+                                <div class="mb-2">
+                                    <!-- note API ask for org and related UEVCBIDS -->
+                                    <div
+                                        id="org_filters"
+                                        class="mt-2 d-flex justify-content-start align-items-start flex-wrap"
+                                    ></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Realtime Args -->
+                    <div class="col-sm-12 m-0 p-0">
+                        <div class="p-2 border table_args" data-table="realtime">
+                            <div class="text-center mb-2">
+                                <button
+                                    id="load_powerplants"
+                                    class="btn btn-outline-primary btn-sm btn-block"
+                                >
+                                    Load Power Plants
+                                </button>
+                            </div>
+                            <div id="realtime_args_content" style="display: none">
+                                <!-- Power Plant Selection -->
+                                <div class="mb-2 text-dark">
+                                    <div
+                                        class="d-flex justify-content-end flex-column border shadow p-2"
+                                    >
+                                        <!-- Search bar for power plants -->
+                                        <div class="input-group mb-2">
+                                            <input
+                                                type="text"
+                                                class="form-control form-control-sm"
+                                                id="powerplant_search"
+                                                placeholder="Search power plants..."
+                                                oninput="filterOptions('powerplant_select', this.value)"
+                                            />
+                                            <div class="input-group-append">
+                                                <button
+                                                    class="btn btn-sm btn-outline-secondary"
+                                                    type="button"
+                                                >
+                                                    <i class="fa fa-search"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Quick filters -->
+                                        <div class="mb-2">
+                                            <div class="form-check form-check-inline">
+                                                <input
+                                                    class="form-check-input"
+                                                    type="checkbox"
+                                                    id="select_all_plants"
+                                                    onchange="toggleAllOptions('powerplant_select', this.checked)"
+                                                />
+                                                <label
+                                                    class="form-check-label small"
+                                                    for="select_all_plants"
+                                                    >Select All</label
+                                                >
+                                            </div>
+                                        </div>
+
+                                        <select
+                                            class="form-control"
+                                            name="powerplant"
+                                            id="powerplant_select"
+                                            multiple="multiple"
+                                            data-name="Power Plants"
+                                            data-label=""
+                                            data-search-placeholder=""
+                                            data-cont-style="background:lavender !important;"
+                                            data-search-style=""
+                                            data-search-extra-attrs="title"
+                                            data-label-style=""
+                                            data-counter=""
+                                            data-minimizable=""
+                                            data-select-checkbox=""
+                                            data-select-checkbox-style=""
+                                        ></select>
+                                    </div>
+                                </div>
+
+                                <!-- Display Table Button -->
+                                <div class="text-center mb-2">
+                                    <button
+                                        class="btn btn-outline-primary btn-sm btn-block"
+                                        id="load_realtime"
+                                        title="Display Realtime Data"
+                                    >
+                                        Display Table
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Global Arg Table Filters -->
+                    <div class="col-sm-12 m-0 p-0" id="table_filters"></div>
+                </div>
+            </div>
+            <!-- Main -->
+            <div class="col-sm-9 m-0 p-0 shadow">
+                <!-- Dynamic Tables -->
+                <div class="m-0 p-0 flex" id="tables_cont">
+                    <div class="m-0 p-0 table_args" data-table="dpp">
+                        <div class="m-0 p-0 dpp_options" style="display: none">
+                            <div
+                                class="d-flex justify-content-center align-items-center p-2 border mx-2 shadow"
+                            >
+                                <button
+                                    class="btn btn-sm btn-outline-primary mr-1 switch_selector"
+                                    title="Display day report chart for specific fuel type"
+                                    data-group="dpp_nested"
+                                    data-switch="fuel_types_chart"
+                                >
+                                    <i class="fas fa-chart-bar"></i> Chart
+                                </button>
+                                <button
+                                    class="btn btn-sm btn-primary mr-1 switch_selector"
+                                    data-group="dpp_nested"
+                                    data-switch="fuel_types_table"
+                                    title="Display all fuel_types reports in one table for specific fuel type"
+                                >
+                                    <i class="fas fa-calendar-alt"></i> Fuel Types
+                                </button>
+                                <button
+                                    class="btn btn-sm btn-outline-primary mr-1 switch_selector"
+                                    data-group="dpp_nested"
+                                    data-switch="all_table"
+                                    title="Display all data in one table for all fuels"
+                                >
+                                    <i class="fas fa-table"></i> All Data
+                                </button>
+                                <button
+                                    class="btn btn-sm btn-outline-success ml-auto"
+                                    id="download_dpp_excel"
+                                    title="Download DPP data as Excel"
+                                >
+                                    <i class="fas fa-file-excel"></i> Export
+                                </button>
+                            </div>
+                        </div>
+                        <!-- 1 Chart for one day report for specific fuel type -->
+                        <div class="m-0 p-0 dpp_options" style="display: none">
+                            <div
+                                class="m-0 p-0 switch_arg"
+                                data-switch="fuel_types_chart"
+                                data-group="dpp_nested"
+                                style="display: none"
+                            >
+                                <div class="m-0 mx-2 p-2 row">
+                                    <div class="col-sm-12 m-0 p-0">
+                                        <div
+                                            id="plotly_chart"
+                                            style="
+                                                min-height: 550px;
+                                                height: 80vh;
+                                                min-width: 600px;
+                                                width: 100%;
+                                            "
+                                        ></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2 table to display all selected fuel_types reports for specific fuel type -->
+                        <div class="m-0 p-0 dpp_options" style="display: none">
+                            <div
+                                class="m-0 p-0 switch_arg"
+                                data-switch="fuel_types_table"
+                                data-group="dpp_nested"
+                            >
+                                <div id="dpp_chart_btns"></div>
+                                <div
+                                    id="fuel_types_report_table_cont"
+                                    class="table-responsive dynamic_table_cont mx-2 cont_overflow_99"
+                                >
+                                    <table
+                                        id="dpp_fuel_types_table"
+                                        class="table table-hover table-bordered"
+                                    ></table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3 display all data rows returned from api includes all fuels the original -->
+                        <div
+                            id="all_dpp_data_table_cont"
+                            class="table-responsive dynamic_table_cont mx-2 cont_overflow_99 switch_arg"
+                            data-switch="all_table"
+                            data-group="dpp_nested"
+                            style="display: none"
+                        >
+                            <table id="dpp_table" class="table table-hover table-bordered">
+                                <thead
+                                    class="table-dark"
+                                    style="
+                                        position: sticky;
+                                        opacity: 0.8;
+                                        top: 0;
+                                        border: 2px solid #3069cabd;
+                                    "
+                                ></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Realtime table container -->
+                    <div class="table_args" data-table="realtime">
+                        <div class="m-0 p-0 realtime_options" style="display: none">
+                            <div
+                                class="d-flex justify-content-center align-items-center p-2 border mx-2 shadow"
+                            >
+                                <button
+                                    class="btn btn-sm btn-outline-primary mr-1 switch_selector"
+                                    title="Display realtime chart"
+                                    data-group="realtime_nested"
+                                    data-switch="realtime_chart"
+                                >
+                                    <i class="fas fa-chart-bar"></i> Chart
+                                </button>
+                                <button
+                                    class="btn btn-sm btn-primary mr-1 switch_selector"
+                                    data-group="realtime_nested"
+                                    data-switch="realtime_fuel_types"
+                                    title="Display fuel types table"
+                                >
+                                    <i class="fas fa-calendar-alt"></i> Fuel Types
+                                </button>
+                                <button
+                                    class="btn btn-sm btn-outline-primary mr-1 switch_selector"
+                                    data-group="realtime_nested"
+                                    data-switch="realtime_all"
+                                    title="Display all data"
+                                >
+                                    <i class="fas fa-table"></i> All Data
+                                </button>
+                                <button
+                                    class="btn btn-sm btn-outline-primary mx-1"
+                                    data-switch="realtime_difference"
+                                    data-group="realtime_nested"
+                                >
+                                    <i class="fas fa-chart-line"></i> Difference
+                                </button>
+                                <button
+                                    class="btn btn-sm btn-outline-success ml-auto"
+                                    id="download_realtime_excel"
+                                    title="Download realtime data as Excel"
+                                >
+                                    <i class="fas fa-file-excel"></i> Export
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 1. Chart View -->
+                        <div class="m-0 p-0 realtime_options" style="display: none">
+                            <div
+                                class="m-0 p-0 switch_arg"
+                                data-switch="realtime_chart"
+                                data-group="realtime_nested"
+                                style="display: none"
+                            >
+                                <div class="m-0 mx-2 p-2 row">
+                                    <div class="col-sm-12 m-0 p-0">
+                                        <div
+                                            id="realtime_plotly_chart"
+                                            style="
+                                                min-height: 550px;
+                                                height: 80vh;
+                                                min-width: 600px;
+                                                width: 100%;
+                                            "
+                                        ></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. Fuel Types Table -->
+                        <div class="m-0 p-0 realtime_options" style="display: none">
+                            <div
+                                class="m-0 p-0 switch_arg"
+                                data-switch="realtime_fuel_types"
+                                data-group="realtime_nested"
+                            >
+                                <div id="realtime_fuel_buttons"></div>
+                                <div
+                                    id="realtime_fuel_types_table_cont"
+                                    class="table-responsive dynamic_table_cont mx-2 cont_overflow_99"
+                                >
+                                    <table
+                                        id="realtime_fuel_types_table"
+                                        class="table table-hover table-bordered"
+                                    ></table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. All Data Table -->
+                        <div
+                            id="realtime_all_table_cont"
+                            class="table-responsive dynamic_table_cont mx-2 cont_overflow_99 switch_arg"
+                            data-switch="realtime_all"
+                            data-group="realtime_nested"
+                            style="display: none"
+                        >
+                            <table id="realtime_table" class="table table-hover table-bordered">
+                                <thead
+                                    class="table-dark"
+                                    style="
+                                        position: sticky;
+                                        opacity: 0.8;
+                                        top: 0;
+                                        border: 2px solid #3069cabd;
+                                    "
+                                ></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+
+                        <!-- 4. Add the Difference Chart View here -->
+                        <div class="switch_arg" data-switch="realtime_difference" data-group="realtime_nested">
+                            <div class="difference-chart-container">
+                                <div id="difference_chart"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div
+                        id="y_table_cont"
+                        class="table_args table-responsive dynamic_table_cont"
+                        data-table="y"
+                        style="display: none"
                     >
-                      <i class="fa fa-search"></i>
-                    </button>
-                  </div>
+                        3
+                    </div>
                 </div>
-
-                <!-- Quick filters -->
-                <div class="mb-2">
-                  <div class="form-check form-check-inline">
-                    <input
-                      class="form-check-input"
-                      type="checkbox"
-                      id="select_all_orgs"
-                      onchange="toggleAllOptions('org_select', this.checked)"
-                    />
-                    <label class="form-check-label small" for="select_all_orgs"
-                      >Select All</label
-                    >
-                  </div>
-                </div>
-
-                <!-- setup look and config of html searchable select by only data-attr -->
-                <select
-                  class="form-control"
-                  name="org"
-                  id="org_select"
-                  multiple="multiple"
-                  data-name="Organziations"
-                  data-label=""
-                  data-search-placeholder=""
-                  data-cont-style="background:lavender !important;"
-                  data-search-style=""
-                  data-search-extra-attrs="title"
-                  data-label-style=""
-                  data-counter=""
-                  data-minimizable=""
-                  data-select-checkbox=""
-                  data-select-checkbox-style=""
-                ></select>
-
-                <div class="my-2 text-center">
-                  <button
-                    id="load_uevcbids"
-                    class="btn btn-sm btn-outline-primary btn-block"
-                  >
-                    Load UEVCBIDS
-                  </button>
-                </div>
-              </div>
-            </div>
-            <!-- Organization End -->
-            <!-- UECVBIDS -->
-            <div class="mb-2 text-dark">
-              <div
-                class="d-flex justify-content-end flex-column border shadow p-2"
-              >
-                <!-- Add search bar for UEVCBIDS -->
-                <div class="input-group mb-2">
-                  <input
-                    type="text"
-                    class="form-control form-control-sm"
-                    id="uevcbid_search"
-                    placeholder="Search UEVCBIDS..."
-                    oninput="filterOptions('adi_select', this.value)"
-                  />
-                  <div class="input-group-append">
-                    <button
-                      class="btn btn-sm btn-outline-secondary"
-                      type="button"
-                    >
-                      <i class="fa fa-search"></i>
-                    </button>
-                  </div>
-                </div>
-
-                <div class="mb-2">
-                  <div class="form-check form-check-inline">
-                    <input
-                      class="form-check-input"
-                      type="checkbox"
-                      id="select_all_uevcbids"
-                      onchange="toggleAllOptions('adi_select', this.checked)"
-                    />
-                    <label
-                      class="form-check-label small"
-                      for="select_all_uevcbids"
-                      >Select All</label
-                    >
-                  </div>
-                </div>
-
-                <select
-                  class="form-control"
-                  id="adi_select"
-                  multiple="multiple"
-                  data-name="UEVCBIDS"
-                  data-label=""
-                  data-search-placeholder=""
-                  data-cont-style="background:lavender !important;"
-                  data-search-style=""
-                  data-label-style=""
-                  data-counter=""
-                  data-minimizable=""
-                  data-select-checkbox=""
-                  data-select-checkbox-style=""
-                ></select>
-              </div>
-            </div>
-            <!-- UECVBIDS End -->
-
-            <!-- Display Table Step 3 -->
-            <div class="text-center mb-2">
-              <button
-                class="btn btn-outline-primary btn-sm btn-block"
-                id="load_dpp"
-                title="Recreate Table."
-              >
-                Display Table
-              </button>
-            </div>
-
-            <div class="mb-2">
-              <!-- note API ask for org and related UEVCBIDS -->
-              <div
-                id="org_filters"
-                class="mt-2 d-flex justify-content-start align-items-start flex-wrap"
-              ></div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <!-- Realtime Args -->
-      <div class="col-sm-12 m-0 p-0">
-        <div class="p-2 border table_args" data-table="realtime">
-          <div class="text-center mb-2">
-            <button
-              id="load_powerplants"
-              class="btn btn-outline-primary btn-sm btn-block"
-            >
-              Load Power Plants
-            </button>
-          </div>
-          <div id="realtime_args_content" style="display: none">
-            <!-- Power Plant Selection -->
-            <div class="mb-2 text-dark">
-              <div
-                class="d-flex justify-content-end flex-column border shadow p-2"
-              >
-                <!-- Search bar for power plants -->
-                <div class="input-group mb-2">
-                  <input
-                    type="text"
-                    class="form-control form-control-sm"
-                    id="powerplant_search"
-                    placeholder="Search power plants..."
-                    oninput="filterOptions('powerplant_select', this.value)"
-                  />
-                  <div class="input-group-append">
-                    <button
-                      class="btn btn-sm btn-outline-secondary"
-                      type="button"
-                    >
-                      <i class="fa fa-search"></i>
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Quick filters -->
-                <div class="mb-2">
-                  <div class="form-check form-check-inline">
-                    <input
-                      class="form-check-input"
-                      type="checkbox"
-                      id="select_all_plants"
-                      onchange="toggleAllOptions('powerplant_select', this.checked)"
-                    />
-                    <label
-                      class="form-check-label small"
-                      for="select_all_plants"
-                      >Select All</label
-                    >
-                  </div>
-                </div>
-
-                <select
-                  class="form-control"
-                  name="powerplant"
-                  id="powerplant_select"
-                  multiple="multiple"
-                  data-name="Power Plants"
-                  data-label=""
-                  data-search-placeholder=""
-                  data-cont-style="background:lavender !important;"
-                  data-search-style=""
-                  data-search-extra-attrs="title"
-                  data-label-style=""
-                  data-counter=""
-                  data-minimizable=""
-                  data-select-checkbox=""
-                  data-select-checkbox-style=""
-                ></select>
-              </div>
-            </div>
-
-            <!-- Display Table Button -->
-            <div class="text-center mb-2">
-              <button
-                class="btn btn-outline-primary btn-sm btn-block"
-                id="load_realtime"
-                title="Display Realtime Data"
-              >
-                Display Table
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Global Arg Table Filters -->
-      <div class="col-sm-12 m-0 p-0" id="table_filters"></div>
-    </div>
-  </div>
-  <!-- Main -->
-  <div class="col-sm-9 m-0 p-0 shadow">
-    <!-- Dynamic Tables -->
-    <div class="m-0 p-0 flex" id="tables_cont">
-      <div class="m-0 p-0 table_args" data-table="dpp">
-        <div class="m-0 p-0 dpp_options" style="display: none">
-          <div
-            class="d-flex justify-content-center align-items-center p-2 border mx-2 shadow"
-          >
-            <button
-              class="btn btn-sm btn-outline-primary mr-1 switch_selector"
-              title="Display day report chart for specific fuel type"
-              data-group="dpp_nested"
-              data-switch="fuel_types_chart"
-            >
-              <i class="fas fa-chart-bar"></i> Chart
-            </button>
-            <button
-              class="btn btn-sm btn-primary mr-1 switch_selector"
-              data-group="dpp_nested"
-              data-switch="fuel_types_table"
-              title="Display all fuel_types reports in one table for specific fuel type"
-            >
-              <i class="fas fa-calendar-alt"></i> Fuel Types
-            </button>
-            <button
-              class="btn btn-sm btn-outline-primary mr-1 switch_selector"
-              data-group="dpp_nested"
-              data-switch="all_table"
-              title="Display all data in one table for all fuels"
-            >
-              <i class="fas fa-table"></i> All Data
-            </button>
-            <button
-              class="btn btn-sm btn-outline-success ml-auto"
-              id="download_dpp_excel"
-              title="Download DPP data as Excel"
-            >
-              <i class="fas fa-file-excel"></i> Export
-            </button>
-          </div>
-        </div>
-        <!-- 1 Chart for one day report for specific fuel type -->
-        <div class="m-0 p-0 dpp_options" style="display: none">
-          <div
-            class="m-0 p-0 switch_arg"
-            data-switch="fuel_types_chart"
-            data-group="dpp_nested"
-            style="display: none"
-          >
-            <div class="m-0 mx-2 p-2 row">
-              <div class="col-sm-12 m-0 p-0">
-                <div
-                  id="plotly_chart"
-                  style="
-                    min-height: 550px;
-                    height: 80vh;
-                    min-width: 600px;
-                    width: 100%;
-                  "
-                ></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 2 table to display all selected fuel_types reports for specific fuel type -->
-        <div class="m-0 p-0 dpp_options" style="display: none">
-          <div
-            class="m-0 p-0 switch_arg"
-            data-switch="fuel_types_table"
-            data-group="dpp_nested"
-          >
-            <div id="dpp_chart_btns"></div>
-            <div
-              id="fuel_types_report_table_cont"
-              class="table-responsive dynamic_table_cont mx-2 cont_overflow_99"
-            >
-              <table
-                id="dpp_fuel_types_table"
-                class="table table-hover table-bordered"
-              ></table>
-            </div>
-          </div>
-        </div>
-
-        <!-- 3 display all data rows returned from api includes all fuels the original -->
-        <div
-          id="all_dpp_data_table_cont"
-          class="table-responsive dynamic_table_cont mx-2 cont_overflow_99 switch_arg"
-          data-switch="all_table"
-          data-group="dpp_nested"
-          style="display: none"
-        >
-          <table id="dpp_table" class="table table-hover table-bordered">
-            <thead
-              class="table-dark"
-              style="
-                position: sticky;
-                opacity: 0.8;
-                top: 0;
-                border: 2px solid #3069cabd;
-              "
-            ></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Realtime table container -->
-      <div class="table_args" data-table="realtime">
-        <div class="m-0 p-0 realtime_options" style="display: none">
-          <div
-            class="d-flex justify-content-center align-items-center p-2 border mx-2 shadow"
-          >
-            <button
-              class="btn btn-sm btn-outline-primary mr-1 switch_selector"
-              title="Display realtime chart"
-              data-group="realtime_nested"
-              data-switch="realtime_chart"
-            >
-              <i class="fas fa-chart-bar"></i> Chart
-            </button>
-            <button
-              class="btn btn-sm btn-primary mr-1 switch_selector"
-              data-group="realtime_nested"
-              data-switch="realtime_fuel_types"
-              title="Display fuel types table"
-            >
-              <i class="fas fa-calendar-alt"></i> Fuel Types
-            </button>
-            <button
-              class="btn btn-sm btn-outline-primary mr-1 switch_selector"
-              data-group="realtime_nested"
-              data-switch="realtime_all"
-              title="Display all data"
-            >
-              <i class="fas fa-table"></i> All Data
-            </button>
-            <button
-              class="btn btn-sm btn-outline-primary mx-1"
-              data-switch="realtime_difference"
-              data-group="realtime_nested"
-            >
-              <i class="fas fa-chart-line"></i> Difference
-            </button>
-            <button
-              class="btn btn-sm btn-outline-success ml-auto"
-              id="download_realtime_excel"
-              title="Download realtime data as Excel"
-            >
-              <i class="fas fa-file-excel"></i> Export
-            </button>
-          </div>
-        </div>
-
-        <!-- 1. Chart View -->
-        <div class="m-0 p-0 realtime_options" style="display: none">
-          <div
-            class="m-0 p-0 switch_arg"
-            data-switch="realtime_chart"
-            data-group="realtime_nested"
-            style="display: none"
-          >
-            <div class="m-0 mx-2 p-2 row">
-              <div class="col-sm-12 m-0 p-0">
-                <div
-                  id="realtime_plotly_chart"
-                  style="
-                    min-height: 550px;
-                    height: 80vh;
-                    min-width: 600px;
-                    width: 100%;
-                  "
-                ></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 2. Fuel Types Table -->
-        <div class="m-0 p-0 realtime_options" style="display: none">
-          <div
-            class="m-0 p-0 switch_arg"
-            data-switch="realtime_fuel_types"
-            data-group="realtime_nested"
-          >
-            <div id="realtime_fuel_buttons"></div>
-            <div
-              id="realtime_fuel_types_table_cont"
-              class="table-responsive dynamic_table_cont mx-2 cont_overflow_99"
-            >
-              <table
-                id="realtime_fuel_types_table"
-                class="table table-hover table-bordered"
-              ></table>
-            </div>
-          </div>
-        </div>
-
-        <!-- 3. All Data Table -->
-        <div
-          id="realtime_all_table_cont"
-          class="table-responsive dynamic_table_cont mx-2 cont_overflow_99 switch_arg"
-          data-switch="realtime_all"
-          data-group="realtime_nested"
-          style="display: none"
-        >
-          <table id="realtime_table" class="table table-hover table-bordered">
-            <thead
-              class="table-dark"
-              style="
-                position: sticky;
-                opacity: 0.8;
-                top: 0;
-                border: 2px solid #3069cabd;
-              "
-            ></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-
-        <!-- 4. Add the Difference Chart View here -->
-        <div class="switch_arg" data-switch="realtime_difference" data-group="realtime_nested">
-            <div class="difference-chart-container">
-                <div id="difference_chart"></div>
-            </div>
-        </div>
-      </div>
-      <div
-        id="y_table_cont"
-        class="table_args table-responsive dynamic_table_cont"
-        data-table="y"
-        style="display: none"
-      >
-        3
-      </div>
-    </div>
-  </div>
-
-  <!-- AIC-REALTIME-GENERATION section -->
-  <div class="content-section" data-section="aic-realtime" style="display: none">
-    <div class="container-fluid">
-        <!-- Time range buttons -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="d-flex justify-content-center gap-2">
-                    <button class="btn btn-outline-primary aic-range-btn" data-range="week">
-                        <i class="fas fa-calendar-week"></i> Weekly
-                    </button>
-                    <button class="btn btn-outline-primary aic-range-btn" data-range="month">
-                        <i class="fas fa-calendar-alt"></i> Monthly
-                    </button>
-                    <button class="btn btn-outline-primary aic-range-btn" data-range="year">
-                        <i class="fas fa-calendar"></i> Yearly
-                    </button>
-                    <button class="btn btn-outline-primary aic-range-btn" data-range="5year">
-                        <i class="fas fa-calendar-plus"></i> 5 Years
-                    </button>
-                </div>
-            </div>
-        </div>
-        <!-- Chart container -->
-        <div class="row">
-            <div class="col-12">
-                <div id="aic_realtime_chart" style="width:100%; height:700px;"></div>
             </div>
         </div>
     </div>
-  </div>
 
-  <!-- i want to add anoth -->
+    <!-- AIC-REALTIME-GENERATION section -->
+    <div class="content-section" data-section="aic-realtime">
+        <div class="container-fluid">
+            <!-- Time range buttons -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-center gap-2">
+                        <button class="btn btn-outline-primary aic-range-btn active" data-range="week">
+                            <i class="fas fa-calendar-week"></i> Weekly
+                        </button>
+                        <button class="btn btn-outline-primary aic-range-btn" data-range="month">
+                            <i class="fas fa-calendar-alt"></i> Monthly
+                        </button>
+                        <button class="btn btn-outline-primary aic-range-btn" data-range="year">
+                            <i class="fas fa-calendar"></i> Yearly
+                        </button>
+                        <button class="btn btn-outline-primary aic-range-btn" data-range="5year">
+                            <i class="fas fa-calendar-plus"></i> 5 Years
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart container -->
+            <div class="row">
+                <div class="col-12">
+                    <div id="aic_realtime_chart" style="width:100%; height:700px;"></div>
+                </div>
+            </div>
+
+            <!-- Loading indicator -->
+            <div id="aic_loading" class="text-center" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading data...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generation Comparison section -->
+    <div class="content-section" data-section="generation-comparison">
+        <div class="container-fluid">
+            <!-- Time range buttons -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="btn-group d-flex justify-content-center" role="group">
+                        <button class="btn btn-outline-primary comparison-range-btn active" data-range="daily">
+                            <i class="fas fa-calendar-day"></i> Daily
+                        </button>
+                        <button class="btn btn-outline-primary comparison-range-btn" data-range="weekly">
+                            <i class="fas fa-calendar-week"></i> Weekly
+                        </button>
+                        <button class="btn btn-outline-primary comparison-range-btn" data-range="monthly">
+                            <i class="fas fa-calendar-alt"></i> Monthly
+                        </button>
+                        <button class="btn btn-outline-primary comparison-range-btn" data-range="yearly">
+                            <i class="fas fa-calendar"></i> Yearly
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Date range selector -->
+            <div class="row mb-4">
+                <div class="col-md-6 offset-md-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="d-flex gap-3">
+                                <div class="flex-grow-1">
+                                    <label class="form-label">Start Date</label>
+                                    <input type="date" class="form-control" id="comparison_start_date">
+                                    <div class="invalid-feedback">
+                                        Please select a valid start date
+                                    </div>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <label class="form-label">End Date</label>
+                                    <input type="date" class="form-control" id="comparison_end_date">
+                                    <div class="invalid-feedback">
+                                        Please select a valid end date
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-end">
+                                    <button class="btn btn-primary" id="load_comparison_data">
+                                        <span class="normal-state">
+                                            <i class="fas fa-sync"></i> Load Data
+                                        </span>
+                                        <span class="loading-state" style="display: none;">
+                                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                            Loading...
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View switcher buttons -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-center">
+                        <button class="btn btn-outline-primary mx-1 switch_selector" 
+                                data-group="comparison_view" 
+                                data-switch="comparison_chart">
+                            <i class="fas fa-chart-line"></i> Chart
+                        </button>
+                        <button class="btn btn-outline-primary mx-1 switch_selector active" 
+                                data-group="comparison_view" 
+                                data-switch="comparison_fuel_types">
+                            <i class="fas fa-table"></i> Data Tables
+                        </button>
+                        <button class="btn btn-outline-primary mx-1 switch_selector" 
+                                data-group="comparison_view" 
+                                data-switch="comparison_differences">
+                            <i class="fas fa-not-equal"></i> Differences
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart view -->
+            <div class="switch_arg" data-switch="comparison_chart" data-group="comparison_view" style="display: none;">
+                <div class="m-0 mx-2 p-2 row">
+                    <div class="col-sm-12 m-0 p-0">
+                        <div id="generation_comparison_chart" style="min-height: 550px; height: 80vh; min-width: 600px; width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Tables view -->
+            <div class="switch_arg" data-switch="comparison_fuel_types" data-group="comparison_view" style="display: block;">
+                <div class="row">
+                    <!-- DPP Data Table -->
+                    <div class="col-12 mb-4">
+                        <h5 class="text-center mb-3">DPP Data</h5>
+                        <div class="table-responsive dynamic_table_cont mx-2">
+                            <table id="dpp_data_table" class="table table-hover table-bordered">
+                                <thead class="table-primary">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Hour</th>
+                                        <th>Total</th>
+                                        <th>Natural Gas</th>
+                                        <th>Wind</th>
+                                        <th>Lignite</th>
+                                        <th>Import Coal</th>
+                                        <th>Fuel Oil</th>
+                                        <th>Geothermal</th>
+                                        <th>Dammed Hydro</th>
+                                        <th>Naphtha</th>
+                                        <th>Biomass</th>
+                                        <th>River</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="13" class="text-center">Select dates and click Load Data</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Realtime Data Table -->
+                    <div class="col-12 mb-4">
+                        <h5 class="text-center mb-3">Realtime Data</h5>
+                        <div class="table-responsive dynamic_table_cont mx-2">
+                            <table id="realtime_data_table" class="table table-hover table-bordered">
+                                <thead class="table-success">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Hour</th>
+                                        <th>Total</th>
+                                        <th>Natural Gas</th>
+                                        <th>Wind</th>
+                                        <th>Lignite</th>
+                                        <th>Import Coal</th>
+                                        <th>Fuel Oil</th>
+                                        <th>Geothermal</th>
+                                        <th>Dammed Hydro</th>
+                                        <th>Naphtha</th>
+                                        <th>Biomass</th>
+                                        <th>River</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="13" class="text-center">Select dates and click Load Data</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Differences view -->
+            <div class="switch_arg" data-switch="comparison_differences" data-group="comparison_view" style="display: none;">
+                <div id="comparison_fuel_buttons"></div>
+                <div class="table-responsive dynamic_table_cont mx-2 cont_overflow_99">
+                    <div id="comparison_loading" style="display: none;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2 mb-0">Loading data...</p>
+                    </div>
+                    <table id="comparison_differences_table" class="table table-hover table-bordered">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Date</th>
+                                <th>Hour</th>
+                                <th>Total</th>
+                                <th>Natural Gas</th>
+                                <th>Wind</th>
+                                <th>Lignite</th>
+                                <th>Import Coal</th>
+                                <th>Fuel Oil</th>
+                                <th>Geothermal</th>
+                                <th>Dammed Hydro</th>
+                                <th>Naphtha</th>
+                                <th>Biomass</th>
+                                <th>River</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="13" class="text-center">Select dates and click Load Data to view differences</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
-{% endblock body %} {% block page_scripts %}
+{% endblock %}
+{% block page_scripts %}
 <!-- First load external libraries -->
 <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
 
