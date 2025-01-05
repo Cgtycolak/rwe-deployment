@@ -1,16 +1,11 @@
-from app import app
+from app import create_app
 from flask_cors import CORS
 import os
 
+app = create_app()
+
 # Enable CORS
 CORS(app)
-
-#development
-# if __name__ == '__main__':
-#     app.jinja_env.auto_reload = True
-#     app.config['TEMPLATES_AUTO_RELOAD']=True
-#     app.run(debug=True,use_reloader=True)
-#     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0 #disable cache
 
 #production
 if __name__ == '__main__':
