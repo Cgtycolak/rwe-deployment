@@ -83,6 +83,26 @@ def register_error_handlers(app):
     def handle_internal_server_error(e):
         return render_template('errors/error_500.html'), 500
 
+# Create the application instance
+app = create_app()
+
+# Register error handlers
+@app.errorhandler(404)
+def handle_not_found(e):
+    return render_template('errors/error_404.html'), 404
+
+@app.errorhandler(400)
+def handle_bad_request(e):
+    return render_template('errors/error_400.html'), 400
+
+@app.errorhandler(405)
+def handle_method_not_allowed(e):
+    return render_template('errors/error_405.html'), 405
+
+@app.errorhandler(500)
+def handle_internal_server_error(e):
+    return render_template('errors/error_500.html'), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0')
 
