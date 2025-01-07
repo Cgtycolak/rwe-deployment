@@ -176,36 +176,36 @@ def get_generation_comparison():
         start_date = valid_dates['start_date']
         end_date = valid_dates['end_date']
 
-        # For yearly data, use chunked fetching
-        if period == 'yearly':
-            realtime_data = fetch_data_in_chunks(start_date, end_date, fetch_realtime_data)
-            if not realtime_data:
-                return jsonify({
-                    'code': 500,
-                    'message': 'unknown error unable to load realtime data.'
-                }), 500
+        # # For yearly data, use chunked fetching
+        # if period == 'yearly':
+        #     realtime_data = fetch_data_in_chunks(start_date, end_date, fetch_realtime_data)
+        #     if not realtime_data:
+        #         return jsonify({
+        #             'code': 500,
+        #             'message': 'unknown error unable to load realtime data.'
+        #         }), 500
 
-            dpp_data = fetch_data_in_chunks(start_date, end_date, fetch_dpp_data)
-            if not dpp_data:
-                return jsonify({
-                    'code': 500,
-                    'message': 'unknown error unable to load DPP data.'
-                }), 500
-        else:
-            # Regular fetching for other periods
-            realtime_data = fetch_realtime_data(start_date, end_date)
-            if not realtime_data:
-                return jsonify({
-                    'code': 500,
-                    'message': 'unknown error unable to load realtime data.'
-                }), 500
+        #     dpp_data = fetch_data_in_chunks(start_date, end_date, fetch_dpp_data)
+        #     if not dpp_data:
+        #         return jsonify({
+        #             'code': 500,
+        #             'message': 'unknown error unable to load DPP data.'
+        #         }), 500
+        # else:
+        # Regular fetching for other periods
+        realtime_data = fetch_realtime_data(start_date, end_date)
+        if not realtime_data:
+            return jsonify({
+                'code': 500,
+                'message': 'unknown error unable to load realtime data.'
+            }), 500
 
-            dpp_data = fetch_dpp_data(start_date, end_date)
-            if not dpp_data:
-                return jsonify({
-                    'code': 500,
-                    'message': 'unknown error unable to load DPP data.'
-                }), 500
+        dpp_data = fetch_dpp_data(start_date, end_date)
+        if not dpp_data:
+            return jsonify({
+                'code': 500,
+                'message': 'unknown error unable to load DPP data.'
+            }), 500
 
         # Calculate averages based on period
         realtime_data = calculate_period_averages(realtime_data, period)
