@@ -93,7 +93,7 @@ def calculate_period_averages(data, period='daily'):
     elif period == 'monthly':
         grouped = df[numeric_columns].resample('ME').mean()
     elif period == 'yearly':
-        grouped = df[numeric_columns].resample('Y').mean()
+        grouped = df[numeric_columns].resample('YE').mean()
     else:
         return data
     

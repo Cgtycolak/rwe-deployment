@@ -217,6 +217,9 @@ export const generationComparison = {
                     chunkEnd.setMonth(chunkEnd.getMonth() + 3);
                     if (chunkEnd > end) {
                         chunkEnd = end;
+                    } else {
+                        // Subtract one day to avoid overlap
+                        chunkEnd.setDate(chunkEnd.getDate() - 1);
                     }
 
                     // Format dates for API
@@ -233,12 +236,16 @@ export const generationComparison = {
                         allData.differences.items = [...allData.differences.items, ...chunkData.differences.items];
                     }
 
-                    // Move to next chunk
-                    currentStart = chunkEnd;
+                    // Move to next chunk (start from the next day)
+                    currentStart = new Date(chunkEnd);
+                    currentStart.setDate(currentStart.getDate() + 1);
                 }
 
-                // Sort combined data by date and hour
+                // Deduplicate data
                 ['dpp', 'realtime', 'differences'].forEach(key => {
+                    allData[key].items = this.deduplicateItems(allData[key].items);
+                    
+                    // Sort by date and hour
                     allData[key].items.sort((a, b) => {
                         const dateCompare = new Date(a.date) - new Date(b.date);
                         if (dateCompare === 0) {
@@ -523,15 +530,11 @@ export const generationComparison = {
 
         items.forEach(item => {
             if (!item) return;
-            
-            const dateObj = new Date(item.date);
-            const formattedDate = dateObj.toISOString().split('T')[0];
-            const timeFormatted = item.time ? item.time.padStart(5, '0') : '00:00';
-            
+            const formatted = this.formatDateTime(item.date, item.hour);
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${formattedDate}</td>
-                <td>${timeFormatted}</td>
+                <td>${formatted.date}</td>
+                <td>${formatted.hour}</td>
                 <td style="background-color: ${this.getTableNumColor(item.toplam, columnStats.toplam)}; 
                            color: #000;
                            font-weight: 500;">${(item.toplam || 0).toFixed(2)}</td>
@@ -602,15 +605,11 @@ export const generationComparison = {
         
         items.forEach(item => {
             if (!item) return;
-            
-            const dateObj = new Date(item.date);
-            const formattedDate = dateObj.toISOString().split('T')[0];
-            const hourFormatted = item.hour ? item.hour.padStart(5, '0') : '00:00';
-            
+            const formatted = this.formatDateTime(item.date, item.hour);
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${formattedDate}</td>
-                <td>${hourFormatted}</td>
+                <td>${formatted.date}</td>
+                <td>${formatted.hour}</td>
                 <td style="background-color: ${this.getTableNumColor(item.total, columnStats.total)}; 
                            color: #000;
                            font-weight: 500;">${(item.total || 0).toFixed(2)}</td>
@@ -682,14 +681,12 @@ export const generationComparison = {
         items.forEach(item => {
             if (!item) return;
             
-            const dateObj = new Date(item.date);
-            const formattedDate = dateObj.toISOString().split('T')[0];
-            const hourFormatted = item.hour ? item.hour.padStart(5, '0') : '00:00';
+            const formatted = this.formatDateTime(item.date, item.hour);
             
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${formattedDate}</td>
-                <td>${hourFormatted}</td>
+                <td>${formatted.date}</td>
+                <td>${formatted.hour}</td>
                 <td style="background-color: ${this.getTableNumColor(item.total, columnStats.total)}; 
                            color: #000;
                            font-weight: 500;">${(item.total || 0).toFixed(2)}</td>
@@ -741,5 +738,54 @@ export const generationComparison = {
         }
         
         this.lastData = data;
+    },
+
+    formatDateTime(date, hour) {
+        // Create a date object and adjust for timezone
+        let dateObj;
+        
+        if (date.includes('T')) {
+            // For ISO format with timezone (e.g., "2024-12-31T00:00:00+03:00")
+            dateObj = new Date(date);
+        } else {
+            // For simple date format (e.g., "2024-12-31")
+            dateObj = new Date(`${date}T00:00:00+03:00`);
+        }
+        
+        // Format the hour
+        let hourFormatted;
+        if (hour) {
+            // If hour is provided directly (e.g., "09:00" or "9")
+            hourFormatted = hour.length <= 2 ? hour.padStart(2, '0') + ':00' : hour;
+        } else if (date.includes('T')) {
+            // Extract hour from ISO timestamp
+            const timePart = date.split('T')[1];
+            hourFormatted = timePart.substring(0, 5); // Gets "HH:mm"
+        } else {
+            // Default to "00:00" if no hour information is available
+            hourFormatted = '00:00';
+        }
+
+        // Format the date (keeping the original date part)
+        const formattedDate = date.includes('T') ? 
+            date.split('T')[0] : 
+            date;
+
+        return {
+            date: formattedDate,
+            hour: hourFormatted
+        };
+    },
+
+    deduplicateItems(items) {
+        const seen = new Set();
+        return items.filter(item => {
+            const key = `${item.date}_${item.hour || item.time || '00:00'}`;
+            if (seen.has(key)) {
+                return false;
+            }
+            seen.add(key);
+            return true;
+        });
     }
 }; 
