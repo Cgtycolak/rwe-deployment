@@ -195,12 +195,12 @@ export const generationComparison = {
             const end = new Date(endDate);
             const diffInMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
 
-            // For yearly view, proceed normally
-            if (this.currentRange === 'yearly') {
-                const data = await this.fetchAndProcessData(startDate, endDate);
-                this.updateViews(data);
-                return;
-            }
+            // // For yearly view, proceed normally
+            // if (this.currentRange === 'yearly') {
+            //     const data = await this.fetchAndProcessData(startDate, endDate);
+            //     this.updateViews(data);
+            //     return;
+            // }
 
             // For other ranges, check if date range exceeds 3 months
             if (diffInMonths > 3) {
@@ -453,21 +453,21 @@ export const generationComparison = {
             const diffInMonths = (end.getFullYear() - start.getFullYear()) * 12 
                 + (end.getMonth() - start.getMonth());
             
-            switch (this.currentRange) {
-                case 'daily':
-                case 'weekly':
-                case 'monthly':
-                    if (diffInMonths > 3) {
-                        // Don't set isValid to false as we'll handle this in loadData
-                    }
-                    break;
-                case 'yearly':
-                    if (diffInMonths < 12) {
-                        errorMessage = 'Yearly view requires at least 12 months of data';
-                        isValid = false;
-                    }
-                    break;
-            }
+            // switch (this.currentRange) {
+            //     case 'daily':
+            //     case 'weekly':
+            //     case 'monthly':
+            //         // if (diffInMonths > 3) {
+            //         //     // Don't set isValid to false as we'll handle this in loadData
+            //         // }
+            //         // break;
+            //     case 'yearly':
+            //         // if (diffInMonths < 12) {
+            //         //     errorMessage = 'Yearly view requires at least 12 months of data';
+            //         //     isValid = false;
+            //         // }
+            //         // break;
+            // }
         }
 
         // Update UI
