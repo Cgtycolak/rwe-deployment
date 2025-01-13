@@ -167,6 +167,12 @@ export const generationComparison = {
                 initialView.style.display = 'block';
             }
 
+            // Add export button listener
+            const exportButton = document.getElementById('download_comparison_excel');
+            if (exportButton) {
+                exportButton.addEventListener('click', () => this.downloadExcel());
+            }
+
         } catch (error) {
             console.error('Error setting up event listeners:', error);
         }
@@ -787,5 +793,96 @@ export const generationComparison = {
             seen.add(key);
             return true;
         });
+    },
+
+    downloadExcel() {
+        try {
+            if (!this.lastData) {
+                this.helpers.displayMessage("No data available to download", "warning");
+                return;
+            }
+
+            // Create workbook
+            const wb = XLSX.utils.book_new();
+
+            // Add DPP Data sheet
+            if (this.lastData.dpp?.items) {
+                const dppWs = XLSX.utils.json_to_sheet(this.lastData.dpp.items.map(item => {
+                    const formatted = this.formatDateTime(item.date, item.hour);
+                    return {
+                        Date: formatted.date,
+                        Hour: formatted.hour,
+                        Total: item.toplam || 0,
+                        "Natural Gas": item.dogalgaz || 0,
+                        Wind: item.ruzgar || 0,
+                        Lignite: item.linyit || 0,
+                        "Import Coal": item.ithalKomur || 0,
+                        "Fuel Oil": item.fuelOil || 0,
+                        Geothermal: item.jeotermal || 0,
+                        "Dammed Hydro": item.barajli || 0,
+                        Naphtha: item.nafta || 0,
+                        Biomass: item.biokutle || 0,
+                        River: item.akarsu || 0
+                    };
+                }));
+                XLSX.utils.book_append_sheet(wb, dppWs, "DPP Data");
+            }
+
+            // Add Realtime Data sheet
+            if (this.lastData.realtime?.items) {
+                const realtimeWs = XLSX.utils.json_to_sheet(this.lastData.realtime.items.map(item => {
+                    const formatted = this.formatDateTime(item.date, item.hour);
+                    return {
+                        Date: formatted.date,
+                        Hour: formatted.hour,
+                        Total: item.total || 0,
+                        "Natural Gas": item.naturalGas || 0,
+                        Wind: item.wind || 0,
+                        Lignite: item.lignite || 0,
+                        "Import Coal": item.importCoal || 0,
+                        "Fuel Oil": item.fueloil || 0,
+                        Geothermal: item.geothermal || 0,
+                        "Dammed Hydro": item.dammedHydro || 0,
+                        Naphtha: item.naphta || 0,
+                        Biomass: item.biomass || 0,
+                        River: item.river || 0
+                    };
+                }));
+                XLSX.utils.book_append_sheet(wb, realtimeWs, "Realtime Data");
+            }
+
+            // Add Differences sheet
+            if (this.lastData.differences?.items) {
+                const differencesWs = XLSX.utils.json_to_sheet(this.lastData.differences.items.map(item => {
+                    const formatted = this.formatDateTime(item.date, item.hour);
+                    return {
+                        Date: formatted.date,
+                        Hour: formatted.hour,
+                        Total: item.total || 0,
+                        "Natural Gas": item.naturalGas || 0,
+                        Wind: item.wind || 0,
+                        Lignite: item.lignite || 0,
+                        "Import Coal": item.importCoal || 0,
+                        "Fuel Oil": item.fueloil || 0,
+                        Geothermal: item.geothermal || 0,
+                        "Dammed Hydro": item.dammedHydro || 0,
+                        Naphtha: item.naphta || 0,
+                        Biomass: item.biomass || 0,
+                        River: item.river || 0
+                    };
+                }));
+                XLSX.utils.book_append_sheet(wb, differencesWs, "Differences");
+            }
+
+            // Generate filename with current date and range
+            const date = new Date().toISOString().split('T')[0];
+            const filename = `generation_comparison_${this.currentRange}_${date}.xlsx`;
+
+            // Save file
+            XLSX.writeFile(wb, filename);
+        } catch (error) {
+            console.error("Error downloading Excel:", error);
+            this.helpers.displayMessage("Error generating Excel file", "danger");
+        }
     }
 }; 
