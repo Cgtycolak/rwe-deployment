@@ -2,35 +2,58 @@ export const aic = {
     // Add properties to store helper functions
     toggleLoading: null,
     displayMessage: null,
+    toggleButtonLoading: null,
 
     // Initialize with helper functions
     setup(helpers) {
-        console.log('Setting up AIC module with helpers');
+        console.log('Setting up AIC module with helpers:', helpers);
+        if (!helpers) {
+            console.error('No helpers provided to AIC module');
+            return;
+        }
         this.toggleLoading = helpers.toggleLoading;
         this.displayMessage = helpers.displayMessage;
+        this.toggleButtonLoading = helpers.toggleButtonLoading;
+        
+        // Verify helpers are properly set
+        if (!this.toggleButtonLoading) {
+            console.error('toggleButtonLoading helper not properly set');
+        }
     },
 
     async loadAICData(range = 'week') {
+        const button = document.querySelector(`.aic-range-btn[data-range="${range}"]`);
         try {
+            if (!this.toggleButtonLoading) {
+                console.error('toggleButtonLoading helper not available');
+                return;
+            }
+            
             console.log('Loading AIC data for range:', range);
-            // this.toggleLoading(true);
+            this.toggleButtonLoading(button, true);
+            
             const response = await fetch(`/get_aic_data?range=${range}`);
             const result = await response.json();
             console.log('AIC data received:', result);
             
-            if (result.code === 200 && result.data && result.data.length > 0) {
-                console.log('Processing AIC data:', result.data[0]); // Log sample data
+            if (result.code === 200 && result.data && 
+                result.data.aic && result.data.realtime && result.data.dpp) {
+                console.log('Processing generation data:', {
+                    aic: result.data.aic.length,
+                    realtime: result.data.realtime.length,
+                    dpp: result.data.dpp.length
+                });
                 this.displayAICChart(result.data);
                 this.updateButtonState(range);
             } else {
-                console.error('Failed to load AIC data:', result.message || 'No data received');
+                console.error('Failed to load generation data:', result.message || 'No data received');
                 this.displayMessage("No data available for the selected period", "warning");
             }
-            // this.toggleLoading(false);
         } catch (error) {
-            console.error('Error loading AIC data:', error);
-            this.displayMessage("Error loading AIC data", "danger");
-            // this.toggleLoading(false);
+            console.error('Error loading generation data:', error);
+            this.displayMessage("Error loading generation data", "danger");
+        } finally {
+            this.toggleButtonLoading(button, false);
         }
     },
 
@@ -49,66 +72,57 @@ export const aic = {
     },
 
     displayAICChart(data) {
-        console.log('Displaying AIC chart with data:', data.length, 'records');
+        console.log('Displaying generation chart with data');
         
         // Process data for plotting
-        const dates = [...new Set(data.map(item => item.date.split('T')[0]))].sort();
-        console.log('Unique dates:', dates);
+        const dates = [...new Set([
+            ...data.aic.map(item => item.date.split('T')[0]),
+            ...data.realtime.map(item => item.date.split('T')[0]),
+            ...data.dpp.map(item => item.date.split('T')[0])
+        ])].sort();
         
-        const hours = [...new Set(data.map(item => item.time))].sort();
-        console.log('Unique hours:', hours);
+        const hours = [...new Set([
+            ...data.aic.map(item => item.time),
+            ...data.realtime.map(item => item.hour),
+            ...data.dpp.map(item => item.time)
+        ])].sort();
         
         // Create x-axis labels combining date and hour
         const xLabels = [];
         const aicValues = [];
         const realtimeValues = [];
+        const dppValues = [];
         
         dates.forEach(date => {
             hours.forEach(hour => {
-                const dataPoint = data.find(d => 
+                const aicPoint = data.aic.find(d => 
                     d.date.startsWith(date) && d.time === hour
                 );
-                if (dataPoint) {
-                    xLabels.push(`${date} ${hour}`);
-                    // Sum up all generation types for total generation
-                    const totalGeneration = [
-                        dataPoint.akarsu || 0,
-                        dataPoint.barajli || 0,
-                        dataPoint.biokutle || 0,
-                        dataPoint.dogalgaz || 0,
-                        dataPoint.fuelOil || 0,
-                        dataPoint.ithalKomur || 0,
-                        dataPoint.jeotermal || 0,
-                        dataPoint.linyit || 0,
-                        dataPoint.nafta || 0,
-                        dataPoint.ruzgar || 0,
-                        dataPoint.tasKomur || 0,
-                        dataPoint.diger || 0
-                    ].reduce((a, b) => a + b, 0);
+                const realtimePoint = data.realtime.find(d => 
+                    d.date.startsWith(date) && d.hour === hour
+                );
+                const dppPoint = data.dpp.find(d => 
+                    d.date.startsWith(date) && d.time === hour
+                );
 
-                    aicValues.push(totalGeneration);
-                    realtimeValues.push(dataPoint.toplam || 0);
+                if (aicPoint || realtimePoint || dppPoint) {
+                    xLabels.push(`${date} ${hour}`);
+                    aicValues.push(aicPoint ? aicPoint.toplam || 0 : null);
+                    realtimeValues.push(realtimePoint ? realtimePoint.total || 0 : null);
+                    dppValues.push(dppPoint ? dppPoint.toplam || 0 : null);
                 }
             });
         });
 
-        console.log('Sample values - AIC:', aicValues.slice(0, 5));
-        console.log('Sample values - Realtime:', realtimeValues.slice(0, 5));
-
         const traces = [
             {
-                name: 'Total Generation',
+                name: 'AIC Total',
                 x: xLabels,
                 y: aicValues,
                 type: 'scatter',
                 mode: 'lines+markers',
-                line: {
-                    color: '#1f77b4',
-                    width: 2
-                },
-                marker: {
-                    size: 4
-                }
+                line: { color: '#1f77b4', width: 2 },
+                marker: { size: 4 }
             },
             {
                 name: 'Realtime Total',
@@ -116,29 +130,31 @@ export const aic = {
                 y: realtimeValues,
                 type: 'scatter',
                 mode: 'lines+markers',
-                line: {
-                    color: '#ff7f0e',
-                    width: 2
-                },
-                marker: {
-                    size: 4
-                }
+                line: { color: '#ff7f0e', width: 2 },
+                marker: { size: 4 }
+            },
+            {
+                name: 'KGÜP Total',
+                x: xLabels,
+                y: dppValues,
+                type: 'scatter',
+                mode: 'lines+markers',
+                line: { color: '#2ca02c', width: 2 },
+                marker: { size: 4 }
             }
         ];
 
         const layout = {
-            title: 'Total Generation vs Realtime Total',
+            title: 'Generation Comparison (AIC vs Realtime vs KGÜP)',
             xaxis: {
                 title: 'Date & Hour',
                 tickangle: -45,
-                tickfont: {
-                    size: 10
-                },
-                nticks: 24 // Show fewer ticks for better readability
+                tickfont: { size: 10 },
+                nticks: 24
             },
             yaxis: {
                 title: 'Generation (MW)',
-                rangemode: 'tozero' // Start y-axis from 0
+                rangemode: 'tozero'
             },
             showlegend: true,
             legend: {
@@ -147,15 +163,15 @@ export const aic = {
                 y: 1
             },
             margin: {
-                b: 100, // Increase bottom margin for rotated labels
-                l: 80,  // Left margin for y-axis labels
-                r: 50,  // Right margin for legend
-                t: 50   // Top margin for title
+                b: 100,
+                l: 80,
+                r: 50,
+                t: 50
             },
             hovermode: 'closest',
             plot_bgcolor: '#ffffff',
             paper_bgcolor: '#ffffff',
-            width: null,  // Allow responsive width
+            width: null,
             height: 700
         };
 
@@ -167,9 +183,7 @@ export const aic = {
         };
 
         try {
-            console.log('Creating Plotly chart...');
             Plotly.newPlot('aic_realtime_chart', traces, layout, config);
-            console.log('Chart created successfully');
         } catch (error) {
             console.error('Error creating chart:', error);
             this.displayMessage("Error displaying chart", "danger");
