@@ -9,9 +9,6 @@ from urllib3 import Retry
 #from requests.packages.urllib3 import Retry
 import pandas as pd
 import pytz
-import aiohttp
-import asyncio
-from functools import partial
 main = Blueprint('main', __name__)
 
 
@@ -339,7 +336,7 @@ def get_realtime_data():
 def get_aic_data():
     try:
         range_type = request.args.get('range', 'week')
-        print(f'Getting generation data for range: {range_type}')
+        print(f'Getting AIC data for range: {range_type}')
         
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
         
@@ -360,80 +357,32 @@ def get_aic_data():
         end_str = end_date.strftime("%Y-%m-%dT23:00:00+03:00")
         
         print(f'Date range: {start_str} to {end_str}')
-
-        # Define async function to fetch data
-        async def fetch_data():
-            async with aiohttp.ClientSession() as session:
-                # Configure retry logic
-                retry_options = aiohttp.ClientTimeout(total=30)
-                
-                # Define the requests
-                requests = [
-                    {
-                        'url': 'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/aic',
-                        'json': {"startDate": start_str, "endDate": end_str, "region": "TR1"},
-                        'key': 'aic'
-                    },
-                    {
-                        'url': 'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/realtime-generation',
-                        'json': {"startDate": start_str, "endDate": end_str},
-                        'key': 'realtime'
-                    },
-                    {
-                        'url': 'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/dpp',
-                        'json': {"startDate": start_str, "endDate": end_str, "region": "TR1"},
-                        'key': 'dpp'
-                    }
-                ]
-
-                async def fetch_with_retry(request):
-                    for attempt in range(5):  # 5 retry attempts
-                        try:
-                            async with session.post(
-                                request['url'],
-                                json=request['json'],
-                                headers={'TGT': tgt_token},
-                                timeout=retry_options
-                            ) as response:
-                                response.raise_for_status()
-                                result = await response.json()
-                                return request['key'], result.get('items', [])
-                        except Exception as e:
-                            if attempt == 4:  # Last attempt
-                                print(f"Failed to fetch {request['key']} after 5 attempts: {str(e)}")
-                                return request['key'], []
-                            await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
-
-                # Execute all requests in parallel
-                tasks = [fetch_with_retry(req) for req in requests]
-                results = await asyncio.gather(*tasks)
-                
-                # Convert results to dictionary
-                return dict(results)
-
-        # Run async function
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            all_data = loop.run_until_complete(fetch_data())
-        finally:
-            loop.close()
-
-        # Check if all data sources returned data
-        if not all(all_data.values()):
-            return jsonify({
-                'code': 400,
-                'message': 'Some data sources returned no data'
-            }), 400
+        
+        session = Session()
+        retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+        
+        # Fetch AIC data
+        res = session.post(
+            current_app.config['AIC_URL'],
+            json={
+                "startDate": start_str,
+                "endDate": end_str,
+                "region": "TR1"
+            },
+            headers={'TGT': tgt_token}
+        )
+        res.raise_for_status()
+        data = res.json().get('items', [])
+        print(f'Retrieved {len(data)} AIC records')
         
         return jsonify({
             'code': 200,
-            'data': all_data
+            'data': data
         })
-
     except Exception as e:
         print('Error From get_aic_data:', str(e))
         return jsonify({
             'code': 500,
-            'message': f'Unable to load generation data: {str(e)}'
+            'message': f'Unable to load AIC data: {str(e)}'
         }), 500
