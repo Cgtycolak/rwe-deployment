@@ -6,5 +6,5 @@ bind = f"0.0.0.0:{port}"
 workers = 4
 threads = 2
 timeout = 120
-worker_class = "aiohttp.worker.GunicornWebWorker"
+worker_class = "sync"
 wsgi_app = "wsgi:app" 
