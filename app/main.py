@@ -6,9 +6,7 @@ from requests import post, Session
 from .functions import get_tgt_token, asutc, invalidates_or_none
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
-#from requests.packages.urllib3 import Retry
 import pandas as pd
-import pytz
 main = Blueprint('main', __name__)
 
 
@@ -336,7 +334,7 @@ def get_realtime_data():
 def get_aic_data():
     try:
         range_type = request.args.get('range', 'week')
-        print(f'Getting AIC data for range: {range_type}')
+        print(f'Getting generation data for range: {range_type}')
         
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
         
@@ -357,32 +355,57 @@ def get_aic_data():
         end_str = end_date.strftime("%Y-%m-%dT23:00:00+03:00")
         
         print(f'Date range: {start_str} to {end_str}')
-        
+
+        # Set up session with retries
         session = Session()
         retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
         session.mount('https://', HTTPAdapter(max_retries=retries))
         
+        # Fetch data sequentially
+        all_data = {}
+        
         # Fetch AIC data
-        res = session.post(
-            current_app.config['AIC_URL'],
-            json={
-                "startDate": start_str,
-                "endDate": end_str,
-                "region": "TR1"
-            },
+        aic_response = session.post(
+            'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/aic',
+            json={"startDate": start_str, "endDate": end_str, "region": "TR1"},
             headers={'TGT': tgt_token}
         )
-        res.raise_for_status()
-        data = res.json().get('items', [])
-        print(f'Retrieved {len(data)} AIC records')
+        aic_response.raise_for_status()
+        all_data['aic'] = aic_response.json().get('items', [])
+        
+        # Fetch realtime data
+        realtime_response = session.post(
+            'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/realtime-generation',
+            json={"startDate": start_str, "endDate": end_str},
+            headers={'TGT': tgt_token}
+        )
+        realtime_response.raise_for_status()
+        all_data['realtime'] = realtime_response.json().get('items', [])
+        
+        # Fetch DPP data
+        dpp_response = session.post(
+            'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/dpp',
+            json={"startDate": start_str, "endDate": end_str, "region": "TR1"},
+            headers={'TGT': tgt_token}
+        )
+        dpp_response.raise_for_status()
+        all_data['dpp'] = dpp_response.json().get('items', [])
+
+        # Check if all data sources returned data
+        if not all(all_data.values()):
+            return jsonify({
+                'code': 400,
+                'message': 'Some data sources returned no data'
+            }), 400
         
         return jsonify({
             'code': 200,
-            'data': data
+            'data': all_data
         })
+
     except Exception as e:
         print('Error From get_aic_data:', str(e))
         return jsonify({
             'code': 500,
-            'message': f'Unable to load AIC data: {str(e)}'
+            'message': f'Unable to load generation data: {str(e)}'
         }), 500
