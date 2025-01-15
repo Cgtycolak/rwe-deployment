@@ -14,7 +14,7 @@ export const aic = {
         this.toggleLoading = helpers.toggleLoading;
         this.displayMessage = helpers.displayMessage;
         this.toggleButtonLoading = helpers.toggleButtonLoading;
-        
+
         // Verify helpers are properly set
         if (!this.toggleButtonLoading) {
             console.error('toggleButtonLoading helper not properly set');
@@ -28,15 +28,15 @@ export const aic = {
                 console.error('toggleButtonLoading helper not available');
                 return;
             }
-            
+
             console.log('Loading AIC data for range:', range);
             this.toggleButtonLoading(button, true);
-            
+
             const response = await fetch(`/get_aic_data?range=${range}`);
             const result = await response.json();
             console.log('AIC data received:', result);
-            
-            if (result.code === 200 && result.data && 
+
+            if (result.code === 200 && result.data &&
                 result.data.aic && result.data.realtime && result.data.dpp) {
                 console.log('Processing generation data:', {
                     aic: result.data.aic.length,
@@ -73,35 +73,35 @@ export const aic = {
 
     displayAICChart(data) {
         console.log('Displaying generation chart with data');
-        
+
         // Process data for plotting
         const dates = [...new Set([
             ...data.aic.map(item => item.date.split('T')[0]),
             ...data.realtime.map(item => item.date.split('T')[0]),
             ...data.dpp.map(item => item.date.split('T')[0])
         ])].sort();
-        
+
         const hours = [...new Set([
             ...data.aic.map(item => item.time),
             ...data.realtime.map(item => item.hour),
             ...data.dpp.map(item => item.time)
         ])].sort();
-        
+
         // Create x-axis labels combining date and hour
         const xLabels = [];
         const aicValues = [];
         const realtimeValues = [];
         const dppValues = [];
-        
+
         dates.forEach(date => {
             hours.forEach(hour => {
-                const aicPoint = data.aic.find(d => 
+                const aicPoint = data.aic.find(d =>
                     d.date.startsWith(date) && d.time === hour
                 );
-                const realtimePoint = data.realtime.find(d => 
+                const realtimePoint = data.realtime.find(d =>
                     d.date.startsWith(date) && d.hour === hour
                 );
-                const dppPoint = data.dpp.find(d => 
+                const dppPoint = data.dpp.find(d =>
                     d.date.startsWith(date) && d.time === hour
                 );
 

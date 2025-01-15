@@ -16,21 +16,21 @@ const app = {
     aic,
     generationComparison,
     helpers: {
-        toggleLoading: function(show) {
+        toggleLoading: function (show) {
             const loader = document.getElementById('aic_loading');
             if (loader) {
                 loader.style.display = show ? 'block' : 'none';
             }
         },
-        displayMessage: function(message, type) {
+        displayMessage: function (message, type) {
             // Your existing message display logic
         },
-        toggleButtonLoading: function(button, isLoading) {
+        toggleButtonLoading: function (button, isLoading) {
             if (!button) return;
-            
+
             const spinner = button.querySelector('.spinner-border');
             const content = button.querySelector('.button-content');
-            
+
             if (isLoading) {
                 button.disabled = true;
                 if (spinner) spinner.style.display = 'inline-block';
@@ -42,7 +42,7 @@ const app = {
             }
         }
     },
-    
+
     init() {
         $(document).ready(() => {
             setupEvents();
