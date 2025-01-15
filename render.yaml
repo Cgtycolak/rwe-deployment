@@ -6,6 +6,6 @@ services:
     startCommand: gunicorn --config gunicorn_config.py app:app
     envVars:
       - key: PYTHON_VERSION
-        value: 3.9.0
+        value: 3.11.0
       - key: SECRET_KEY
         generateValue: true
