@@ -7,6 +7,8 @@ from .functions import get_tgt_token, asutc, invalidates_or_none
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 import pandas as pd
+import numpy as np
+
 main = Blueprint('main', __name__)
 
 
@@ -409,3 +411,187 @@ def get_aic_data():
             'code': 500,
             'message': f'Unable to load generation data: {str(e)}'
         }), 500
+
+
+@main.route('/heatmap_data', methods=['POST'])
+def heatmap_data():
+    try:
+        data = request.json
+        selected_date = data.get('date')
+        version = data.get('version', 'first')  # 'first' or 'current'
+        
+        if not selected_date:
+            return jsonify({"code": 400, "error": "Missing 'date' parameter"})
+
+        # Use different URLs based on version
+        dpp_url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
+        
+        # Define the mapping of plants to their IDs
+        plant_mapping = {
+            'plant_names': [
+                "ACWA", "AKENRJ ERZIN", "AKSA ANT", "BAN1", "BAN2", "BAYMINA", 
+                "BILGIN1", "BILGIN2", "BURSA BLOK1", "BURSA BLOK2", "CENGIZ",
+                "ENKA ADP", "ENKA GBZ1", "ENKA GBZ2", "ENKA IZM1", "ENKA IZM2",
+                "GAMA ICAN", "HABAS", "HAM-10", "HAM-20", "RWE", "TEKİRA",
+                "TEKİRB", "YENI", "İST A-(A)", "İST A-(B)", "İST A-(C)",
+                "İST B (Blok40+ Blok50)"
+            ],
+            'o_ids': [
+                10372, 166, 396, 282, 282, 11816, 294, 294, 195, 195, 1964,
+                11810, 11811, 11811, 11997, 11997, 9488, 181, 378, 378, 3625,
+                195, 195, 6839, 195, 195, 195, 195
+            ],
+            'pl_ids': [
+                3197267, 3205710, 134405, 24604, 3194367, 3205527, 3204758, 3204759,
+                924, 928, 1740316, 3205381, 3205524, 3205525, 3206732, 3206733,
+                3195727, 2543, 945, 983, 301420, 3204400, 3204399, 472111, 923,
+                979, 980, 937
+            ],
+            'capacities': [
+                "927", "904", "900", "935", "607", "770", "443", "443", "680",
+                "680", "610", "820", "815", "815", "760", "760", "853", "1043",
+                "600", "600", "797", "480", "480", "480", "450", "450", "450", "816"
+            ]
+        }
+
+        # Define hours
+        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+
+        # Create an empty DataFrame
+        df = pd.DataFrame(index=hours, columns=plant_mapping['plant_names'])
+        
+        # Fetch real data for each plant
+        total_plants = len(plant_mapping['plant_names'])
+        for idx, (o_id, pl_id, plant_name) in enumerate(zip(
+            plant_mapping['o_ids'], 
+            plant_mapping['pl_ids'], 
+            plant_mapping['plant_names']
+        )):
+            try:
+                print(f"Fetching data for plant {idx + 1}/{total_plants}: {plant_name}")
+                plant_data = fetch_plant_data(selected_date, o_id, pl_id, dpp_url)
+                if plant_data is not None:
+                    df[plant_name] = plant_data
+                else:
+                    df[plant_name] = 0
+            except Exception as e:
+                print(f"Error fetching data for plant {plant_name}: {str(e)}")
+                df[plant_name] = 0
+
+        # Create plant labels with capacities
+        plant_labels = [
+            f"{name}--{capacity} Mw" 
+            for name, capacity in zip(plant_mapping['plant_names'], plant_mapping['capacities'])
+        ]
+
+        # Convert DataFrame to JSON response
+        response_data = {
+            "code": 200,
+            "data": {
+                "hours": df.index.tolist(),
+                "plants": plant_labels,
+                "values": df.values.tolist()
+            }
+        }
+
+        return jsonify(response_data)
+    
+    except Exception as e:
+        print(f"Error in heatmap_data: {str(e)}")
+        return jsonify({"code": 500, "error": str(e)})
+
+def get_plant_generation_data(date, o_id, pl_id, dpp_url):
+    """
+    Fetch generation data for a specific plant and date using DPP endpoint.
+    """
+    try:
+        # Setup session with retries and timeouts
+        session = Session()
+        retries = Retry(
+            total=3,  # Maximum number of retries
+            backoff_factor=0.5,  # Time to wait between retries (0.5 * (2 ** retry))
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["POST", "GET"]  # Allow retrying on POST requests
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+        session.mount('https://', adapter)
+
+        # Get authentication token
+        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+
+        # Format date for API request
+        start_date = f"{date}T00:00:00+03:00"
+        end_date = f"{date}T23:59:59+03:00"
+
+        # Prepare request data
+        request_data = {
+            "startDate": start_date,
+            "endDate": end_date,
+            "region": "TR1",
+            "organizationId": str(o_id),
+            "uevcbId": str(pl_id)
+        }
+
+        # Make API request with timeout
+        response = session.post(
+            dpp_url,
+            json=request_data,
+            headers={'TGT': tgt_token},
+            timeout=(5, 15)
+        )
+        response.raise_for_status()
+        
+        # Process response data
+        items = response.json().get('items', [])
+        
+        # Create a dictionary with hour as key and generation value as value
+        hourly_data = {}
+        for item in items:
+            hour = item.get('time', '00:00').split(':')[0]
+            total = item.get('toplam', 0)
+            hourly_data[f"{hour.zfill(2)}:00"] = total
+
+        # Add small delay between requests to avoid overwhelming the API
+        time.sleep(0.1)
+        
+        return hourly_data
+
+    except Exception as e:
+        print(f"Error in get_plant_generation_data for plant {pl_id}: {str(e)}")
+        return None
+
+def fetch_plant_data(date, o_id, pl_id, dpp_url):
+    """
+    Fetch hourly generation data for a specific plant.
+    Retries up to 3 times if there's a failure.
+    """
+    max_retries = 3
+    retry_delay = 1  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            # Get the data from API
+            data = get_plant_generation_data(date, o_id, pl_id, dpp_url)
+            
+            if data is None:
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (attempt + 1))
+                    continue
+                return [0] * 24
+            
+            # Process the data to get hourly values
+            hourly_values = []
+            for hour in range(24):
+                hour_str = f"{str(hour).zfill(2)}:00"
+                value = data.get(hour_str, 0)
+                hourly_values.append(value)
+                
+            return hourly_values
+            
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed for plant {pl_id}: {str(e)}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay * (attempt + 1))
+            else:
+                print(f"All retries failed for plant {pl_id}")
+                return [0] * 24
