@@ -16,16 +16,9 @@ export const heatmap = {
         this.toggleButtonLoading = helpers.toggleButtonLoading;
     },
 
-    // Configuration
-    plantIds: [3197267, 3205710, 134405, 3205527, 3204758, 3204759, 1740316, 3205381, 3205524, 3205525, 3206732, 3206733, 3195727, 2543, 301420, 472111, 924, 928, 923, 979, 980, 937, 3204400, 3204399, 24604, 3194367, 945, 983],
-    orgIds: [10372, 166, 396, 11816, 294, 294, 1964, 11810, 11811, 11811, 11997, 11997, 9488, 181, 3625, 6839, 195, 195, 195, 195, 195, 195, 195, 195, 282, 282, 378, 378],
-    plantNames: ['ACWA', 'AKENRJ ERZIN', 'AKSA ANT', 'BAYMINA', 'BILGIN1', 'BILGIN2', 'CENGIZ', 'ENKA ADP',
-        'ENKA GBZ1', 'ENKA GBZ2', 'ENKA IZM1', 'ENKA IZM2', 'GAMA ICAN', 'HABAS', 'RWE', 'YENI', 'BURSA BLOK1',
-        'BURSA BLOK2', 'İST A-(A)', 'İST A-(B)', 'İST A-(C)', 'İST B (Blok40+ Blok50)', 'TEKİRA', 'TEKİRB',
-        'BAN1', 'BAN2', 'HAM-10', 'HAM-20'],
-
     async loadHeatmapData(date = null) {
         const button = document.getElementById('load_heatmap');
+        const toggleButton = document.getElementById('toggle_realtime');
         const spinner = button.querySelector('.spinner-border');
         const buttonText = button.querySelector('.button-content');
         const heatmapContainer = document.getElementById('heatmap_container');
@@ -38,7 +31,22 @@ export const heatmap = {
             
             const selectedDate = date || new Date().toISOString().split('T')[0];
             
-            // Fetch both versions
+            // Check if selected date is today
+            const today = new Date().toISOString().split('T')[0];
+            const isToday = selectedDate === today;
+
+            // Reset toggle button and realtime state
+            toggleButton.textContent = 'Show Realtime';
+            this.realtimeVisible = false;
+            this.selectedDate = selectedDate;  // Store date for later use
+            
+            // Hide realtime sections
+            const realtimeSection = document.getElementById('generation_heatmap_realtime').parentElement;
+            const realtimeDiffSection = document.getElementById('generation_heatmap_realtime_difference').parentElement;
+            realtimeSection.style.display = 'none';
+            realtimeDiffSection.style.display = 'none';
+
+            // Fetch KGUP versions only
             const [firstVersionResponse, currentVersionResponse] = await Promise.all([
                 fetch("/heatmap_data", {
                     method: "POST",
@@ -62,15 +70,17 @@ export const heatmap = {
             const currentVersionResult = await currentVersionResponse.json();
 
             if (firstVersionResult.code === 200 && currentVersionResult.code === 200) {
-                // Show the container before displaying the heatmaps
                 heatmapContainer.style.display = 'block';
                 
-                // Display both versions
+                // Store current version for difference calculation later
+                this.currentVersionData = currentVersionResult.data;
+                
+                // Display KGUP versions
                 this.processAndDisplayHeatmap(firstVersionResult.data, selectedDate, 'first');
                 this.processAndDisplayHeatmap(currentVersionResult.data, selectedDate, 'current');
                 
-                // Calculate and display differences
-                const differenceData = {
+                // Calculate and display KGUP differences (Final - First)
+                const kgupDifferenceData = {
                     hours: firstVersionResult.data.hours,
                     plants: firstVersionResult.data.plants,
                     values: firstVersionResult.data.values.map((row, i) => 
@@ -79,15 +89,17 @@ export const heatmap = {
                         )
                     )
                 };
-                
-                this.processAndDisplayHeatmap(differenceData, selectedDate, 'difference');
+                this.processAndDisplayHeatmap(kgupDifferenceData, selectedDate, 'difference');
+
+                // Enable toggle button only if not today
+                toggleButton.disabled = isToday;
             }
 
         } catch (error) {
             console.error('Error loading heatmap data:', error);
             this.displayMessage("Error loading heatmap data", "danger");
-            // Hide the container if there's an error
             heatmapContainer.style.display = 'none';
+            toggleButton.disabled = true;
         } finally {
             button.disabled = false;
             spinner.classList.add('d-none');
@@ -119,6 +131,8 @@ export const heatmap = {
     displayHeatmap(data, date, version) {
         const elementId = version === 'first' ? 'generation_heatmap_first_version' : 
                          version === 'current' ? 'generation_heatmap_current' :
+                         version === 'realtime' ? 'generation_heatmap_realtime' :
+                         version === 'realtime_difference' ? 'generation_heatmap_realtime_difference' :
                          'generation_heatmap_difference';
         const element = document.getElementById(elementId);
 
@@ -147,8 +161,10 @@ export const heatmap = {
         ] : 'RdBu';
 
         const title = version === 'difference' ? 
-            `Hourly Generation Difference MWh - ${date}` :
-            `Hourly Generation MWh - ${date} (${version === 'first' ? 'First Version' : 'Final Version'})`;
+            `Hourly Generation Difference MWh - ${date} (Final - First)` :
+            version === 'realtime_difference' ?
+            `Hourly Generation Difference MWh - ${date} (Realtime - Final)` :
+            `Hourly Generation MWh - ${date} (${version === 'first' ? 'First Version' : version === 'current' ? 'Final Version' : 'Realtime'})`;
 
         const layout = {
             title: {
@@ -213,7 +229,7 @@ export const heatmap = {
         };
 
         // Add hover template to show the difference values
-        if (version === 'difference') {
+        if (version === 'difference' || version === 'realtime_difference') {
             heatmapTrace.hovertemplate = 
                 'Hour: %{y}<br>' +
                 'Plant: %{x}<br>' +
@@ -228,6 +244,66 @@ export const heatmap = {
         });
     },
 
+    async toggleRealtime() {
+        const realtimeSection = document.getElementById('generation_heatmap_realtime').parentElement;
+        const realtimeDiffSection = document.getElementById('generation_heatmap_realtime_difference').parentElement;
+        const toggleButton = document.getElementById('toggle_realtime');
+
+        if (this.realtimeVisible) {
+            // Just hide the sections if they're already visible
+            realtimeSection.style.display = 'none';
+            realtimeDiffSection.style.display = 'none';
+            toggleButton.textContent = 'Show Realtime';
+            this.realtimeVisible = false;
+            return;
+        }
+
+        try {
+            // Show loading state
+            toggleButton.disabled = true;
+            toggleButton.textContent = 'Loading...';
+
+            // Fetch realtime data
+            const realtimeResponse = await fetch("/realtime_heatmap_data", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ date: this.selectedDate })
+            });
+            const realtimeResult = await realtimeResponse.json();
+
+            if (realtimeResult.code === 200) {
+                // Show the sections
+                realtimeSection.style.display = 'block';
+                realtimeDiffSection.style.display = 'block';
+                
+                // Display realtime data
+                this.processAndDisplayHeatmap(realtimeResult.data, this.selectedDate, 'realtime');
+                
+                // Calculate and display differences
+                const realtimeDifferenceData = {
+                    hours: realtimeResult.data.hours,
+                    plants: realtimeResult.data.plants,
+                    values: realtimeResult.data.values.map((row, i) => 
+                        row.map((val, j) => 
+                            val - this.currentVersionData.values[i][j]
+                        )
+                    )
+                };
+                this.processAndDisplayHeatmap(realtimeDifferenceData, this.selectedDate, 'realtime_difference');
+                
+                toggleButton.textContent = 'Hide Realtime';
+                this.realtimeVisible = true;
+            } else {
+                this.displayMessage("Failed to load realtime data", "danger");
+            }
+        } catch (error) {
+            console.error('Error loading realtime data:', error);
+            this.displayMessage("Error loading realtime data", "danger");
+        } finally {
+            toggleButton.disabled = false;
+        }
+    },
+
     init() {
         // Set default date to today
         const dateInput = document.getElementById('heatmap_date');
@@ -240,5 +316,14 @@ export const heatmap = {
             const date = document.getElementById('heatmap_date').value;
             this.loadHeatmapData(date);
         });
+
+        document.getElementById('toggle_realtime').addEventListener('click', () => {
+            this.toggleRealtime();
+        });
+
+        // Initialize state
+        this.realtimeVisible = false;
+        this.realtimeData = null;
+        this.realtimeDifferenceData = null;
     }
 };

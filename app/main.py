@@ -11,6 +11,38 @@ import numpy as np
 
 main = Blueprint('main', __name__)
 
+# Define the mapping of plants to their IDs at module level
+plant_mapping = {
+    'plant_names': [
+        "ACWA", "AKENRJ ERZIN", "AKSA ANT", "BAN1", "BAN2", "BAYMINA", 
+        "BILGIN1", "BILGIN2", "BURSA BLOK1", "BURSA BLOK2", "CENGIZ",
+        "ENKA ADP", "ENKA GBZ1", "ENKA GBZ2", "ENKA IZM1", "ENKA IZM2",
+        "GAMA ICAN", "HABAS", "HAM-10", "HAM-20", "RWE", "TEKİRA",
+        "TEKİRB", "YENI", "İST A-(A)", "İST A-(B)", "İST A-(C)",
+        "İST B (Blok40+ Blok50)"
+    ],
+    'o_ids': [
+        10372, 166, 396, 282, 282, 11816, 294, 294, 195, 195, 1964,
+        11810, 11811, 11811, 11997, 11997, 9488, 181, 378, 378, 3625,
+        195, 195, 6839, 195, 195, 195, 195
+    ],
+    'uevcb_ids': [
+        3197267, 3205710, 134405, 24604, 3194367, 3205527, 3204758, 3204759,
+        924, 928, 1740316, 3205381, 3205524, 3205525, 3206732, 3206733,
+        3195727, 2543, 945, 983, 301420, 3204400, 3204399, 472111, 923,
+        979, 980, 937
+    ],
+    'p_ids': [
+        2170, 1673, 754, 1426, 2045, 893, 869, 869, 687, 687, 2334, 2800, 
+        661, 661, 962, 962, 2048, 2411, 1113, 1113, 966, 1112, 1224, 1424, 
+        1230, 1230, 1230, 638 
+    ],
+    'capacities': [
+        "927", "904", "900", "935", "607", "770", "443", "443", "680",
+        "680", "610", "820", "815", "815", "760", "760", "853", "1043",
+        "600", "600", "797", "480", "480", "480", "450", "450", "450", "816"
+    ]
+}
 
 @main.route('/', methods=['GET'])
 def index():
@@ -418,7 +450,7 @@ def heatmap_data():
     try:
         data = request.json
         selected_date = data.get('date')
-        version = data.get('version', 'first')  # 'first' or 'current'
+        version = data.get('version', 'first')
         
         if not selected_date:
             return jsonify({"code": 400, "error": "Missing 'date' parameter"})
@@ -426,34 +458,6 @@ def heatmap_data():
         # Use different URLs based on version
         dpp_url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
         
-        # Define the mapping of plants to their IDs
-        plant_mapping = {
-            'plant_names': [
-                "ACWA", "AKENRJ ERZIN", "AKSA ANT", "BAN1", "BAN2", "BAYMINA", 
-                "BILGIN1", "BILGIN2", "BURSA BLOK1", "BURSA BLOK2", "CENGIZ",
-                "ENKA ADP", "ENKA GBZ1", "ENKA GBZ2", "ENKA IZM1", "ENKA IZM2",
-                "GAMA ICAN", "HABAS", "HAM-10", "HAM-20", "RWE", "TEKİRA",
-                "TEKİRB", "YENI", "İST A-(A)", "İST A-(B)", "İST A-(C)",
-                "İST B (Blok40+ Blok50)"
-            ],
-            'o_ids': [
-                10372, 166, 396, 282, 282, 11816, 294, 294, 195, 195, 1964,
-                11810, 11811, 11811, 11997, 11997, 9488, 181, 378, 378, 3625,
-                195, 195, 6839, 195, 195, 195, 195
-            ],
-            'pl_ids': [
-                3197267, 3205710, 134405, 24604, 3194367, 3205527, 3204758, 3204759,
-                924, 928, 1740316, 3205381, 3205524, 3205525, 3206732, 3206733,
-                3195727, 2543, 945, 983, 301420, 3204400, 3204399, 472111, 923,
-                979, 980, 937
-            ],
-            'capacities': [
-                "927", "904", "900", "935", "607", "770", "443", "443", "680",
-                "680", "610", "820", "815", "815", "760", "760", "853", "1043",
-                "600", "600", "797", "480", "480", "480", "450", "450", "450", "816"
-            ]
-        }
-
         # Define hours
         hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
 
@@ -464,7 +468,7 @@ def heatmap_data():
         total_plants = len(plant_mapping['plant_names'])
         for idx, (o_id, pl_id, plant_name) in enumerate(zip(
             plant_mapping['o_ids'], 
-            plant_mapping['pl_ids'], 
+            plant_mapping['uevcb_ids'], 
             plant_mapping['plant_names']
         )):
             try:
@@ -595,3 +599,108 @@ def fetch_plant_data(date, o_id, pl_id, dpp_url):
             else:
                 print(f"All retries failed for plant {pl_id}")
                 return [0] * 24
+
+@main.route('/realtime_heatmap_data', methods=['POST'])
+def realtime_heatmap_data():
+    try:
+        data = request.json
+        selected_date = data.get('date')
+        
+        if not selected_date:
+            return jsonify({"code": 400, "error": "Missing 'date' parameter"})
+
+        # Define hours
+        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+
+        # Create an empty DataFrame
+        df = pd.DataFrame(index=hours, columns=plant_mapping['plant_names'])
+        
+        # Create a dictionary to track how many times each powerplant ID is used
+        p_id_count = {}
+        for p_id in plant_mapping['p_ids']:
+            p_id_count[p_id] = plant_mapping['p_ids'].count(p_id)
+
+        # Create a mapping of powerplant ID to its indices in the plant list
+        p_id_indices = {}
+        for idx, p_id in enumerate(plant_mapping['p_ids']):
+            if p_id not in p_id_indices:
+                p_id_indices[p_id] = []
+            p_id_indices[p_id].append(idx)
+
+        # Fetch realtime data for each unique powerplant
+        unique_p_ids = set(plant_mapping['p_ids'])
+        for p_id in unique_p_ids:
+            try:
+                print(f"Fetching realtime data for powerplant ID: {p_id}")
+                
+                request_data = {
+                    "startDate": f"{selected_date}T00:00:00+03:00",
+                    "endDate": f"{selected_date}T23:59:59+03:00",
+                    "powerPlantId": str(p_id)
+                }
+
+                # Setup session
+                session = Session()
+                retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
+                session.mount('https://', HTTPAdapter(max_retries=retries))
+                
+                # Get authentication token
+                tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+
+                # Make API request
+                response = session.post(
+                    current_app.config['REALTIME_URL'],
+                    json=request_data,
+                    headers={'TGT': tgt_token},
+                    timeout=(5, 15)
+                )
+                response.raise_for_status()
+                
+                # Process response data
+                items = response.json().get('items', [])
+                
+                # Extract hourly values
+                hourly_values = [0] * 24
+                for item in items:
+                    hour_str = item.get('hour', '00:00')
+                    hour = int(hour_str.split(':')[0])
+                    total = item.get('total', 0)
+                    hourly_values[hour] = total
+
+                # Distribute the values among all instances of this powerplant
+                count = p_id_count[p_id]
+                distributed_values = [val / count for val in hourly_values]
+                
+                # Assign the distributed values to all instances of this powerplant
+                for idx in p_id_indices[p_id]:
+                    plant_name = plant_mapping['plant_names'][idx]
+                    df[plant_name] = distributed_values
+                
+            except Exception as e:
+                print(f"Error fetching realtime data for powerplant {p_id}: {str(e)}")
+                # Set zero values for all instances of this powerplant
+                for idx in p_id_indices[p_id]:
+                    plant_name = plant_mapping['plant_names'][idx]
+                    df[plant_name] = [0] * 24
+
+        # Create plant labels with capacities
+        plant_labels = [
+            f"{name}--{capacity} Mw" 
+            for name, capacity in zip(plant_mapping['plant_names'], plant_mapping['capacities'])
+        ]
+
+        # Convert DataFrame to JSON response
+        response_data = {
+            "code": 200,
+            "data": {
+                "hours": df.index.tolist(),
+                "plants": plant_labels,
+                "values": df.values.tolist()
+            }
+        }
+
+        return jsonify(response_data)
+    
+    except Exception as e:
+        print(f"Error in realtime_heatmap_data: {str(e)}")
+        return jsonify({"code": 500, "error": str(e)})
