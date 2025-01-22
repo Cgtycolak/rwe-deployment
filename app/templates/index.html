@@ -1153,6 +1153,43 @@
             </div>
         </div>
     </div>
+
+    <!-- Generation Heatmap section -->
+    <div class="content-section" data-section="generation-heatmap">
+        <div class="container">
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="form-group">
+                        <label for="heatmap_date">Select Date:</label>
+                        <input type="date" id="heatmap_date" class="form-control">
+                    </div>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button id="load_heatmap" class="btn btn-primary position-relative" style="min-width: 120px;">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        <span class="button-content">Load Heatmap</span>
+                    </button>
+                </div>
+            </div>
+            <div class="row">
+                <!-- First Version Heatmap -->
+                <div class="col-12 mb-4">
+                    <h5 class="text-center">KGUP First Version</h5>
+                    <div id="generation_heatmap_first_version"></div>
+                </div>
+                <!-- Current Version Heatmap -->
+                <div class="col-12 mb-4">
+                    <h5 class="text-center">KGUP Final Version</h5>
+                    <div id="generation_heatmap_current"></div>
+                </div>
+                <!-- Difference Heatmap -->
+                <div class="col-12">
+                    <h5 class="text-center">KGUP Difference (Final - First)</h5>
+                    <div id="generation_heatmap_difference"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 {% block page_scripts %}

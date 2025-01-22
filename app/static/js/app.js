@@ -4,6 +4,7 @@ import { postData, toggleLoading, displayMessage, updateGlobal, switcher } from 
 import { HTMLSearchableSelect } from './classes/HTMLSearchableSelect.js';
 import { aic } from './modules/aic.js';
 import { generationComparison } from './modules/generation-comparison.js';
+import { heatmap } from './modules/heatmap.js';
 
 // Main app object
 const app = {
@@ -15,6 +16,7 @@ const app = {
     realtime,
     aic,
     generationComparison,
+    heatmap,
     helpers: {
         toggleLoading: function (show) {
             const loader = document.getElementById('aic_loading');
@@ -51,6 +53,8 @@ const app = {
             this.aic.setup(this.helpers);
             this.aic.init();
             this.generationComparison.setup({ displayMessage });
+            this.heatmap.setup(this.helpers);
+            this.heatmap.init();
             
             // Initial section visibility is handled by base.html script
         });
