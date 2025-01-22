@@ -28,6 +28,7 @@ export const heatmap = {
         const button = document.getElementById('load_heatmap');
         const spinner = button.querySelector('.spinner-border');
         const buttonText = button.querySelector('.button-content');
+        const heatmapContainer = document.getElementById('heatmap_container');
         
         try {
             // Show loading state
@@ -61,6 +62,9 @@ export const heatmap = {
             const currentVersionResult = await currentVersionResponse.json();
 
             if (firstVersionResult.code === 200 && currentVersionResult.code === 200) {
+                // Show the container before displaying the heatmaps
+                heatmapContainer.style.display = 'block';
+                
                 // Display both versions
                 this.processAndDisplayHeatmap(firstVersionResult.data, selectedDate, 'first');
                 this.processAndDisplayHeatmap(currentVersionResult.data, selectedDate, 'current');
@@ -82,6 +86,8 @@ export const heatmap = {
         } catch (error) {
             console.error('Error loading heatmap data:', error);
             this.displayMessage("Error loading heatmap data", "danger");
+            // Hide the container if there's an error
+            heatmapContainer.style.display = 'none';
         } finally {
             button.disabled = false;
             spinner.classList.add('d-none');
