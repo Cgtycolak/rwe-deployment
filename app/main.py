@@ -529,18 +529,18 @@ def get_plant_generation_data(date, o_id, pl_id, dpp_url):
     Fetch generation data for a specific plant and date using DPP endpoint.
     """
     try:
-        # Setup session with retries and timeouts
+        # Setup session with optimized retries and timeouts
         session = Session()
         retries = Retry(
-            total=3,  # Maximum number of retries
-            backoff_factor=0.5,  # Time to wait between retries (0.5 * (2 ** retry))
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["POST", "GET"]  # Allow retrying on POST requests
+            total=2,  # Reduced from 3 to 2
+            backoff_factor=0.3,  # Reduced from 0.5 to 0.3
+            status_forcelist=[500, 502, 503, 504],  # Removed 429 as it's rare
+            allowed_methods=["POST"]  # Only allow POST retries
         )
         adapter = HTTPAdapter(max_retries=retries)
         session.mount('https://', adapter)
 
-        # Get authentication token
+        # Get authentication token (consider caching this)
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
 
         # Format date for API request
@@ -556,12 +556,12 @@ def get_plant_generation_data(date, o_id, pl_id, dpp_url):
             "uevcbId": str(pl_id)
         }
 
-        # Make API request with timeout
+        # Make API request with reduced timeout
         response = session.post(
             dpp_url,
             json=request_data,
             headers={'TGT': tgt_token},
-            timeout=(5, 15)
+            timeout=(3, 7)  # Reduced from (5, 15) to (3, 7)
         )
         response.raise_for_status()
         
@@ -575,8 +575,8 @@ def get_plant_generation_data(date, o_id, pl_id, dpp_url):
             total = item.get('toplam', 0)
             hourly_data[f"{hour.zfill(2)}:00"] = total
 
-        # Add small delay between requests to avoid overwhelming the API
-        time.sleep(0.1)
+        # Reduced delay between requests
+        time.sleep(0.05)  # Reduced from 0.1 to 0.05
         
         return hourly_data
 
@@ -587,10 +587,10 @@ def get_plant_generation_data(date, o_id, pl_id, dpp_url):
 def fetch_plant_data(date, o_id, pl_id, dpp_url):
     """
     Fetch hourly generation data for a specific plant.
-    Retries up to 3 times if there's a failure.
+    Optimized retry logic.
     """
-    max_retries = 3
-    retry_delay = 1  # seconds
+    max_retries = 2  # Reduced from 3 to 2
+    retry_delay = 0.5  # Reduced from 1 to 0.5
     
     for attempt in range(max_retries):
         try:
