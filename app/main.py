@@ -41,7 +41,27 @@ plant_mapping = {
         "927", "904", "900", "935", "607", "770", "443", "443", "680",
         "680", "610", "820", "815", "815", "760", "760", "853", "1043",
         "600", "600", "797", "480", "480", "480", "450", "450", "450", "816"
-    ]
+    ],
+}
+
+export_coal_mapping = {
+    'plant_names': [
+        "ZETES 1", "ZETES 2-A", "ZETES 2-B", "ZETES 3-A", "ZETES 3-B", "HUNUTLU TES_TR1", 
+            "HUNUTLU TES_TR2", "CENAL TES(TR1+TRA)", "CENAL TES(TR2)", "İSKENDERUN İTHAL KÖMÜR SANTRALI-2", 
+            "İSKENDERUN İTHAL KÖMÜR SANTRALI-1", "ATLAS TES", "İÇDAŞ BEKİRLİ 1", "İÇDAŞ BEKİRLİ 2", "İÇDAŞ BİGA TERMİK SANTRALİ_1",
+            "İÇDAŞ BİGA TERMİK SANTRALİ_2", "İÇDAŞ BİGA TERMİK SANTRALİ_3", "İZDEMİR ENERJİ", "ÇOLAKOĞLU OP-2 SANTRALİ"
+    ],
+    'o_ids': [
+        603, 603, 603, 603, 603, 18921, 18921, 11033, 11033, 13257, 13257, 7639,
+        4831, 4831, 369, 369, 369, 6999, 149
+    ],
+    'uevcb_ids': [
+        18588, 25501, 28365, 3196007, 3196567, 3220150, 3221490, 3200210, 
+        3217890, 3208212, 3208213, 1478766, 61976, 1542318, 2728, 4054, 4136, 952237, 3718
+    ],
+    'capacities': ["2790", "2790", "2790", "2790", "2790", "1320", "1320 ", "1320", "1320", "1308", "1308",
+                   "1260", "1260", "1200", " 1200", "1200", "405", "370"],
+    'p_ids': []
 }
 
 @main.route('/', methods=['GET'])
@@ -703,4 +723,63 @@ def realtime_heatmap_data():
     
     except Exception as e:
         print(f"Error in realtime_heatmap_data: {str(e)}")
+        return jsonify({"code": 500, "error": str(e)})
+
+@main.route('/export_coal_heatmap_data', methods=['POST'])
+def export_coal_heatmap_data():
+    try:
+        data = request.json
+        selected_date = data.get('date')
+        version = data.get('version', 'first')
+        
+        if not selected_date:
+            return jsonify({"code": 400, "error": "Missing 'date' parameter"})
+
+        # Use different URLs based on version
+        dpp_url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
+        
+        # Define hours
+        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+
+        # Create an empty DataFrame for export coal plants only
+        df = pd.DataFrame(index=hours, columns=export_coal_mapping['plant_names'])
+        
+        # Fetch data for each export coal plant
+        total_plants = len(export_coal_mapping['plant_names'])
+        for idx, (o_id, pl_id, plant_name) in enumerate(zip(
+            export_coal_mapping['o_ids'], 
+            export_coal_mapping['uevcb_ids'], 
+            export_coal_mapping['plant_names']
+        )):
+            try:
+                print(f"Fetching data for export coal plant {idx + 1}/{total_plants}: {plant_name}")
+                plant_data = fetch_plant_data(selected_date, o_id, pl_id, dpp_url)
+                if plant_data is not None:
+                    df[plant_name] = plant_data
+                else:
+                    df[plant_name] = 0
+            except Exception as e:
+                print(f"Error fetching data for plant {plant_name}: {str(e)}")
+                df[plant_name] = 0
+
+        # Create plant labels with capacities
+        plant_labels = [
+            f"{name}--{capacity} Mw" 
+            for name, capacity in zip(export_coal_mapping['plant_names'], export_coal_mapping['capacities'])
+        ]
+
+        # Convert DataFrame to JSON response
+        response_data = {
+            "code": 200,
+            "data": {
+                "hours": df.index.tolist(),
+                "plants": plant_labels,
+                "values": df.values.tolist()
+            }
+        }
+
+        return jsonify(response_data)
+    
+    except Exception as e:
+        print(f"Error in export_coal_heatmap_data: {str(e)}")
         return jsonify({"code": 500, "error": str(e)})

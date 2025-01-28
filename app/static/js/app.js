@@ -5,6 +5,7 @@ import { HTMLSearchableSelect } from './classes/HTMLSearchableSelect.js';
 import { aic } from './modules/aic.js';
 import { generationComparison } from './modules/generation-comparison.js';
 import { heatmap } from './modules/heatmap.js';
+import { exportCoalHeatmap } from './modules/exportCoalHeatmap.js';
 
 // Main app object
 const app = {
@@ -17,6 +18,7 @@ const app = {
     aic,
     generationComparison,
     heatmap,
+    exportCoalHeatmap,
     helpers: {
         toggleLoading: function (show) {
             const loader = document.getElementById('aic_loading');
@@ -25,7 +27,22 @@ const app = {
             }
         },
         displayMessage: function (message, type) {
-            // Your existing message display logic
+            const alertContainer = document.getElementById('alert_messages');
+            if (alertContainer) {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+                alertDiv.role = 'alert';
+                alertDiv.innerHTML = `
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                alertContainer.appendChild(alertDiv);
+                
+                // Auto-dismiss after 5 seconds
+                setTimeout(() => {
+                    alertDiv.remove();
+                }, 5000);
+            }
         },
         toggleButtonLoading: function (button, isLoading) {
             if (!button) return;
@@ -35,11 +52,11 @@ const app = {
 
             if (isLoading) {
                 button.disabled = true;
-                if (spinner) spinner.style.display = 'inline-block';
+                if (spinner) spinner.classList.remove('d-none');
                 if (content) content.style.opacity = '0.5';
             } else {
                 button.disabled = false;
-                if (spinner) spinner.style.display = 'none';
+                if (spinner) spinner.classList.add('d-none');
                 if (content) content.style.opacity = '1';
             }
         }
@@ -55,6 +72,8 @@ const app = {
             this.generationComparison.setup({ displayMessage });
             this.heatmap.setup(this.helpers);
             this.heatmap.init();
+            this.exportCoalHeatmap.setup(this.helpers);
+            this.exportCoalHeatmap.init();
             
             // Initial section visibility is handled by base.html script
         });

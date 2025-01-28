@@ -1206,6 +1206,45 @@
             </div>
         </div>
     </div>
+
+    <!-- Export Coal Heatmap section -->
+    <div class="content-section" data-section="export-coal-heatmap">
+        <div class="container">
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="form-group">
+                        <label for="export_coal_date">Select Date:</label>
+                        <input type="date" id="export_coal_date" class="form-control">
+                    </div>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button id="load_export_coal_heatmap" class="btn btn-primary position-relative" style="min-width: 120px;">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        <span class="button-content">Load Heatmap</span>
+                    </button>
+                </div>
+            </div>
+            <div class="row">
+                <div id="export_coal_heatmap_container" class="col-12" style="display: none;">
+                    <!-- First Version Heatmap -->
+                    <div class="mb-4">
+                        <h5 class="text-center">Export Coal KGUP First Version</h5>
+                        <div id="export_coal_heatmap_first_version"></div>
+                    </div>
+                    <!-- Current Version Heatmap -->
+                    <div class="mb-4">
+                        <h5 class="text-center">Export Coal KGUP Final Version</h5>
+                        <div id="export_coal_heatmap_current"></div>
+                    </div>
+                    <!-- Difference Heatmap -->
+                    <div class="mb-4">
+                        <h5 class="text-center">Export Coal KGUP Difference (Final - First)</h5>
+                        <div id="export_coal_heatmap_difference"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 {% block page_scripts %}
