@@ -197,6 +197,69 @@
                 font-size: 1rem;
             }
         }
+
+        /* Add to your existing styles */
+        .home-link {
+            color: var(--text-light);
+            text-decoration: none;
+            font-size: 1.2rem;
+        }
+
+        .home-link:hover {
+            color: var(--hover-color);
+            text-decoration: none;
+        }
+
+        /* Add this to your content section styles */
+        .content-section[data-section="home"] {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .welcome-section {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .dashboard-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 40px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .quick-links {
+            margin-top: 40px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .quick-link-card {
+            background: var(--primary-color);
+            color: var(--text-light);
+            padding: 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .quick-link-card:hover {
+            background: var(--hover-color);
+            transform: translateY(-5px);
+        }
     </style>
     {% block page_styles %}{% endblock %}
 </head>
@@ -204,10 +267,18 @@
     <!-- Sidebar -->
     <nav class="sidebar">
         <div class="sidebar-header">
-            <h1>RWE Dashboard</h1>
+            <h1><a href="#" class="home-link" data-section="home">RWE Dashboard</a></h1>
             <button class="toggle-sidebar">
                 <i class="fas fa-bars"></i>
             </button>
+        </div>
+
+        <!-- Add Home section as the first nav item -->
+        <div class="nav-item">
+            <a href="#" class="nav-link" data-section="home">
+                <i class="fas fa-home"></i>
+                <span>Home</span>
+            </a>
         </div>
 
         <!-- Realtime Monitoring -->
@@ -274,7 +345,13 @@
                 mainContent.classList.toggle('expanded');
             });
 
-            // Navigation functionality
+            // Add click handler for home link
+            document.querySelector('.home-link').addEventListener('click', (e) => {
+                e.preventDefault();
+                showSection('home');
+            });
+
+            // Update navigation functionality
             function showSection(sectionId) {
                 // Update navigation links
                 navLinks.forEach(link => {
@@ -296,24 +373,42 @@
                     targetSection.style.display = 'block';
                 }
 
-                // Initialize section-specific functionality
+                // Initialize section-specific functionality only when viewing that section
                 if (window.app) {
-                    switch (sectionId) {
-                        case 'aic-realtime':
-                            if (window.app.aic) {
-                                window.app.aic.init();
-                            }
-                            break;
-                        case 'generation-comparison':
-                            if (window.app.generationComparison) {
-                                window.app.generationComparison.init();
-                            }
-                            break;
-                        case 'export-coal-heatmap':
-                            if (window.app.exportCoalHeatmap) {
-                                window.app.exportCoalHeatmap.init();
-                            }
-                            break;
+                    // First, cleanup any active intervals or subscriptions
+                    if (window.app.cleanup) {
+                        window.app.cleanup();
+                    }
+
+                    // Then initialize the specific section if needed
+                    if (sectionId !== 'home') {
+                        switch (sectionId) {
+                            case 'kgup-realtime':
+                                if (window.app.realtime) {
+                                    window.app.realtime.init();
+                                }
+                                break;
+                            case 'aic-realtime':
+                                if (window.app.aic) {
+                                    window.app.aic.init();
+                                }
+                                break;
+                            case 'generation-comparison':
+                                if (window.app.generationComparison) {
+                                    window.app.generationComparison.init();
+                                }
+                                break;
+                            case 'export-coal-heatmap':
+                                if (window.app.exportCoalHeatmap) {
+                                    window.app.exportCoalHeatmap.init();
+                                }
+                                break;
+                            case 'generation-heatmap':
+                                if (window.app.heatmap) {
+                                    window.app.heatmap.init();
+                                }
+                                break;
+                        }
                     }
                 }
             }
@@ -327,11 +422,17 @@
                 });
             });
 
-            // Show initial section
-            const initialLink = document.querySelector('.nav-link.active');
-            if (initialLink) {
-                showSection(initialLink.dataset.section);
-            }
+            // Show home section initially
+            showSection('home');
+
+            // Add click handlers for quick link cards
+            document.querySelectorAll('.quick-link-card').forEach(card => {
+                card.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const sectionId = e.currentTarget.dataset.section;
+                    showSection(sectionId);
+                });
+            });
         });
     </script>
     

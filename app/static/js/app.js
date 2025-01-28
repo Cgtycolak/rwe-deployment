@@ -62,20 +62,42 @@ const app = {
         }
     },
 
+    // Add cleanup method
+    cleanup() {
+        // Clear any intervals
+        if (this.intervals) {
+            Object.values(this.intervals).forEach(interval => {
+                if (interval) clearInterval(interval);
+            });
+        }
+        
+        // Reset any active requests
+        if (this.activeRequests) {
+            Object.values(this.activeRequests).forEach(request => {
+                if (request && request.abort) request.abort();
+            });
+        }
+
+        // Clear any error messages
+        const alertContainer = document.getElementById('alert_messages');
+        if (alertContainer) {
+            alertContainer.innerHTML = '';
+        }
+    },
+
     init() {
         $(document).ready(() => {
             setupEvents();
             
-            // Initialize modules
+            // Initialize modules but don't automatically fetch data
             this.aic.setup(this.helpers);
-            this.aic.init();
             this.generationComparison.setup({ displayMessage });
             this.heatmap.setup(this.helpers);
-            this.heatmap.init();
             this.exportCoalHeatmap.setup(this.helpers);
-            this.exportCoalHeatmap.init();
             
-            // Initial section visibility is handled by base.html script
+            // Store intervals and active requests
+            this.intervals = {};
+            this.activeRequests = {};
         });
     }
 };

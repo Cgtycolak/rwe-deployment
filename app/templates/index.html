@@ -362,9 +362,116 @@
     background: #2d3436 !important;
     opacity: 1 !important;
   }
+
+  /* Add to your existing styles */
+  .home-link {
+    color: var(--text-light);
+    text-decoration: none;
+    font-size: 1.2rem;
+  }
+
+  .home-link:hover {
+    color: var(--hover-color);
+    text-decoration: none;
+  }
+
+  /* Add this to your content section styles */
+  .content-section[data-section="home"] {
+    text-align: center;
+    padding: 40px;
+  }
+
+  .welcome-section {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .dashboard-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-top: 40px;
+  }
+
+  .stat-card {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: transform 0.3s ease;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-5px);
+  }
+
+  .quick-links {
+    margin-top: 40px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+  }
+
+  .quick-link-card {
+    background: var(--primary-color);
+    color: var(--text-light);
+    padding: 20px;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: all 0.3s ease;
+  }
+
+  .quick-link-card:hover {
+    background: var(--hover-color);
+    transform: translateY(-5px);
+  }
 </style>
 
 <div class="container-fluid">
+    <!-- Add this as the first content section -->
+    <div class="content-section" data-section="home">
+        <div class="welcome-section">
+            <h1 class="mb-4">Welcome to RWE Dashboard</h1>
+            <p class="lead">Your comprehensive power plant monitoring and analysis platform</p>
+            
+            <div class="dashboard-stats">
+                <div class="stat-card">
+                    <i class="fas fa-bolt mb-3" style="font-size: 2rem; color: #3498db;"></i>
+                    <h3>Real-time Monitoring</h3>
+                    <p>Track power generation and performance metrics in real-time</p>
+                </div>
+                <div class="stat-card">
+                    <i class="fas fa-chart-line mb-3" style="font-size: 2rem; color: #2ecc71;"></i>
+                    <h3>Data Analysis</h3>
+                    <p>Comprehensive analysis tools for generation data</p>
+                </div>
+                <div class="stat-card">
+                    <i class="fas fa-fire mb-3" style="font-size: 2rem; color: #e74c3c;"></i>
+                    <h3>Heatmap Reports</h3>
+                    <p>Visualize generation patterns and trends</p>
+                </div>
+            </div>
+
+            <div class="quick-links">
+                <a href="#" class="quick-link-card" data-section="kgup-realtime">
+                    <i class="fas fa-bolt mb-2"></i>
+                    <h4>KGÜP - Realtime</h4>
+                    <p>Monitor Planned Generation, Realtime Generation and the Difference between them</p>
+                </a>
+                <a href="#" class="quick-link-card" data-section="generation-comparison">
+                    <i class="fas fa-chart-bar mb-2"></i>
+                    <h4>Generation Comparison</h4>
+                    <p>Compare generation across fuel types</p>
+                </a>
+                <a href="#" class="quick-link-card" data-section="generation-heatmap">
+                    <i class="fas fa-fire mb-2"></i>
+                    <h4>KGUP Heatmap</h4>
+                    <p>View Planned/Realtime Generation Heatmaps of the top 20 Natural GasPower Plants</p>
+                </a>
+            </div>
+        </div>
+    </div>
+
     <!-- KGUP-Realtime section -->
     <div class="content-section" data-section="kgup-realtime">
         <div class="container-fluid row m-0 p-0" id="app">
