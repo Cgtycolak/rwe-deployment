@@ -10,193 +10,248 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <!-- Custom CSS -->
     <style>
-        /* Base styles for all sections */
-        .content-section {
-            display: none;  /* Hide all sections by default */
-            width: 100%;
-            min-height: 400px;
-            padding: 20px;
-            background: white;
+        :root {
+            --sidebar-width: 280px;
+            --header-height: 60px;
+            --primary-color: #2c3e50;
+            --secondary-color: #34495e;
+            --text-light: #ecf0f1;
+            --hover-color: #3498db;
         }
 
-        /* Only show active section */
+        body {
+            min-height: 100vh;
+            background-color: #f8f9fa;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: var(--sidebar-width);
+            background-color: var(--primary-color);
+            padding: 0;
+            z-index: 1000;
+            transition: all 0.3s ease;
+            overflow-x: hidden;
+        }
+
+        .sidebar.collapsed {
+            width: 60px;
+        }
+
+        .sidebar.collapsed .nav-link span,
+        .sidebar.collapsed .nav-category,
+        .sidebar.collapsed .sidebar-header h1 {
+            display: none;
+        }
+
+        .sidebar.collapsed .nav-link {
+            padding: 0.8rem 1.2rem;
+            justify-content: center;
+        }
+
+        .sidebar.collapsed .nav-link i {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+
+        .sidebar-header {
+            height: var(--header-height);
+            padding: 1rem;
+            background-color: var(--secondary-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .sidebar-header h1 {
+            color: var(--text-light);
+            font-size: 1.2rem;
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .toggle-sidebar {
+            color: var(--text-light);
+            background: none;
+            border: none;
+            padding: 0.5rem;
+            cursor: pointer;
+        }
+
+        .nav-category {
+            padding: 0.5rem 1rem;
+            color: var(--text-light);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            margin-top: 1rem;
+        }
+
+        .nav-item {
+            position: relative;
+        }
+
+        .nav-link {
+            padding: 0.8rem 1rem;
+            color: var(--text-light);
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .nav-link:hover {
+            background-color: var(--hover-color);
+            color: white;
+        }
+
+        .nav-link.active {
+            background-color: var(--hover-color);
+            color: white;
+        }
+
+        .nav-link span {
+            transition: opacity 0.3s ease;
+            opacity: 1;
+        }
+
+        .nav-link i {
+            width: 20px;
+            margin-right: 10px;
+            text-align: center;
+            transition: margin 0.3s ease;
+        }
+
+        /* Main Content Styles */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .main-content.expanded {
+            margin-left: 60px;
+        }
+
+        /* Content Section Styles */
+        .content-section {
+            display: none;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
         .content-section.active {
             display: block;
         }
 
-        /* Section-specific styles */
-        .content-section[data-section="kgup-realtime"] .container-fluid {
-            padding: 0;
-        }
-
-        .content-section[data-section="aic-realtime"] {
-            background: white;
-        }
-
-        .content-section[data-section="generation-comparison"] {
-            background: white;
-        }
-
-        /* Header styles */
-        .header {
-            background-color: #2c3e50;
-            padding: 1.5rem 0;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .header h1 {
-            font-size: 1.8rem;
-            font-weight: 600;
-            margin: 0;
-            color: white;
-        }
-
-        /* Navigation button styles */
-        .nav-button {
-            color: white;
-            background-color: transparent;
-            border: 2px solid rgba(255, 255, 255, 0.8);
-            padding: 0.6rem 1.2rem;
-            margin: 0 0.5rem;
-            border-radius: 5px;
-            transition: all 0.2s ease-in-out;
-            font-weight: 500;
-            font-size: 0.95rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .nav-button:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-            border-color: white;
-            transform: translateY(-1px);
-        }
-
-        .nav-button.active {
-            background-color: white;
-            color: #2c3e50;
-            border-color: white;
-            font-weight: 600;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 992px) {
-            .header {
-                padding: 1rem 0;
+        /* Responsive Adjustments */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 60px;
             }
 
-            .header h1 {
-                font-size: 1.5rem;
-                margin-bottom: 1rem;
+            .sidebar .nav-link span,
+            .sidebar .nav-category,
+            .sidebar .sidebar-header h1 {
+                display: none;
             }
 
-            .nav-buttons-container {
-                flex-direction: column;
-                align-items: stretch;
-                gap: 0.5rem;
+            .sidebar .nav-link {
+                padding: 0.8rem 1.2rem;
+                justify-content: center;
             }
 
-            .nav-button {
-                margin: 0.25rem 0;
-                width: 100%;
-                text-align: center;
+            .sidebar .nav-link i {
+                margin: 0;
+                font-size: 1.2rem;
             }
-        }
 
-        .dynamic_table_cont {
-            max-height: 70vh;
-            overflow-y: auto;
-        }
+            .sidebar.expanded {
+                width: var(--sidebar-width);
+            }
 
-        .table thead {
-            position: sticky;
-            top: 0;
-            z-index: 1;
-        }
+            .sidebar.expanded .nav-link span,
+            .sidebar.expanded .nav-category,
+            .sidebar.expanded .sidebar-header h1 {
+                display: block;
+            }
 
-        .container-fluid {
-            margin-top: 2rem;
-        }
+            .sidebar.expanded .nav-link {
+                padding: 0.8rem 1rem;
+                justify-content: flex-start;
+            }
 
-        .table-responsive {
-            min-height: 200px;
-            border: 1px solid #dee2e6;
-        }
-
-        .table-container {
-            margin: 20px 0;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-
-        .table {
-            margin-bottom: 0;
-            background-color: white;
-        }
-
-        .table thead th {
-            background-color: #2c3e50;
-            color: white;
-            border-bottom: 2px solid #dee2e6;
-        }
-
-        .table td, .table th {
-            padding: 12px;
-            vertical-align: middle;
-        }
-
-        .btn-group {
-            margin-bottom: 1rem;
-        }
-
-        .comparison-range-btn {
-            margin: 0 5px;
-        }
-
-        #comparison_loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(255,255,255,0.9);
-            padding: 20px;
-            border-radius: 8px;
-            z-index: 1000;
+            .sidebar.expanded .nav-link i {
+                margin-right: 10px;
+                font-size: 1rem;
+            }
         }
     </style>
     {% block page_styles %}{% endblock %}
 </head>
 <body>
-    <!-- Header Navigation -->
-    <header class="header">
-        <div class="container">
-            <div class="d-flex flex-column flex-lg-row justify-content-between align-items-center">
-                <h1>RWE Dashboard</h1>
-                <div class="nav-buttons-container d-flex">
-                    <button class="nav-button active" data-section="kgup-realtime">
-                        KGÜP - Realtime
-                    </button>
-                    <button class="nav-button" data-section="aic-realtime">
-                        AIC - REALTIME - GENERATION
-                    </button>
-                    <button class="nav-button" data-section="generation-comparison">
-                        Generation Comparison
-                    </button>
-                    <button class="nav-button" data-section="generation-heatmap">
-                        KGUP Heatmap
-                    </button>
-                    <button class="nav-button" data-section="export-coal-heatmap">
-                        Export Coal Heatmap
-                    </button>
-                </div>
-            </div>
+    <!-- Sidebar -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h1>RWE Dashboard</h1>
+            <button class="toggle-sidebar">
+                <i class="fas fa-bars"></i>
+            </button>
         </div>
-    </header>
+
+        <!-- Realtime Monitoring -->
+        <div class="nav-category">Realtime Monitoring</div>
+        <div class="nav-item">
+            <a href="#" class="nav-link active" data-section="kgup-realtime">
+                <i class="fas fa-bolt"></i>
+                <span>KGÜP - Realtime</span>
+            </a>
+        </div>
+        <div class="nav-item">
+            <a href="#" class="nav-link" data-section="aic-realtime">
+                <i class="fas fa-chart-line"></i>
+                <span>AIC - Realtime - Generation</span>
+            </a>
+        </div>
+
+        <!-- Data Analysis -->
+        <div class="nav-category">Data Analysis</div>
+        <div class="nav-item">
+            <a href="#" class="nav-link" data-section="generation-comparison">
+                <i class="fas fa-chart-bar"></i>
+                <span>Generation Comparison</span>
+            </a>
+        </div>
+
+        <!-- Reports & Heatmaps -->
+        <div class="nav-category">Reports & Heatmaps</div>
+        <div class="nav-item">
+            <a href="#" class="nav-link" data-section="generation-heatmap">
+                <i class="fas fa-fire"></i>
+                <span>KGUP Heatmap</span>
+            </a>
+        </div>
+        <div class="nav-item">
+            <a href="#" class="nav-link" data-section="export-coal-heatmap">
+                <i class="fas fa-industry"></i>
+                <span>Export Coal Heatmap</span>
+            </a>
+        </div>
+    </nav>
 
     <!-- Main Content -->
-    <main class="container-fluid">
+    <main class="main-content">
         {% block body %}{% endblock %}
     </main>
 
@@ -208,28 +263,38 @@
     <!-- Navigation Script -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Initialize section visibility
+            const sidebar = document.querySelector('.sidebar');
+            const mainContent = document.querySelector('.main-content');
+            const toggleButton = document.querySelector('.toggle-sidebar');
+            const navLinks = document.querySelectorAll('.nav-link');
+
+            // Toggle sidebar
+            toggleButton.addEventListener('click', () => {
+                sidebar.classList.toggle('collapsed');
+                mainContent.classList.toggle('expanded');
+            });
+
+            // Navigation functionality
             function showSection(sectionId) {
-                // Hide all sections
+                // Update navigation links
+                navLinks.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.dataset.section === sectionId) {
+                        link.classList.add('active');
+                    }
+                });
+
+                // Update content sections
                 document.querySelectorAll('.content-section').forEach(section => {
                     section.classList.remove('active');
                     section.style.display = 'none';
                 });
 
-                // Show selected section
                 const targetSection = document.querySelector(`.content-section[data-section="${sectionId}"]`);
                 if (targetSection) {
                     targetSection.classList.add('active');
                     targetSection.style.display = 'block';
                 }
-
-                // Update navigation buttons
-                document.querySelectorAll('.nav-button').forEach(btn => {
-                    btn.classList.remove('active');
-                    if (btn.dataset.section === sectionId) {
-                        btn.classList.add('active');
-                    }
-                });
 
                 // Initialize section-specific functionality
                 if (window.app) {
@@ -244,22 +309,28 @@
                                 window.app.generationComparison.init();
                             }
                             break;
+                        case 'export-coal-heatmap':
+                            if (window.app.exportCoalHeatmap) {
+                                window.app.exportCoalHeatmap.init();
+                            }
+                            break;
                     }
                 }
             }
 
             // Set up navigation click handlers
-            document.querySelectorAll('.nav-button').forEach(button => {
-                button.addEventListener('click', (e) => {
-                    const sectionId = e.target.dataset.section;
+            navLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const sectionId = e.currentTarget.dataset.section;
                     showSection(sectionId);
                 });
             });
 
             // Show initial section
-            const initialButton = document.querySelector('.nav-button.active');
-            if (initialButton) {
-                showSection(initialButton.dataset.section);
+            const initialLink = document.querySelector('.nav-link.active');
+            if (initialLink) {
+                showSection(initialLink.dataset.section);
             }
         });
     </script>
