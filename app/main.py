@@ -1025,7 +1025,7 @@ def get_all_table_data():
         
         # Set up session with retries
         session = Session()
-        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
+        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 443, 502, 503, 504])
         session.mount('https://', HTTPAdapter(max_retries=retries))
         
         # Prepare dates for different endpoints
