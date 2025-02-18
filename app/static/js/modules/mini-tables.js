@@ -4,75 +4,25 @@ export const miniTables = {
     },
 
     async init() {
-        await Promise.all([
-            this.loadOrderSummary(),
-            this.loadSMPData(),
-            this.loadPFCData(),
-            this.loadSFCData()
-        ]);
+        await this.loadAllData();
     },
 
-    async loadOrderSummary() {
+    async loadAllData() {
         try {
-            const response = await fetch('/get_order_summary');
+            const response = await fetch('/get_all_table_data');
             const result = await response.json();
             
             if (result.code === 200) {
-                this.renderOrderSummaryTable(result.data);
+                this.renderOrderSummaryTable(result.data.orderSummary);
+                this.renderSMPTable(result.data.smp.data, result.data.smp.average);
+                this.renderPFCTable(result.data.pfc.data, result.data.pfc.average);
+                this.renderSFCTable(result.data.sfc.data, result.data.sfc.average);
             } else {
                 throw new Error(result.message);
             }
         } catch (error) {
-            console.error('Error loading order summary:', error);
-            this.helpers.displayMessage('Error loading order summary data', 'error');
-        }
-    },
-
-    async loadSMPData() {
-        try {
-            const response = await fetch('/get_smp_data');
-            const result = await response.json();
-            
-            if (result.code === 200) {
-                this.renderSMPTable(result.data, result.average);
-            } else {
-                throw new Error(result.message);
-            }
-        } catch (error) {
-            console.error('Error loading SMP data:', error);
-            this.helpers.displayMessage('Error loading SMP data', 'error');
-        }
-    },
-
-    async loadPFCData() {
-        try {
-            const response = await fetch('/get_pfc_data');
-            const result = await response.json();
-            
-            if (result.code === 200) {
-                this.renderPFCTable(result.data, result.average);
-            } else {
-                throw new Error(result.message);
-            }
-        } catch (error) {
-            console.error('Error loading PFC data:', error);
-            this.helpers.displayMessage('Error loading PFC data', 'error');
-        }
-    },
-
-    async loadSFCData() {
-        try {
-            const response = await fetch('/get_sfc_data');
-            const result = await response.json();
-            
-            if (result.code === 200) {
-                this.renderSFCTable(result.data, result.average);
-            } else {
-                throw new Error(result.message);
-            }
-        } catch (error) {
-            console.error('Error loading SFC data:', error);
-            this.helpers.displayMessage('Error loading SFC data', 'error');
+            console.error('Error loading table data:', error);
+            this.helpers.displayMessage('Error loading table data', 'error');
         }
     },
 
