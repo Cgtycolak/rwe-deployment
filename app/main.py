@@ -8,6 +8,7 @@ from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 import pandas as pd
 import numpy as np
+import pytz
 
 main = Blueprint('main', __name__)
 
@@ -783,3 +784,231 @@ def export_coal_heatmap_data():
     except Exception as e:
         print(f"Error in export_coal_heatmap_data: {str(e)}")
         return jsonify({"code": 500, "error": str(e)})
+
+@main.route('/get_order_summary', methods=['GET'])
+def get_order_summary():
+    try:
+        # Get current time in Turkey timezone
+        tz = pytz.timezone('Europe/Istanbul')
+        current_time = datetime.now(tz)
+        
+        # Calculate start and end dates
+        yesterday = current_time - timedelta(days=1)
+        tomorrow = current_time + timedelta(days=1)
+        
+        # Format dates for API
+        start_date = yesterday.strftime("%Y-%m-%dT00:00:00+03:00")
+        end_date = tomorrow.strftime("%Y-%m-%dT23:59:59+03:00")
+        
+        # Set up session with retries
+        session = Session()
+        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+        
+        # Get authentication token
+        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+        
+        # Make API request
+        response = session.post(
+            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/order-summary-up',
+            json={
+                "startDate": start_date,
+                "endDate": end_date
+            },
+            headers={'TGT': tgt_token}
+        )
+        response.raise_for_status()
+        
+        # Get data and filter based on current time
+        data = response.json().get('items', [])
+        
+        # Filter data to show only up to 4 hours before current time
+        cutoff_time = current_time - timedelta(hours=4)
+        filtered_data = []
+        
+        for item in data:
+            item_datetime = datetime.strptime(item['date'], "%Y-%m-%dT%H:%M:%S+03:00")
+            item_datetime = tz.localize(item_datetime)
+            
+            if item_datetime <= cutoff_time:
+                filtered_data.append({
+                    'datetime': f"{item_datetime.strftime('%Y-%m-%d')} {item['hour']}",
+                    'value': item['net']
+                })
+        
+        return jsonify({
+            'code': 200,
+            'data': filtered_data
+        })
+        
+    except Exception as e:
+        print(f"Error in get_order_summary: {str(e)}")
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+@main.route('/get_smp_data', methods=['GET'])
+def get_smp_data():
+    try:
+        # Get current time in Turkey timezone
+        tz = pytz.timezone('Europe/Istanbul')
+        current_time = datetime.now(tz)
+        
+        # Get yesterday's date
+        yesterday = current_time - timedelta(days=1)
+        
+        # Format dates for API
+        start_date = yesterday.strftime("%Y-%m-%dT00:00:00+03:00")
+        end_date = yesterday.strftime("%Y-%m-%dT23:59:59+03:00")
+        
+        # Set up session with retries
+        session = Session()
+        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+        
+        # Get authentication token
+        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+        
+        # Make API request
+        response = session.post(
+            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/system-marginal-price',
+            json={
+                "startDate": start_date,
+                "endDate": end_date
+            },
+            headers={'TGT': tgt_token}
+        )
+        response.raise_for_status()
+        
+        # Process data
+        data = response.json().get('items', [])
+        processed_data = []
+        
+        for item in data:
+            item_datetime = datetime.strptime(item['date'], "%Y-%m-%dT%H:%M:%S+03:00")
+            processed_data.append({
+                'datetime': f"{item_datetime.strftime('%Y-%m-%d')} {item_datetime.strftime('%H:%M')}",
+                'value': item['systemMarginalPrice']
+            })
+        
+        # Get statistics
+        statistics = response.json().get('statistics', {})
+        average = statistics.get('smpArithmeticalAverage', 0)
+        
+        return jsonify({
+            'code': 200,
+            'data': processed_data,
+            'average': average
+        })
+        
+    except Exception as e:
+        print(f"Error in get_smp_data: {str(e)}")
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+@main.route('/get_pfc_data', methods=['GET'])
+def get_pfc_data():
+    try:
+        # Get current time in Turkey timezone
+        tz = pytz.timezone('Europe/Istanbul')
+        current_time = datetime.now(tz)
+        
+        # Calculate dates (today and two days after)
+        start_date = current_time.strftime("%Y-%m-%dT00:00:00+03:00")
+        end_date = (current_time + timedelta(days=2)).strftime("%Y-%m-%dT23:59:59+03:00")
+        
+        # Set up session with retries
+        session = Session()
+        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+        
+        # Get authentication token
+        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+        
+        # Make API request
+        response = session.post(
+            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/primary-frequency-capacity-price',
+            json={
+                "startDate": start_date,
+                "endDate": end_date
+            },
+            headers={'TGT': tgt_token}
+        )
+        response.raise_for_status()
+        
+        # Process data
+        data = response.json().get('items', [])
+        processed_data = []
+        
+        for item in data:
+            item_datetime = datetime.strptime(item['date'], "%Y-%m-%dT%H:%M:%S+03:00")
+            processed_data.append({
+                'datetime': f"{item_datetime.strftime('%Y-%m-%d')} {str(item['hour']).zfill(2)}:00",
+                'value': item['price']
+            })
+        
+        # Get statistics
+        statistics = response.json().get('statistics', {})
+        average = statistics.get('priceAvg', 0)
+        
+        return jsonify({
+            'code': 200,
+            'data': processed_data,
+            'average': average
+        })
+        
+    except Exception as e:
+        print(f"Error in get_pfc_data: {str(e)}")
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+@main.route('/get_sfc_data', methods=['GET'])
+def get_sfc_data():
+    try:
+        # Get current time in Turkey timezone
+        tz = pytz.timezone('Europe/Istanbul')
+        current_time = datetime.now(tz)
+        
+        # Calculate dates (today and two days after)
+        start_date = current_time.strftime("%Y-%m-%dT00:00:00+03:00")
+        end_date = (current_time + timedelta(days=2)).strftime("%Y-%m-%dT23:59:59+03:00")
+        
+        # Set up session with retries
+        session = Session()
+        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+        
+        # Get authentication token
+        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+        
+        # Make API request
+        response = session.post(
+            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/secondary-frequency-capacity-price',
+            json={
+                "startDate": start_date,
+                "endDate": end_date
+            },
+            headers={'TGT': tgt_token}
+        )
+        response.raise_for_status()
+        
+        # Process data
+        data = response.json().get('items', [])
+        processed_data = []
+        
+        for item in data:
+            item_datetime = datetime.strptime(item['date'], "%Y-%m-%dT%H:%M:%S+03:00")
+            processed_data.append({
+                'datetime': f"{item_datetime.strftime('%Y-%m-%d')} {str(item['hour']).zfill(2)}:00",
+                'value': item['price']
+            })
+        
+        # Get statistics
+        statistics = response.json().get('statistics', {})
+        average = statistics.get('priceAvg', 0)
+        
+        return jsonify({
+            'code': 200,
+            'data': processed_data,
+            'average': average
+        })
+        
+    except Exception as e:
+        print(f"Error in get_sfc_data: {str(e)}")
+        return jsonify({'code': 500, 'message': str(e)}), 500

@@ -6,6 +6,7 @@ import { aic } from './modules/aic.js';
 import { generationComparison } from './modules/generation-comparison.js';
 import { heatmap } from './modules/heatmap.js';
 import { exportCoalHeatmap } from './modules/exportCoalHeatmap.js';
+import { miniTables } from './modules/mini-tables.js';
 
 // Main app object
 const app = {
@@ -19,6 +20,7 @@ const app = {
     generationComparison,
     heatmap,
     exportCoalHeatmap,
+    miniTables,
     helpers: {
         toggleLoading: function (show) {
             const loader = document.getElementById('aic_loading');
@@ -89,11 +91,15 @@ const app = {
         $(document).ready(() => {
             setupEvents();
             
-            // Initialize modules but don't automatically fetch data
+            // Initialize modules
             this.aic.setup(this.helpers);
             this.generationComparison.setup({ displayMessage });
             this.heatmap.setup(this.helpers);
             this.exportCoalHeatmap.setup(this.helpers);
+            this.miniTables.setup(this.helpers);
+            
+            // Initialize mini-tables when showing home section
+            this.miniTables.init();
             
             // Store intervals and active requests
             this.intervals = {};
