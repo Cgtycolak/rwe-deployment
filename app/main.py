@@ -47,7 +47,7 @@ plant_mapping = {
 
 export_coal_mapping = {
     'plant_names': [
-        "ZETES 1", "ZETES 2-A", "ZETES 2-B", "ZETES 3-A", "ZETES 3-B", "HUNUTLU TES_TR1", 
+            "ZETES 1", "ZETES 2-A", "ZETES 2-B", "ZETES 3-A", "ZETES 3-B", "HUNUTLU TES_TR1", 
             "HUNUTLU TES_TR2", "CENAL TES(TR1+TRA)", "CENAL TES(TR2)", "İSKENDERUN İTHAL KÖMÜR SANTRALI-2", 
             "İSKENDERUN İTHAL KÖMÜR SANTRALI-1", "ATLAS TES", "İÇDAŞ BEKİRLİ 1", "İÇDAŞ BEKİRLİ 2", "İÇDAŞ BİGA TERMİK SANTRALİ_1",
             "İÇDAŞ BİGA TERMİK SANTRALİ_2", "İÇDAŞ BİGA TERMİK SANTRALİ_3", "İZDEMİR ENERJİ", "ÇOLAKOĞLU OP-2 SANTRALİ"
@@ -63,6 +63,39 @@ export_coal_mapping = {
     'capacities': ["2790", "2790", "2790", "2790", "2790", "1320", "1320 ", "1320", "1320", "1308", "1308",
                    "1260", "1260", "1200", " 1200", "1200", "405", "370", "190"],
     'p_ids': []
+}
+
+hydro_mapping = {
+    'plant_names': [
+        "ATATÜRK HES DB", "KARAKAYAHES1-6", "KEBAN HES 1-8", "ILISU BARAJI ve HES", "ALTINKAYA 1-4", 
+        "BİRECİK-NİZİP BARAJI ve HES", "DERİNER HES", "YEDİSU HES", "BEYHAN-1", "YUSUFELI BARAJI VE HES", 
+        "OYMAPINAR HES", "BOYABAT HES", "BERKE HES DB", "AŞAĞI KALEKÖY BARAJI ve HES", "H.UĞURLU 1-4",
+        "ÇETİN BARAJI ve HES", "ARTVİN BARAJI ve HES", "YEDİGÖZE HES", "ERMENEK HES1", "BORÇKA HES DB"
+    ],
+    'o_ids': [
+        195, 195, 195, 195, 195, 
+        195, 195, 4872, 8243, 195, 
+        134, 5634, 195, 12897, 195,
+        3834, 9422, 5650, 195, 195
+    ],
+    'uevcb_ids': [
+        733, 736, 744, 3211210, 801,
+        3196807, 335652, 83087, 2454986, 5000860, 
+        2415, 111617, 777, 3208350, 807,
+        3209498, 3194434, 26648, 111619, 3692
+    ],
+    'p_ids': [
+        641, 986, 979, 2543, 650,
+        978, 1570, 2302, 1849, 3056,
+        878, 864, 1074, 2531, 863,
+        2537, 1974, 1185, 947, 1278
+    ],
+    'capacities': [
+        "2.405", "1.800", "1.330", "1.208", "702", 
+        "672", "670", "627", "582", "548", 
+        "540", "513", "510",  "500", "500", 
+        "420", "332", "311", "302", "301"
+    ]
 }
 
 @main.route('/', methods=['GET'])
@@ -1133,3 +1166,62 @@ def get_all_table_data():
     except Exception as e:
         print(f"Error in get_all_table_data: {str(e)}")
         return jsonify({'code': 500, 'message': str(e)}), 500
+
+@main.route('/hydro_heatmap_data', methods=['POST'])
+def hydro_heatmap_data():
+    try:
+        data = request.json
+        selected_date = data.get('date')
+        version = data.get('version', 'first')
+        
+        if not selected_date:
+            return jsonify({"code": 400, "error": "Missing 'date' parameter"})
+
+        # Use different URLs based on version
+        dpp_url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
+        
+        # Define hours
+        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+
+        # Create an empty DataFrame for hydro plants
+        df = pd.DataFrame(index=hours, columns=hydro_mapping['plant_names'])
+        
+        # Fetch data for each hydro plant
+        total_plants = len(hydro_mapping['plant_names'])
+        for idx, (o_id, pl_id, plant_name) in enumerate(zip(
+            hydro_mapping['o_ids'], 
+            hydro_mapping['uevcb_ids'], 
+            hydro_mapping['plant_names']
+        )):
+            try:
+                print(f"Fetching data for hydro plant {idx + 1}/{total_plants}: {plant_name}")
+                plant_data = fetch_plant_data(selected_date, o_id, pl_id, dpp_url)
+                if plant_data is not None:
+                    df[plant_name] = plant_data
+                else:
+                    df[plant_name] = 0
+            except Exception as e:
+                print(f"Error fetching data for plant {plant_name}: {str(e)}")
+                df[plant_name] = 0
+
+        # Create plant labels with capacities
+        plant_labels = [
+            f"{name}--{capacity} Mw" 
+            for name, capacity in zip(hydro_mapping['plant_names'], hydro_mapping['capacities'])
+        ]
+
+        # Convert DataFrame to JSON response
+        response_data = {
+            "code": 200,
+            "data": {
+                "hours": df.index.tolist(),
+                "plants": plant_labels,
+                "values": df.values.tolist()
+            }
+        }
+
+        return jsonify(response_data)
+    
+    except Exception as e:
+        print(f"Error in hydro_heatmap_data: {str(e)}")
+        return jsonify({"code": 500, "error": str(e)})

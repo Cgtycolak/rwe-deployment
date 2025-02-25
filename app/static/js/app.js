@@ -7,6 +7,7 @@ import { generationComparison } from './modules/generation-comparison.js';
 import { heatmap } from './modules/heatmap.js';
 import { exportCoalHeatmap } from './modules/exportCoalHeatmap.js';
 import { miniTables } from './modules/mini-tables.js';
+import { hydroHeatmap } from './modules/hydro-heatmap.js';
 
 // Main app object
 const app = {
@@ -21,6 +22,7 @@ const app = {
     heatmap,
     exportCoalHeatmap,
     miniTables,
+    hydroHeatmap,
     helpers: {
         toggleLoading: function (show) {
             const loader = document.getElementById('aic_loading');
@@ -96,6 +98,7 @@ const app = {
             this.generationComparison.setup({ displayMessage });
             this.heatmap.setup(this.helpers);
             this.exportCoalHeatmap.setup(this.helpers);
+            this.hydroHeatmap.setup(this.helpers);
             this.miniTables.setup(this.helpers);
             
             // Initialize mini-tables when showing home section

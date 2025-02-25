@@ -1360,6 +1360,45 @@
             </div>
         </div>
     </div>
+
+    <!-- Add this after the export-coal-heatmap section -->
+    <div class="content-section" data-section="hydro-heatmap">
+        <div class="container">
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="form-group">
+                        <label for="hydro_date">Select Date:</label>
+                        <input type="date" id="hydro_date" class="form-control">
+                    </div>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button id="load_hydro_heatmap" class="btn btn-primary position-relative" style="min-width: 120px;">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        <span class="button-content">Load Heatmap</span>
+                    </button>
+                </div>
+            </div>
+            <div class="row">
+                <div id="hydro_heatmap_container" class="col-12" style="display: none;">
+                    <!-- First Version Heatmap -->
+                    <div class="mb-4">
+                        <h5 class="text-center">HES KGUP First Version</h5>
+                        <div id="hydro_heatmap_first_version"></div>
+                    </div>
+                    <!-- Current Version Heatmap -->
+                    <div class="mb-4">
+                        <h5 class="text-center">HES KGUP Final Version</h5>
+                        <div id="hydro_heatmap_current"></div>
+                    </div>
+                    <!-- Difference Heatmap -->
+                    <div class="mb-4">
+                        <h5 class="text-center">HES KGUP Difference (Final - First)</h5>
+                        <div id="hydro_heatmap_difference"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 {% block page_scripts %}

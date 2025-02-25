@@ -42,7 +42,6 @@ def create_app():
     app.config['DPP_FIRST_VERSION_ENDPOINT'] = 'v1/generation/data/dpp-first-version'
     app.config['POWERPLANT_ENDPOINT'] = 'v1/generation/data/powerplant-list'
     app.config['REALTIME_ENDPOINT'] = 'v1/generation/data/realtime-generation'
-    app.config['FUEL_TYPE_GENERATION_ENDPOINT'] = 'v1/generation/data/fueltype-generation'
     app.config['AIC_ENDPOINT'] = 'v1/generation/data/aic'
 
     # Set up full URLs directly
@@ -52,7 +51,6 @@ def create_app():
     app.config['DPP_FIRST_VERSION_URL'] = app.config['BASEURL_1'] + app.config['DPP_FIRST_VERSION_ENDPOINT']
     app.config['POWERPLANT_URL'] = app.config['BASEURL_1'] + app.config['POWERPLANT_ENDPOINT']
     app.config['REALTIME_URL'] = app.config['BASEURL_1'] + app.config['REALTIME_ENDPOINT']
-    app.config['FUEL_TYPE_GENERATION_URL'] = app.config['BASEURL_1'] + app.config['FUEL_TYPE_GENERATION_ENDPOINT']
     app.config['AIC_URL'] = app.config['BASEURL_1'] + app.config['AIC_ENDPOINT']
 
     # Setup session
