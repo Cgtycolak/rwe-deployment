@@ -1,4 +1,4 @@
-export const exportCoalHeatmap = {
+export const importCoalHeatmap = {
     // Helper functions
     toggleLoading: null,
     displayMessage: null,
@@ -6,7 +6,7 @@ export const exportCoalHeatmap = {
 
     setup(helpers) {
         if (!helpers) {
-            console.error('No helpers provided to Export Coal Heatmap module');
+            console.error('No helpers provided to Import Coal Heatmap module');
             return;
         }
         this.toggleLoading = helpers.toggleLoading;
@@ -15,10 +15,10 @@ export const exportCoalHeatmap = {
     },
 
     async loadHeatmapData(date = null) {
-        const button = document.getElementById('load_export_coal_heatmap');
+        const button = document.getElementById('load_import_coal_heatmap');
         const spinner = button.querySelector('.spinner-border');
         const buttonText = button.querySelector('.button-content');
-        const heatmapContainer = document.getElementById('export_coal_heatmap_container');
+        const heatmapContainer = document.getElementById('import_coal_heatmap_container');
         
         try {
             // Show loading state
@@ -30,7 +30,7 @@ export const exportCoalHeatmap = {
             
             // Fetch KGUP versions
             const [firstVersionResponse, currentVersionResponse] = await Promise.all([
-                fetch("/export_coal_heatmap_data", {
+                fetch("/import_coal_heatmap_data", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ 
@@ -38,7 +38,7 @@ export const exportCoalHeatmap = {
                         version: 'first'
                     })
                 }),
-                fetch("/export_coal_heatmap_data", {
+                fetch("/import_coal_heatmap_data", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ 
@@ -72,8 +72,8 @@ export const exportCoalHeatmap = {
             }
 
         } catch (error) {
-            console.error('Error loading export coal heatmap data:', error);
-            this.displayMessage("Error loading export coal heatmap data", "danger");
+            console.error('Error loading import coal heatmap data:', error);
+            this.displayMessage("Error loading import coal heatmap data", "danger");
             heatmapContainer.style.display = 'none';
         } finally {
             button.disabled = false;
@@ -90,9 +90,9 @@ export const exportCoalHeatmap = {
                 return;
             }
 
-            const elementId = version === 'first' ? 'export_coal_heatmap_first_version' : 
-                            version === 'current' ? 'export_coal_heatmap_current' : 
-                            'export_coal_heatmap_difference';
+            const elementId = version === 'first' ? 'import_coal_heatmap_first_version' : 
+                            version === 'current' ? 'import_coal_heatmap_current' : 
+                            'import_coal_heatmap_difference';
             
             const element = document.getElementById(elementId);
 
@@ -115,8 +115,8 @@ export const exportCoalHeatmap = {
             ] : 'RdBu';
 
             const title = version === 'difference' ? 
-                `Export Coal Hourly Generation Difference MWh - ${date} (Final - First)` :
-                `Export Coal Hourly Generation MWh - ${date} (${version === 'first' ? 'First Version' : 'Final Version'})`;
+                `Import Coal Hourly Generation Difference MWh - ${date} (Final - First)` :
+                `Import Coal Hourly Generation MWh - ${date} (${version === 'first' ? 'First Version' : 'Final Version'})`;
 
             const layout = {
                 title: {
@@ -202,23 +202,23 @@ export const exportCoalHeatmap = {
     init() {
         try {
             // Set default date to today
-            const dateInput = document.getElementById('export_coal_date');
+            const dateInput = document.getElementById('import_coal_date');
             if (dateInput) {
                 dateInput.valueAsDate = new Date();
             }
 
             // Add event listener
-            const loadButton = document.getElementById('load_export_coal_heatmap');
+            const loadButton = document.getElementById('load_import_coal_heatmap');
             if (loadButton) {
                 loadButton.addEventListener('click', () => {
-                    const date = document.getElementById('export_coal_date').value;
+                    const date = document.getElementById('import_coal_date').value;
                     this.loadHeatmapData(date);
                 });
             }
         } catch (error) {
-            console.error('Error initializing Export Coal Heatmap:', error);
+            console.error('Error initializing Import Coal Heatmap:', error);
             if (this.displayMessage) {
-                this.displayMessage('Error initializing Export Coal Heatmap', 'danger');
+                this.displayMessage('Error initializing Import Coal Heatmap', 'danger');
             }
         }
     }
