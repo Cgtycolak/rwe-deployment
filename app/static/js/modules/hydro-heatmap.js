@@ -19,18 +19,27 @@ export const hydroHeatmap = {
             dateInput.valueAsDate = new Date();
         }
 
-        // Add event listener for the load button
+        // Add event listeners
         const loadButton = document.getElementById('load_hydro_heatmap');
+        const toggleButton = document.getElementById('toggle_hydro_realtime');
+        
         if (loadButton) {
             loadButton.addEventListener('click', () => {
                 const dateInput = document.getElementById('hydro_date');
                 this.loadHeatmapData(dateInput.value);
             });
         }
+
+        if (toggleButton) {
+            toggleButton.addEventListener('click', () => {
+                this.toggleRealtime();
+            });
+        }
     },
 
     async loadHeatmapData(date = null) {
         const button = document.getElementById('load_hydro_heatmap');
+        const toggleButton = document.getElementById('toggle_hydro_realtime');
         const spinner = button.querySelector('.spinner-border');
         const buttonText = button.querySelector('.button-content');
         const heatmapContainer = document.getElementById('hydro_heatmap_container');
@@ -42,6 +51,24 @@ export const hydroHeatmap = {
             buttonText.textContent = 'Loading...';
             
             const selectedDate = date || new Date().toISOString().split('T')[0];
+            
+            // Check if selected date is today
+            const today = new Date().toISOString().split('T')[0];
+            const isToday = selectedDate === today;
+
+            // Reset toggle button and realtime state
+            if (toggleButton) {
+                toggleButton.textContent = 'Show Realtime';
+                toggleButton.disabled = isToday; // Disable for today's date
+            }
+            this.realtimeVisible = false;
+            this.selectedDate = selectedDate;  // Store date for later use
+            
+            // Hide realtime sections
+            const realtimeSection = document.getElementById('hydro_heatmap_realtime').parentElement;
+            const realtimeDiffSection = document.getElementById('hydro_heatmap_realtime_difference').parentElement;
+            realtimeSection.style.display = 'none';
+            realtimeDiffSection.style.display = 'none';
 
             // Fetch both versions of the data
             const [firstVersionResponse, currentVersionResponse] = await Promise.all([
@@ -69,6 +96,9 @@ export const hydroHeatmap = {
             if (firstVersionResult.code === 200 && currentVersionResult.code === 200) {
                 heatmapContainer.style.display = 'block';
                 
+                // Store current version for difference calculation later
+                this.currentVersionData = currentVersionResult.data;
+                
                 // Display KGUP versions
                 this.processAndDisplayHeatmap(firstVersionResult.data, selectedDate, 'first');
                 this.processAndDisplayHeatmap(currentVersionResult.data, selectedDate, 'current');
@@ -90,6 +120,7 @@ export const hydroHeatmap = {
             console.error('Error loading heatmap data:', error);
             this.displayMessage("Error loading heatmap data", "danger");
             heatmapContainer.style.display = 'none';
+            if (toggleButton) toggleButton.disabled = true;
         } finally {
             button.disabled = false;
             spinner.classList.add('d-none');
@@ -97,9 +128,71 @@ export const hydroHeatmap = {
         }
     },
 
+    async toggleRealtime() {
+        const realtimeSection = document.getElementById('hydro_heatmap_realtime').parentElement;
+        const realtimeDiffSection = document.getElementById('hydro_heatmap_realtime_difference').parentElement;
+        const toggleButton = document.getElementById('toggle_hydro_realtime');
+
+        if (this.realtimeVisible) {
+            // Just hide the sections if they're already visible
+            realtimeSection.style.display = 'none';
+            realtimeDiffSection.style.display = 'none';
+            toggleButton.textContent = 'Show Realtime';
+            this.realtimeVisible = false;
+            return;
+        }
+
+        try {
+            // Show loading state
+            toggleButton.disabled = true;
+            toggleButton.textContent = 'Loading...';
+
+            // Fetch realtime data
+            const realtimeResponse = await fetch("/hydro_realtime_heatmap_data", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ date: this.selectedDate })
+            });
+            const realtimeResult = await realtimeResponse.json();
+
+            if (realtimeResult.code === 200) {
+                // Show the sections
+                realtimeSection.style.display = 'block';
+                realtimeDiffSection.style.display = 'block';
+                
+                // Display realtime data
+                this.processAndDisplayHeatmap(realtimeResult.data, this.selectedDate, 'realtime');
+                
+                // Calculate and display differences
+                const realtimeDifferenceData = {
+                    hours: realtimeResult.data.hours,
+                    plants: realtimeResult.data.plants,
+                    values: realtimeResult.data.values.map((row, i) => 
+                        row.map((val, j) => 
+                            val - this.currentVersionData.values[i][j]
+                        )
+                    )
+                };
+                this.processAndDisplayHeatmap(realtimeDifferenceData, this.selectedDate, 'realtime_difference');
+                
+                toggleButton.textContent = 'Hide Realtime';
+                this.realtimeVisible = true;
+            } else {
+                this.displayMessage("Failed to load realtime data", "danger");
+            }
+        } catch (error) {
+            console.error('Error loading realtime data:', error);
+            this.displayMessage("Error loading realtime data", "danger");
+        } finally {
+            toggleButton.disabled = false;
+        }
+    },
+
     processAndDisplayHeatmap(data, date, version) {
         const elementId = version === 'first' ? 'hydro_heatmap_first_version' : 
                          version === 'current' ? 'hydro_heatmap_current' : 
+                         version === 'realtime' ? 'hydro_heatmap_realtime' :
+                         version === 'realtime_difference' ? 'hydro_heatmap_realtime_difference' :
                          'hydro_heatmap_difference';
         const element = document.getElementById(elementId);
 
@@ -119,7 +212,7 @@ export const hydroHeatmap = {
             return normalizedValue > threshold ? 'black' : 'white';
         };
 
-        const colorscale = version === 'difference' ? [
+        const colorscale = version === 'difference' || version === 'realtime_difference' ? [
             [0, 'blue'],      // Negative values
             [0.5, 'white'],   // Zero
             [1, 'red']        // Positive values
@@ -127,7 +220,9 @@ export const hydroHeatmap = {
 
         const title = version === 'difference' ? 
             `Hourly Generation Difference MWh - ${date} (Final - First)` :
-            `Hourly Generation MWh - ${date} (${version === 'first' ? 'First Version' : 'Final Version'})`;
+            version === 'realtime_difference' ?
+            `Hourly Generation Difference MWh - ${date} (Realtime - Final)` :
+            `Hourly Generation MWh - ${date} (${version === 'first' ? 'First Version' : version === 'current' ? 'Final Version' : 'Realtime'})`;
 
         const layout = {
             title: {

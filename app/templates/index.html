@@ -1371,10 +1371,13 @@
                         <input type="date" id="hydro_date" class="form-control">
                     </div>
                 </div>
-                <div class="col-md-4 d-flex align-items-end">
+                <div class="col-md-4 d-flex align-items-end gap-2">
                     <button id="load_hydro_heatmap" class="btn btn-primary position-relative" style="min-width: 120px;">
                         <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                         <span class="button-content">Load Heatmap</span>
+                    </button>
+                    <button id="toggle_hydro_realtime" class="btn btn-secondary" style="min-width: 120px;" disabled>
+                        Show Realtime
                     </button>
                 </div>
             </div>
@@ -1394,6 +1397,16 @@
                     <div class="mb-4">
                         <h5 class="text-center">HES KGUP Difference (Final - First)</h5>
                         <div id="hydro_heatmap_difference"></div>
+                    </div>
+                    <!-- Realtime Values -->
+                    <div class="mb-4" style="display: none;">
+                        <h5 class="text-center">HES Realtime Generation Values</h5>
+                        <div id="hydro_heatmap_realtime"></div>
+                    </div>
+                    <!-- Difference Heatmap (Realtime - Final) -->
+                    <div style="display: none;">
+                        <h5 class="text-center">HES Difference (Realtime - Final)</h5>
+                        <div id="hydro_heatmap_realtime_difference"></div>
                     </div>
                 </div>
             </div>

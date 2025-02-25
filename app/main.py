@@ -1225,3 +1225,108 @@ def hydro_heatmap_data():
     except Exception as e:
         print(f"Error in hydro_heatmap_data: {str(e)}")
         return jsonify({"code": 500, "error": str(e)})
+
+@main.route('/hydro_realtime_heatmap_data', methods=['POST'])
+def hydro_realtime_heatmap_data():
+    try:
+        data = request.json
+        selected_date = data.get('date')
+        
+        if not selected_date:
+            return jsonify({"code": 400, "error": "Missing 'date' parameter"})
+
+        # Define hours
+        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+
+        # Create an empty DataFrame for hydro plants
+        df = pd.DataFrame(index=hours, columns=hydro_mapping['plant_names'])
+        
+        # Create a dictionary to track how many times each powerplant ID is used
+        p_id_count = {}
+        for p_id in hydro_mapping['p_ids']:
+            p_id_count[p_id] = hydro_mapping['p_ids'].count(p_id)
+
+        # Create a mapping of powerplant ID to its indices in the plant list
+        p_id_indices = {}
+        for idx, p_id in enumerate(hydro_mapping['p_ids']):
+            if p_id not in p_id_indices:
+                p_id_indices[p_id] = []
+            p_id_indices[p_id].append(idx)
+
+        # Fetch realtime data for each unique powerplant
+        unique_p_ids = set(hydro_mapping['p_ids'])
+        for p_id in unique_p_ids:
+            try:
+                print(f"Fetching realtime data for hydro plant ID: {p_id}")
+                
+                request_data = {
+                    "startDate": f"{selected_date}T00:00:00+03:00",
+                    "endDate": f"{selected_date}T23:59:59+03:00",
+                    "powerPlantId": str(p_id)
+                }
+
+                # Setup session with retries
+                session = Session()
+                retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
+                session.mount('https://', HTTPAdapter(max_retries=retries))
+                
+                # Get authentication token
+                tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+
+                # Make API request
+                response = session.post(
+                    current_app.config['REALTIME_URL'],
+                    json=request_data,
+                    headers={'TGT': tgt_token},
+                    timeout=(5, 15)
+                )
+                response.raise_for_status()
+                
+                # Process response data
+                items = response.json().get('items', [])
+                
+                # Extract hourly values
+                hourly_values = [0] * 24
+                for item in items:
+                    hour_str = item.get('hour', '00:00')
+                    hour = int(hour_str.split(':')[0])
+                    total = item.get('total', 0)
+                    hourly_values[hour] = total
+
+                # Distribute the values among all instances of this powerplant
+                count = p_id_count[p_id]
+                distributed_values = [val / count for val in hourly_values]
+                
+                # Assign the distributed values to all instances of this powerplant
+                for idx in p_id_indices[p_id]:
+                    plant_name = hydro_mapping['plant_names'][idx]
+                    df[plant_name] = distributed_values
+                
+            except Exception as e:
+                print(f"Error fetching realtime data for hydro plant {p_id}: {str(e)}")
+                # Set zero values for all instances of this powerplant
+                for idx in p_id_indices[p_id]:
+                    plant_name = hydro_mapping['plant_names'][idx]
+                    df[plant_name] = [0] * 24
+
+        # Create plant labels with capacities
+        plant_labels = [
+            f"{name}--{capacity} Mw" 
+            for name, capacity in zip(hydro_mapping['plant_names'], hydro_mapping['capacities'])
+        ]
+
+        # Convert DataFrame to JSON response
+        response_data = {
+            "code": 200,
+            "data": {
+                "hours": df.index.tolist(),
+                "plants": plant_labels,
+                "values": df.values.tolist()
+            }
+        }
+
+        return jsonify(response_data)
+    
+    except Exception as e:
+        print(f"Error in hydro_realtime_heatmap_data: {str(e)}")
+        return jsonify({"code": 500, "error": str(e)})
