@@ -5,7 +5,7 @@ import { HTMLSearchableSelect } from './classes/HTMLSearchableSelect.js';
 import { aic } from './modules/aic.js';
 import { generationComparison } from './modules/generation-comparison.js';
 import { heatmap } from './modules/heatmap.js';
-import { exportCoalHeatmap } from './modules/exportCoalHeatmap.js';
+import { importCoalHeatmap } from './modules/importCoalHeatmap.js';
 import { miniTables } from './modules/mini-tables.js';
 import { hydroHeatmap } from './modules/hydro-heatmap.js';
 
@@ -20,7 +20,7 @@ const app = {
     aic,
     generationComparison,
     heatmap,
-    exportCoalHeatmap,
+    importCoalHeatmap,
     miniTables,
     hydroHeatmap,
     helpers: {
@@ -97,7 +97,7 @@ const app = {
             this.aic.setup(this.helpers);
             this.generationComparison.setup({ displayMessage });
             this.heatmap.setup(this.helpers);
-            this.exportCoalHeatmap.setup(this.helpers);
+            this.importCoalHeatmap.setup(this.helpers);
             this.hydroHeatmap.setup(this.helpers);
             this.miniTables.setup(this.helpers);
             

@@ -45,7 +45,7 @@ plant_mapping = {
     ],
 }
 
-export_coal_mapping = {
+import_coal_mapping = {
     'plant_names': [
             "ZETES 1", "ZETES 2-A", "ZETES 2-B", "ZETES 3-A", "ZETES 3-B", "HUNUTLU TES_TR1", 
             "HUNUTLU TES_TR2", "CENAL TES(TR1+TRA)", "CENAL TES(TR2)", "İSKENDERUN İTHAL KÖMÜR SANTRALI-2", 
@@ -759,8 +759,8 @@ def realtime_heatmap_data():
         print(f"Error in realtime_heatmap_data: {str(e)}")
         return jsonify({"code": 500, "error": str(e)})
 
-@main.route('/export_coal_heatmap_data', methods=['POST'])
-def export_coal_heatmap_data():
+@main.route('/import_coal_heatmap_data', methods=['POST'])
+def import_coal_heatmap_data():
     try:
         data = request.json
         selected_date = data.get('date')
@@ -775,18 +775,18 @@ def export_coal_heatmap_data():
         # Define hours
         hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
 
-        # Create an empty DataFrame for export coal plants only
-        df = pd.DataFrame(index=hours, columns=export_coal_mapping['plant_names'])
+        # Create an empty DataFrame for import coal plants only
+        df = pd.DataFrame(index=hours, columns=import_coal_mapping['plant_names'])
         
-        # Fetch data for each export coal plant
-        total_plants = len(export_coal_mapping['plant_names'])
+        # Fetch data for each import coal plant
+        total_plants = len(import_coal_mapping['plant_names'])
         for idx, (o_id, pl_id, plant_name) in enumerate(zip(
-            export_coal_mapping['o_ids'], 
-            export_coal_mapping['uevcb_ids'], 
-            export_coal_mapping['plant_names']
+            import_coal_mapping['o_ids'], 
+            import_coal_mapping['uevcb_ids'], 
+            import_coal_mapping['plant_names']
         )):
             try:
-                print(f"Fetching data for export coal plant {idx + 1}/{total_plants}: {plant_name}")
+                print(f"Fetching data for import coal plant {idx + 1}/{total_plants}: {plant_name}")
                 plant_data = fetch_plant_data(selected_date, o_id, pl_id, dpp_url)
                 if plant_data is not None:
                     df[plant_name] = plant_data
@@ -799,7 +799,7 @@ def export_coal_heatmap_data():
         # Create plant labels with capacities
         plant_labels = [
             f"{name}--{capacity} Mw" 
-            for name, capacity in zip(export_coal_mapping['plant_names'], export_coal_mapping['capacities'])
+            for name, capacity in zip(import_coal_mapping['plant_names'], import_coal_mapping['capacities'])
         ]
 
         # Convert DataFrame to JSON response
@@ -815,7 +815,7 @@ def export_coal_heatmap_data():
         return jsonify(response_data)
     
     except Exception as e:
-        print(f"Error in export_coal_heatmap_data: {str(e)}")
+        print(f"Error in import_coal_heatmap_data: {str(e)}")
         return jsonify({"code": 500, "error": str(e)})
 
 @main.route('/get_order_summary', methods=['GET'])
