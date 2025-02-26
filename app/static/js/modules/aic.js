@@ -134,7 +134,7 @@ export const aic = {
                 marker: { size: 4 }
             },
             {
-                name: 'KGÜP Total',
+                name: 'DPP Total',
                 x: xLabels,
                 y: dppValues,
                 type: 'scatter',
@@ -145,7 +145,7 @@ export const aic = {
         ];
 
         const layout = {
-            title: 'Generation Comparison (AIC vs Realtime vs KGÜP)',
+            title: 'Generation Comparison (AIC vs Realtime vs DPP)',
             xaxis: {
                 title: 'Date & Hour',
                 tickangle: -45,
