@@ -103,6 +103,7 @@ export const importCoalHeatmap = {
 
             // Function to determine text color based on background value
             const getTextColor = (value) => {
+                if (version === 'difference' && value === 0) return 'black';
                 const threshold = 0.3;
                 const normalizedValue = (value - minValue) / (maxValue - minValue);
                 return normalizedValue > threshold ? 'black' : 'white';
