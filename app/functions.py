@@ -8,7 +8,6 @@ from requests import Session
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import requests
-import random
 
 # Function to get the TGT token
 def get_tgt_token(username, password, max_retries=5):
@@ -19,44 +18,41 @@ def get_tgt_token(username, password, max_retries=5):
     session = requests.Session()
     retries = Retry(
         total=max_retries,
-        backoff_factor=1,  # Increased backoff factor
+        backoff_factor=0.5,
         status_forcelist=[500, 502, 503, 504, 406, 408, 429],
-        allowed_methods=["POST", "GET"],
-        connect=5,  # Maximum number of connection-related retries
-        read=3,     # Maximum number of read-related retries
-        backoff_jitter=0.1  # Add jitter to avoid thundering herd
+        allowed_methods=["POST", "GET"]
     )
     
-    # Configure connection pooling with increased timeouts
+    # Configure connection pooling
     adapter = HTTPAdapter(
         max_retries=retries,
-        pool_connections=20,  # Increased pool size
-        pool_maxsize=20,
-        pool_block=True
+        pool_connections=10,
+        pool_maxsize=10,
+        pool_block=False
     )
     session.mount('https://', adapter)
     
     retry_count = 0
     while retry_count < max_retries:
         try:
-            # Get TGT with increased timeouts
+            # Get TGT
             response = session.post(
                 tgt_url,
                 data={
                     'username': username,
                     'password': password
                 },
-                timeout=(15, 45),  # (connect timeout, read timeout) - Increased timeouts
-                verify=True
+                timeout=(5, 30),  # (connect timeout, read timeout)
+                verify=True  # Ensure SSL verification
             )
             
             if response.status_code == 201:
                 tgt = response.text
-                # Get service ticket with same timeouts
+                # Get service ticket
                 st_response = session.post(
                     f"{tgt_url}/{tgt}",
                     data={'service': 'https://seffaflik.epias.com.tr'},
-                    timeout=(15, 45)
+                    timeout=(5, 30)
                 )
                 
                 if st_response.status_code == 200:
@@ -64,7 +60,7 @@ def get_tgt_token(username, password, max_retries=5):
                 
             retry_count += 1
             current_app.logger.warning(f"Failed to get token (attempt {retry_count}/{max_retries})")
-            time.sleep(min(2 ** retry_count + random.uniform(0, 1), 60))  # Exponential backoff with jitter and max 60s
+            time.sleep(2 ** retry_count)  # Exponential backoff
             
         except (requests.exceptions.Timeout, 
                 requests.exceptions.ConnectionError,
@@ -74,7 +70,7 @@ def get_tgt_token(username, password, max_retries=5):
                 current_app.logger.error(f"Failed to get token after {max_retries} retries: {str(e)}")
                 return None
             current_app.logger.warning(f"Connection error (attempt {retry_count}/{max_retries}): {str(e)}")
-            time.sleep(min(2 ** retry_count + random.uniform(0, 1), 60))
+            time.sleep(2 ** retry_count)
     
     return None
 
@@ -150,20 +146,17 @@ def fetch_plant_data(start_date, end_date, org_id, plant_id, url, token, max_ret
     session = requests.Session()
     retries = Retry(
         total=max_retries,
-        backoff_factor=1,
+        backoff_factor=0.5,
         status_forcelist=[500, 502, 503, 504, 406, 408, 429],
-        allowed_methods=["POST", "GET"],
-        connect=5,
-        read=3,
-        backoff_jitter=0.1
+        allowed_methods=["POST", "GET"]
     )
     
-    # Configure connection pooling with increased timeouts
+    # Configure connection pooling
     adapter = HTTPAdapter(
         max_retries=retries,
-        pool_connections=20,
-        pool_maxsize=20,
-        pool_block=True
+        pool_connections=10,
+        pool_maxsize=10,
+        pool_block=False
     )
     session.mount('https://', adapter)
     
@@ -174,8 +167,8 @@ def fetch_plant_data(start_date, end_date, org_id, plant_id, url, token, max_ret
                 url,
                 headers=headers,
                 json=data,
-                timeout=(15, 45),  # Increased timeouts
-                verify=True
+                timeout=(5, 30),  # (connect timeout, read timeout)
+                verify=True  # Ensure SSL verification
             )
             response.raise_for_status()
             return response.json()
@@ -188,6 +181,6 @@ def fetch_plant_data(start_date, end_date, org_id, plant_id, url, token, max_ret
                 current_app.logger.error(f"Failed to fetch data after {max_retries} retries: {str(e)}")
                 return None
             current_app.logger.warning(f"Connection error (attempt {retry_count}/{max_retries}): {str(e)}")
-            time.sleep(min(2 ** retry_count + random.uniform(0, 1), 60))
+            time.sleep(2 ** retry_count)
     
     return None
