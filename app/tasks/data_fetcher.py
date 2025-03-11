@@ -95,14 +95,13 @@ def fetch_and_store_data(date, plant_type='hydro'):
 
 # Convenience functions for each plant type
 def fetch_and_store_hydro_data(date):
-    """Fetch hydro data and return models for storage"""
+    """Fetch and store hydro data for a specific date"""
     try:
-        models = []
+        # Get authentication token
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
-        
         if not tgt_token:
             current_app.logger.error("Failed to get authentication token")
-            return None
+            return
         
         # Create session with retry strategy
         session = requests.Session()
@@ -136,23 +135,8 @@ def fetch_and_store_hydro_data(date):
                     )
                     
                     if data and 'items' in data:
-                        for item in data['items']:
-                            try:
-                                hour = int(item.get('time', '00:00').split(':')[0])
-                                value = float(item.get('barajli', 0) or item.get('toplam', 0))
-                                
-                                model = HydroHeatmapData(
-                                    date=date,
-                                    hour=hour,
-                                    plant_name=plant_name,
-                                    value=value,
-                                    version='first'
-                                )
-                                models.append(model)
-                                
-                            except (ValueError, TypeError) as e:
-                                current_app.logger.warning(f"Error processing data point: {str(e)}")
-                                continue
+                        # Store data in database
+                        store_hydro_data(data, date, plant_name)
                     
                     time.sleep(1)  # Delay between requests
                     
@@ -163,11 +147,9 @@ def fetch_and_store_hydro_data(date):
             time.sleep(2)  # Delay between batches
         
         session.close()
-        return models
         
     except Exception as e:
-        current_app.logger.error(f"Error in fetch_hydro_data: {str(e)}")
-        return None
+        current_app.logger.error(f"Error in fetch_and_store_hydro_data: {str(e)}")
 
 def fetch_and_store_natural_gas_data(date):
     return fetch_and_store_data(date, 'natural_gas')
