@@ -5,6 +5,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from pytz import timezone
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+from ..tasks.data_fetcher import update_daily_data
 
 def update_daily_data(app):
     """Update data for yesterday"""
@@ -31,11 +32,12 @@ def init_scheduler(app):
     scheduler = BackgroundScheduler(timezone=timezone('Europe/Istanbul'))
     
     # Schedule the update task to run at 16:05 every day
+    # to fetch next day's data
     scheduler.add_job(
-        lambda: update_daily_data(app),
+        lambda: update_daily_data(app, fetch_next_day=True),  # Added parameter
         trigger=CronTrigger(hour=16, minute=5),
         id='daily_data_update',
-        name='Update heatmap data daily at 16:05',
+        name='Update heatmap data daily at 16:05 for next day',
         replace_existing=True
     )
     
@@ -54,7 +56,7 @@ def init_scheduler(app):
     
     try:
         scheduler.start()
-        print("Scheduler started. Daily updates scheduled for 16:05")
+        print("Scheduler started. Daily updates scheduled for 16:05 (fetching next day's data)")
     except Exception as e:
         print(f"Error starting scheduler: {str(e)}")
         with open('scheduler_error.log', 'a') as f:
