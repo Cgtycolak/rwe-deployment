@@ -14,6 +14,7 @@ from .models.heatmap import HydroHeatmapData, NaturalGasHeatmapData, ImportedCoa
 from .models.realtime import HydroRealtimeData, NaturalGasRealtimeData
 from .tasks.data_fetcher import fetch_and_store_hydro_data, fetch_and_store_natural_gas_data, fetch_and_store_imported_coal_data
 from .database.config import db
+import requests
 
 main = Blueprint('main', __name__)
 
