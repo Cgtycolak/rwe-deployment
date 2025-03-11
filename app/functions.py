@@ -8,71 +8,40 @@ from requests import Session
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import requests
-import random
 
 # Function to get the TGT token
 def get_tgt_token(username, password, max_retries=5):
-    """Get TGT token with improved connection handling"""
+    """Get TGT token with retries and backoff"""
     tgt_url = "https://giris.epias.com.tr/cas/v1/tickets"
     headers = {"Accept": "text/plain"}
-    
-    # Create session with retry strategy
-    session = requests.Session()
-    retries = Retry(
-        total=max_retries,
-        backoff_factor=2,  # Increased backoff
-        status_forcelist=[500, 502, 503, 504, 406, 408, 429],
-        allowed_methods=["POST", "GET"]
-    )
-    
-    # Configure connection pooling and timeouts
-    adapter = HTTPAdapter(
-        max_retries=retries,
-        pool_connections=10,
-        pool_maxsize=10,
-        pool_block=False
-    )
-    session.mount('https://', adapter)
     
     retry_count = 0
     while retry_count < max_retries:
         try:
-            # Get TGT
+            session = requests.Session()
+            # Configure retry strategy
+            retries = Retry(
+                total=5,
+                backoff_factor=1,
+                status_forcelist=[500, 502, 503, 504],
+                allowed_methods=["POST"]
+            )
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            
             response = session.post(
-                tgt_url,
+                tgt_url, 
+                data={"username": username, "password": password}, 
                 headers=headers,
-                data={
-                    "username": username,
-                    "password": password
-                },
-                timeout=(10, 30)  # (connect timeout, read timeout)
+                timeout=30  # Set timeout
             )
             response.raise_for_status()
-            tgt = response.text
-            
-            # Get service ticket
-            st_response = session.post(
-                f"{tgt_url}/{tgt}",
-                headers=headers,
-                data={"service": "https://seffaflik.epias.com.tr"},
-                timeout=(10, 30)
-            )
-            st_response.raise_for_status()
-            
-            return st_response.text
+            return response.text.strip()
             
         except requests.exceptions.RequestException as e:
             retry_count += 1
             if retry_count == max_retries:
-                current_app.logger.error(f"Failed to get TGT token after {max_retries} retries: {str(e)}")
-                return None
-            
-            # Exponential backoff with jitter
-            sleep_time = (2 ** retry_count) + random.uniform(0, 1)
-            time.sleep(sleep_time)
-            continue
-    
-    return None
+                raise Exception(f"Failed to obtain TGT token after {max_retries} retries: {str(e)}")
+            time.sleep(2 ** retry_count)  # Exponential backoff
 
 def asutc(date_str):
     """Convert date string to UTC format required by the API"""
@@ -108,7 +77,7 @@ def invalidates_or_none(start, end):
     return {'code': 200, 'start_date': start_date, 'end_date': end_date}
 
 def fetch_plant_data(start_date, end_date, org_id, plant_id, url, token, max_retries=5):
-    """Fetch plant data with improved connection handling"""
+    """Fetch plant data with improved error handling and retries"""
     headers = {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
@@ -142,32 +111,24 @@ def fetch_plant_data(start_date, end_date, org_id, plant_id, url, token, max_ret
         'uevcbId': int(plant_id)
     }
     
-    # Create session with retry strategy
-    session = requests.Session()
-    retries = Retry(
-        total=max_retries,
-        backoff_factor=2,
-        status_forcelist=[500, 502, 503, 504, 406, 408, 429],
-        allowed_methods=["POST"]
-    )
-    
-    # Configure connection pooling and timeouts
-    adapter = HTTPAdapter(
-        max_retries=retries,
-        pool_connections=10,
-        pool_maxsize=10,
-        pool_block=False
-    )
-    session.mount('https://', adapter)
-    
     retry_count = 0
     while retry_count < max_retries:
         try:
+            session = requests.Session()
+            # Configure retry strategy
+            retries = Retry(
+                total=5,
+                backoff_factor=1,
+                status_forcelist=[500, 502, 503, 504, 406],
+                allowed_methods=["POST"]
+            )
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            
             response = session.post(
-                url,
-                headers=headers,
+                url, 
+                headers=headers, 
                 json=data,
-                timeout=(10, 30)  # (connect timeout, read timeout)
+                timeout=30  # Set timeout
             )
             response.raise_for_status()
             return response.json()
@@ -177,10 +138,4 @@ def fetch_plant_data(start_date, end_date, org_id, plant_id, url, token, max_ret
             if retry_count == max_retries:
                 current_app.logger.error(f"Error in fetch_plant_data after {max_retries} retries: {str(e)}")
                 return None
-            
-            # Exponential backoff with jitter
-            sleep_time = (2 ** retry_count) + random.uniform(0, 1)
-            time.sleep(sleep_time)
-            continue
-    
-    return None
+            time.sleep(2 ** retry_count)  # Exponential backoff
