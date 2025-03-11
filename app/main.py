@@ -12,7 +12,7 @@ import pytz
 from .mappings import hydro_mapping, plant_mapping, import_coal_mapping
 from .models.heatmap import HydroHeatmapData, NaturalGasHeatmapData, ImportedCoalHeatmapData
 from .models.realtime import HydroRealtimeData, NaturalGasRealtimeData
-from .tasks.data_fetcher import fetch_and_store_hydro_data, fetch_and_store_natural_gas_data, fetch_and_store_imported_coal_data, create_session, fetch_data_from_api
+from .tasks.data_fetcher import fetch_and_store_hydro_data, fetch_and_store_natural_gas_data, fetch_and_store_imported_coal_data
 from .database.config import db
 import requests
 
@@ -529,17 +529,144 @@ def natural_gas_heatmap_data():
         return jsonify({"code": 500, "error": "Internal server error"})
 
 @main.route('/realtime_heatmap_data', methods=['POST'])
-def get_realtime_heatmap_data():
+def realtime_heatmap_data():
     try:
-        # Use the configured session for API calls
-        data = fetch_data_from_api("https://giris.epias.com.tr/...", timeout=60)
-        if data:
-            # Process and return data
-            return jsonify(data)
-        else:
-            return jsonify({"error": "Failed to fetch data from API"}), 500
+        data = request.json
+        selected_date = data.get('date')
+        
+        if not selected_date:
+            return jsonify({"code": 400, "error": "Missing 'date' parameter"})
+
+        # Convert date string to date object
+        date = datetime.strptime(selected_date, '%Y-%m-%d').date()
+
+        # First try to get data from database
+        heatmap_data = NaturalGasRealtimeData.query.filter_by(
+            date=date
+        ).all()
+
+        # If we have data in database, process and return it
+        if heatmap_data:
+            df = pd.DataFrame(index=[f"{str(i).zfill(2)}:00" for i in range(24)], 
+                            columns=plant_mapping['plant_names'])
+            
+            for record in heatmap_data:
+                hour = f"{str(record.hour).zfill(2)}:00"
+                df.at[hour, record.plant_name] = record.value
+
+            return jsonify({
+                "code": 200,
+                "data": {
+                    "hours": df.index.tolist(),
+                    "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                        plant_mapping['plant_names'],
+                        plant_mapping['capacities']
+                    )],
+                    "values": df.values.tolist()
+                }
+            })
+
+        # If no data in database, fetch from API
+        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+        df = pd.DataFrame(index=hours, columns=plant_mapping['plant_names'])
+        
+        # Get authentication token
+        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+        
+        # Create a dictionary to track how many times each powerplant ID is used
+        p_id_count = {}
+        for p_id in plant_mapping['p_ids']:
+            p_id_count[p_id] = plant_mapping['p_ids'].count(p_id)
+
+        # Create a mapping of powerplant ID to its indices in the plant list
+        p_id_indices = {}
+        for idx, p_id in enumerate(plant_mapping['p_ids']):
+            if p_id not in p_id_indices:
+                p_id_indices[p_id] = []
+            p_id_indices[p_id].append(idx)
+
+        # Fetch realtime data for each unique powerplant
+        batch_data = []  # For storing database records
+        unique_p_ids = set(plant_mapping['p_ids'])
+        for p_id in unique_p_ids:
+            try:
+                print(f"Fetching realtime data for powerplant ID: {p_id}")
+                
+                request_data = {
+                    "startDate": f"{selected_date}T00:00:00+03:00",
+                    "endDate": f"{selected_date}T23:59:59+03:00",
+                    "powerPlantId": str(p_id)
+                }
+
+                # Make API request
+                response = requests.post(
+                    current_app.config['REALTIME_URL'],
+                    json=request_data,
+                    headers={'TGT': tgt_token}
+                )
+                response.raise_for_status()
+                
+                # Process response data
+                items = response.json().get('items', [])
+                
+                # Extract hourly values
+                hourly_values = [0] * 24
+                for item in items:
+                    hour = int(item.get('hour', '00:00').split(':')[0])
+                    total = item.get('total', 0)
+                    hourly_values[hour] = total
+
+                # Distribute the values among all instances of this powerplant
+                count = p_id_count[p_id]
+                distributed_values = [val / count for val in hourly_values]
+                
+                # Store data in DataFrame and prepare database records
+                for idx in p_id_indices[p_id]:
+                    plant_name = plant_mapping['plant_names'][idx]
+                    df[plant_name] = distributed_values
+                    
+                    # Prepare database records
+                    for hour, value in enumerate(distributed_values):
+                        batch_data.append({
+                            'date': date,
+                            'hour': hour,
+                            'plant_name': plant_name,
+                            'value': value
+                        })
+                
+                time.sleep(0.5)  # Small delay between requests
+                
+            except Exception as e:
+                print(f"Error fetching realtime data for powerplant {p_id}: {str(e)}")
+                # Set zero values for all instances of this powerplant
+                for idx in p_id_indices[p_id]:
+                    plant_name = plant_mapping['plant_names'][idx]
+                    df[plant_name] = [0] * 24
+
+        # Store the fetched data in database
+        try:
+            if batch_data:
+                db.session.bulk_insert_mappings(NaturalGasRealtimeData, batch_data)
+                db.session.commit()
+        except Exception as e:
+            print(f"Error storing realtime data: {str(e)}")
+            db.session.rollback()
+
+        return jsonify({
+            "code": 200,
+            "data": {
+                "hours": df.index.tolist(),
+                "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                    plant_mapping['plant_names'],
+                    plant_mapping['capacities']
+                )],
+                "values": df.values.tolist()
+            }
+        })
+    
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"Error in realtime_heatmap_data: {str(e)}")
+        return jsonify({"code": 500, "error": str(e)})
 
 @main.route('/import_coal_heatmap_data', methods=['POST'])
 def import_coal_heatmap_data():
