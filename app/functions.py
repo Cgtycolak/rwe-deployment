@@ -9,71 +9,129 @@ from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import requests
 import random
+import dns.resolver
+import urllib3
+from cachetools import TTLCache
+from threading import Lock
 
-# Function to get the TGT token
+# Global session and cache
+_session = None
+_session_lock = Lock()
+_token_cache = TTLCache(maxsize=100, ttl=3600)  # 1 hour TTL
+_dns_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes TTL
+
+def get_session():
+    """Get or create a persistent session"""
+    global _session
+    
+    with _session_lock:
+        if _session is None:
+            _session = requests.Session()
+            
+            # Configure retries
+            retries = Retry(
+                total=5,
+                backoff_factor=0.5,
+                status_forcelist=[500, 502, 503, 504, 406, 408, 429],
+                allowed_methods=["POST", "GET"],
+                raise_on_redirect=False,
+                raise_on_status=False
+            )
+            
+            # Configure adapter with longer timeouts
+            adapter = HTTPAdapter(
+                max_retries=retries,
+                pool_connections=25,
+                pool_maxsize=25,
+                pool_block=True
+            )
+            
+            # Mount for both http and https
+            _session.mount('http://', adapter)
+            _session.mount('https://', adapter)
+            
+            # Set default timeouts
+            _session.timeout = (30, 90)  # (connect, read)
+            
+        return _session
+
+def resolve_dns(hostname):
+    """Resolve DNS with caching"""
+    if hostname in _dns_cache:
+        return _dns_cache[hostname]
+    
+    try:
+        answers = dns.resolver.resolve(hostname, 'A')
+        ip = str(answers[0])
+        _dns_cache[hostname] = ip
+        return ip
+    except Exception as e:
+        current_app.logger.error(f"DNS resolution failed for {hostname}: {str(e)}")
+        return hostname
+
 def get_tgt_token(username, password, max_retries=5):
     """Get TGT token with improved connection handling"""
+    # Check cache first
+    cache_key = f"{username}:{password}"
+    if cache_key in _token_cache:
+        return _token_cache[cache_key]
+    
     tgt_url = "https://giris.epias.com.tr/cas/v1/tickets"
+    session = get_session()
     
-    # Create session with connection pooling and retry strategy
-    session = requests.Session()
-    retries = Retry(
-        total=max_retries,
-        backoff_factor=1,  # Increased backoff factor
-        status_forcelist=[500, 502, 503, 504, 406, 408, 429],
-        allowed_methods=["POST", "GET"],
-        connect=5,  # Maximum number of connection-related retries
-        read=3,     # Maximum number of read-related retries
-        backoff_jitter=0.1  # Add jitter to avoid thundering herd
-    )
-    
-    # Configure connection pooling with increased timeouts
-    adapter = HTTPAdapter(
-        max_retries=retries,
-        pool_connections=20,  # Increased pool size
-        pool_maxsize=20,
-        pool_block=True
-    )
-    session.mount('https://', adapter)
+    # Resolve DNS
+    hostname = "giris.epias.com.tr"
+    ip = resolve_dns(hostname)
+    if ip != hostname:
+        tgt_url = tgt_url.replace(hostname, ip)
     
     retry_count = 0
+    last_error = None
+    
     while retry_count < max_retries:
         try:
-            # Get TGT with increased timeouts
+            # Get TGT
             response = session.post(
                 tgt_url,
                 data={
                     'username': username,
                     'password': password
                 },
-                timeout=(15, 45),  # (connect timeout, read timeout) - Increased timeouts
+                headers={
+                    'Host': hostname,
+                    'Connection': 'keep-alive'
+                },
                 verify=True
             )
             
             if response.status_code == 201:
                 tgt = response.text
-                # Get service ticket with same timeouts
+                # Get service ticket
                 st_response = session.post(
                     f"{tgt_url}/{tgt}",
                     data={'service': 'https://seffaflik.epias.com.tr'},
-                    timeout=(15, 45)
+                    headers={
+                        'Host': hostname,
+                        'Connection': 'keep-alive'
+                    }
                 )
                 
                 if st_response.status_code == 200:
-                    return st_response.text
-                
+                    token = st_response.text
+                    _token_cache[cache_key] = token
+                    return token
+            
             retry_count += 1
             current_app.logger.warning(f"Failed to get token (attempt {retry_count}/{max_retries})")
-            time.sleep(min(2 ** retry_count + random.uniform(0, 1), 60))  # Exponential backoff with jitter and max 60s
+            time.sleep(min(2 ** retry_count + random.uniform(0, 1), 60))
             
-        except (requests.exceptions.Timeout, 
-                requests.exceptions.ConnectionError,
-                requests.exceptions.RequestException) as e:
+        except Exception as e:
+            last_error = str(e)
             retry_count += 1
             if retry_count == max_retries:
-                current_app.logger.error(f"Failed to get token after {max_retries} retries: {str(e)}")
+                current_app.logger.error(f"Failed to get token after {max_retries} retries: {last_error}")
                 return None
-            current_app.logger.warning(f"Connection error (attempt {retry_count}/{max_retries}): {str(e)}")
+            current_app.logger.warning(f"Connection error (attempt {retry_count}/{max_retries}): {last_error}")
             time.sleep(min(2 ** retry_count + random.uniform(0, 1), 60))
     
     return None
@@ -113,11 +171,7 @@ def invalidates_or_none(start, end):
 
 def fetch_plant_data(start_date, end_date, org_id, plant_id, url, token, max_retries=5):
     """Fetch plant data with improved connection handling"""
-    headers = {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'TGT': token
-    }
+    session = get_session()
     
     # Format dates
     if isinstance(start_date, (date, datetime)):
@@ -146,48 +200,33 @@ def fetch_plant_data(start_date, end_date, org_id, plant_id, url, token, max_ret
         'uevcbId': int(plant_id)
     }
     
-    # Create session with connection pooling and retry strategy
-    session = requests.Session()
-    retries = Retry(
-        total=max_retries,
-        backoff_factor=1,
-        status_forcelist=[500, 502, 503, 504, 406, 408, 429],
-        allowed_methods=["POST", "GET"],
-        connect=5,
-        read=3,
-        backoff_jitter=0.1
-    )
-    
-    # Configure connection pooling with increased timeouts
-    adapter = HTTPAdapter(
-        max_retries=retries,
-        pool_connections=20,
-        pool_maxsize=20,
-        pool_block=True
-    )
-    session.mount('https://', adapter)
-    
     retry_count = 0
+    last_error = None
+    
     while retry_count < max_retries:
         try:
             response = session.post(
                 url,
-                headers=headers,
+                headers={
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'TGT': token,
+                    'Connection': 'keep-alive'
+                },
                 json=data,
-                timeout=(15, 45),  # Increased timeouts
                 verify=True
             )
+            
             response.raise_for_status()
             return response.json()
             
-        except (requests.exceptions.Timeout,
-                requests.exceptions.ConnectionError,
-                requests.exceptions.RequestException) as e:
+        except Exception as e:
+            last_error = str(e)
             retry_count += 1
             if retry_count == max_retries:
-                current_app.logger.error(f"Failed to fetch data after {max_retries} retries: {str(e)}")
+                current_app.logger.error(f"Failed to fetch data after {max_retries} retries: {last_error}")
                 return None
-            current_app.logger.warning(f"Connection error (attempt {retry_count}/{max_retries}): {str(e)}")
+            current_app.logger.warning(f"Connection error (attempt {retry_count}/{max_retries}): {last_error}")
             time.sleep(min(2 ** retry_count + random.uniform(0, 1), 60))
     
     return None
