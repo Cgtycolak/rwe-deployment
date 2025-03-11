@@ -62,11 +62,14 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
-    # Initialize database
-    init_db(app)
-    
-    # Initialize scheduler
-    init_scheduler(app)
+    with app.app_context():
+        # Initialize database
+        db.init_app(app)
+        db.create_all()
+        
+        # Only initialize scheduler in the main process
+        if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+            init_scheduler(app)
 
     # Setup session
     Session(app)
