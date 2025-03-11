@@ -5,24 +5,21 @@ services:
     env: python
     buildCommand: |
       pip install -r requirements.txt
-      flask db upgrade  # Run migrations before starting the app
+      export FLASK_APP=app
+      flask db upgrade
     startCommand: gunicorn --config gunicorn_config.py app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
-      - key: SECRET_KEY
-        generateValue: true
       - key: DATABASE_URL
         fromDatabase:
           name: rwe-postgres
           property: connectionString
       - key: USERNAME
-        sync: false  # Will be set manually in Render dashboard
+        sync: false
       - key: PASSWORD
-        sync: false  # Will be set manually in Render dashboard
-      - key: PORT
-        value: 5000
-      - key: FLASK_APP  # Required for Flask CLI commands
+        sync: false
+      - key: FLASK_APP
         value: app
 
   # Scheduler worker service
@@ -34,16 +31,14 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
-      - key: SECRET_KEY
-        sync: true  # Sync with web service
       - key: DATABASE_URL
         fromDatabase:
           name: rwe-postgres
           property: connectionString
       - key: USERNAME
-        sync: true  # Sync with web service
+        sync: true
       - key: PASSWORD
-        sync: true  # Sync with web service
+        sync: true
 
 databases:
   - name: rwe-postgres
