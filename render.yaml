@@ -12,7 +12,7 @@ services:
         generateValue: true
       - key: DATABASE_URL
         fromDatabase:
-          name: rwe_data
+          name: rwe-postgres
           property: connectionString
       - key: USERNAME
         sync: false  # Will be set manually in Render dashboard
@@ -34,7 +34,7 @@ services:
         sync: true  # Sync with web service
       - key: DATABASE_URL
         fromDatabase:
-          name: rwe_data
+          name: rwe-postgres
           property: connectionString
       - key: USERNAME
         sync: true  # Sync with web service
@@ -42,7 +42,8 @@ services:
         sync: true  # Sync with web service
 
 databases:
-  - name: rwe_data
+  - name: rwe-postgres
     databaseName: rwe_data
     user: rwe_user
-    plan: free
+    plan: free  # 1GB storage, sufficient for ~3 years
+    ipAllowList: []  # Allow all IPs
