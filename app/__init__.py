@@ -5,17 +5,22 @@ from flask import Flask, render_template
 from flask_session import Session
 from flask_cors import CORS
 from dotenv import load_dotenv
+from .database.config import init_db, db
 from .routes.realtime_generation import realtime_generation_bp
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from .tasks.scheduler import init_scheduler
+
 
 def create_app():
+    # Load environment variables
+    load_dotenv()
+
     # Configure logging
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-    
-    # Load environment variables
-    load_dotenv()
 
     app = Flask(__name__, template_folder='templates', static_folder='static')
     
@@ -28,8 +33,8 @@ def create_app():
     app.config["SESSION_TYPE"] = "filesystem"
     app.config['SESSION_FILE_DIR'] = os.path.join(app.root_path, '../flask_session')
 
-    # Security settings
-    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-default-secret-key')
+    # Security settings from environment variables
+    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
     app.config['USERNAME'] = os.getenv('USERNAME')
     app.config['PASSWORD'] = os.getenv('PASSWORD')
     app.config['TIMEZONE'] = pytz.timezone('Etc/GMT-3')
@@ -52,6 +57,16 @@ def create_app():
     app.config['POWERPLANT_URL'] = app.config['BASEURL_1'] + app.config['POWERPLANT_ENDPOINT']
     app.config['REALTIME_URL'] = app.config['BASEURL_1'] + app.config['REALTIME_ENDPOINT']
     app.config['AIC_URL'] = app.config['BASEURL_1'] + app.config['AIC_ENDPOINT']
+
+    # Configure database
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
+    # Initialize database
+    init_db(app)
+    
+    # Initialize scheduler
+    init_scheduler(app)
 
     # Setup session
     Session(app)

@@ -1,4 +1,5 @@
 services:
+  # Web service
   - type: web
     name: flask-energy-app
     env: python
@@ -9,3 +10,39 @@ services:
         value: 3.11.0
       - key: SECRET_KEY
         generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rwe_data
+          property: connectionString
+      - key: USERNAME
+        sync: false  # Will be set manually in Render dashboard
+      - key: PASSWORD
+        sync: false  # Will be set manually in Render dashboard
+      - key: PORT
+        value: 5000
+
+  # Scheduler worker service
+  - type: worker
+    name: flask-energy-scheduler
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scheduler_service.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SECRET_KEY
+        sync: true  # Sync with web service
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rwe_data
+          property: connectionString
+      - key: USERNAME
+        sync: true  # Sync with web service
+      - key: PASSWORD
+        sync: true  # Sync with web service
+
+databases:
+  - name: rwe_data
+    databaseName: rwe_data
+    user: rwe_user
+    plan: free
