@@ -15,6 +15,9 @@ from .models.realtime import HydroRealtimeData, NaturalGasRealtimeData
 from .tasks.data_fetcher import fetch_and_store_hydro_data, fetch_and_store_natural_gas_data, fetch_and_store_imported_coal_data
 from .database.config import db
 import requests
+import json
+
+pd.set_option('future.no_silent_downcasting', True)
 
 main = Blueprint('main', __name__)
 
@@ -421,15 +424,10 @@ def get_aic_data():
 
 @main.route('/heatmap_data', methods=['POST'])
 def heatmap_data():
-    """Legacy endpoint for natural gas heatmap - redirects to natural_gas_heatmap_data"""
-    return natural_gas_heatmap_data()
-
-@main.route('/natural_gas_heatmap_data', methods=['POST'])
-def natural_gas_heatmap_data():
     try:
         data = request.json
         date = datetime.strptime(data['date'], '%Y-%m-%d').date()
-        version = data.get('version', 'current')
+        version = data.get('version', 'first')
         
         # First try to get data from database
         heatmap_data = NaturalGasHeatmapData.query.filter_by(
@@ -437,7 +435,6 @@ def natural_gas_heatmap_data():
             version=version
         ).all()
         
-        # If no data in database, fetch from API and store it
         if not heatmap_data:
             current_app.logger.info(f"No natural gas data in DB for {date}, fetching from API...")
             
@@ -445,36 +442,61 @@ def natural_gas_heatmap_data():
             dpp_url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
             tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
             
-            # Create DataFrame for API data
+            # Initialize DataFrame with hours and fill with 0
             hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
-            df = pd.DataFrame(index=hours, columns=plant_mapping['plant_names'])
+            df = pd.DataFrame(0, index=hours, columns=plant_mapping['plant_names'])
             
-            # Fetch data for each plant
-            for o_id, pl_id, plant_name in zip(
+            # Create session with retry strategy
+            session = requests.Session()
+            retries = Retry(
+                total=5,
+                backoff_factor=1,
+                status_forcelist=[500, 502, 503, 504, 406],
+                allowed_methods=["POST"]
+            )
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            
+            # Iterate through all plants with their IDs
+            for plant_name, o_id, pl_id in zip(
+                plant_mapping['plant_names'],
                 plant_mapping['o_ids'],
-                plant_mapping['uevcb_ids'],
-                plant_mapping['plant_names']
+                plant_mapping['uevcb_ids']
             ):
                 try:
-                    response = fetch_plant_data(date, date, o_id, pl_id, dpp_url, tgt_token)
+                    response_data = fetch_plant_data(
+                        start_date=date,
+                        end_date=date,
+                        org_id=o_id,
+                        plant_id=pl_id,
+                        url=dpp_url,
+                        token=tgt_token
+                    )
                     
-                    if response and 'items' in response:
-                        # Store data in database
-                        for item in response['items']:
-                            hour = int(item.get('time', '00:00').split(':')[0])
-                            value = item.get('toplam', 0)
-                            
-                            heatmap_data = NaturalGasHeatmapData(
-                                date=date,
-                                hour=hour,
-                                plant_name=plant_name,
-                                value=value,
-                                version=version
-                            )
-                            db.session.merge(heatmap_data)
-                            
-                            # Also update DataFrame for immediate response
-                            df.at[f"{str(hour).zfill(2)}:00", plant_name] = value
+                    if response_data and isinstance(response_data, dict):
+                        current_app.logger.info(f"Got response for {plant_name}: {str(response_data)[:200]}...")
+                        
+                        if 'items' in response_data:
+                            for item in response_data['items']:
+                                try:
+                                    hour = item.get('time', '00:00').split(':')[0]
+                                    toplam = item.get('toplam')
+                                    
+                                    # Skip if toplam is None or not convertible to float
+                                    if toplam is not None:
+                                        try:
+                                            value = float(toplam)
+                                            df.at[f"{hour.zfill(2)}:00", plant_name] = value
+                                            current_app.logger.info(f"Added value {value} for {plant_name} at hour {hour}")
+                                        except (ValueError, TypeError):
+                                            current_app.logger.warning(f"Invalid value for {plant_name} at hour {hour}: {toplam}")
+                                            continue
+                                except (KeyError, AttributeError) as e:
+                                    current_app.logger.error(f"Error processing data point for {plant_name}: {str(e)}")
+                                    continue
+                        else:
+                            current_app.logger.warning(f"No items in response for {plant_name}")
+                    else:
+                        current_app.logger.error(f"Invalid response for {plant_name}: {response_data}")
                     
                     time.sleep(0.5)  # Small delay between API calls
                     
@@ -482,34 +504,30 @@ def natural_gas_heatmap_data():
                     current_app.logger.error(f"Error fetching data for {plant_name}: {str(e)}")
                     continue
             
-            try:
-                db.session.commit()
-            except Exception as e:
-                current_app.logger.error(f"Error storing data: {str(e)}")
-                db.session.rollback()
+            # Process the dataframe
+            result = {
+                "code": 200,
+                "data": {
+                    "hours": df.index.tolist(),
+                    "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                        plant_mapping['plant_names'],
+                        plant_mapping['capacities']
+                    )],
+                    "values": df.values.tolist()
+                }
+            }
             
-            # If we got any data from API, use it
-            if not df.empty and not df.isna().all().all():
-                return jsonify({
-                    "code": 200,
-                    "data": {
-                        "hours": df.index.tolist(),
-                        "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
-                            plant_mapping['plant_names'],
-                            plant_mapping['capacities']
-                        )],
-                        "values": df.fillna(0).astype(float).values.tolist()
-                    }
-                })
-            
-            # If no data from either source
+            return jsonify(result)
+        
+        # If we have data in DB, process it as before
+        df = process_heatmap_data(heatmap_data, plant_mapping)
+        
+        if df.empty:
             return jsonify({
                 "code": 404,
                 "error": f"No data available for date {date}"
             })
         
-        # If we have data in database, process it normally
-        df = process_heatmap_data(heatmap_data, plant_mapping)
         return jsonify({
             "code": 200,
             "data": {
@@ -521,12 +539,12 @@ def natural_gas_heatmap_data():
                 "values": df.values.tolist()
             }
         })
-    
+
     except ValueError as ve:
         return jsonify({"code": 400, "error": f"Invalid date format: {str(ve)}"})
     except Exception as e:
-        current_app.logger.error(f"Error in natural_gas_heatmap_data: {str(e)}")
-        return jsonify({"code": 500, "error": "Internal server error"})
+        current_app.logger.error(f"Error in heatmap_data: {str(e)}")
+        return jsonify({"code": 500, "error": str(e)}), 500
 
 @main.route('/realtime_heatmap_data', methods=['POST'])
 def realtime_heatmap_data():
@@ -1137,7 +1155,7 @@ def hydro_realtime_heatmap_data():
         # If we have data in database, process and return it
         if heatmap_data:
             df = pd.DataFrame(index=[f"{str(i).zfill(2)}:00" for i in range(24)], 
-                            columns=hydro_mapping['plant_names'])
+                                    columns=hydro_mapping['plant_names'])
             
             for record in heatmap_data:
                 hour = f"{str(record.hour).zfill(2)}:00"
