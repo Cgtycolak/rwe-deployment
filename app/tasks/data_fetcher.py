@@ -8,7 +8,6 @@ import time
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from pytz import timezone
 
 def get_plant_config(plant_type):
     """Helper function to get plant configuration based on type"""
@@ -96,7 +95,7 @@ def fetch_and_store_data(date, plant_type='hydro'):
 
 # Convenience functions for each plant type
 def fetch_and_store_hydro_data(date):
-    """Fetch and store hydro plant data for a specific date"""
+    """Fetch and store hydro data for a specific date"""
     try:
         # Get authentication token
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
@@ -115,7 +114,7 @@ def fetch_and_store_hydro_data(date):
         adapter = HTTPAdapter(max_retries=retries, pool_connections=1, pool_maxsize=1)
         session.mount('https://', adapter)
         
-        # Process plants in smaller batches
+        # Process plants in batches
         batch_size = 3
         for i in range(0, len(hydro_mapping['plant_names']), batch_size):
             batch_plants = list(zip(
@@ -137,57 +136,23 @@ def fetch_and_store_hydro_data(date):
                     
                     if data and 'items' in data:
                         # Store data in database
-                        for item in data['items']:
-                            hour = int(item.get('time', '00:00').split(':')[0])
-                            value = float(item.get('barajli', 0) or item.get('toplam', 0))
-                            
-                            heatmap_data = HydroHeatmapData(
-                                date=date,
-                                hour=hour,
-                                plant_name=plant_name,
-                                value=value,
-                                version='first'
-                            )
-                            db.session.add(heatmap_data)
+                        store_hydro_data(data, date, plant_name)
                     
                     time.sleep(1)  # Delay between requests
                     
                 except Exception as e:
-                    current_app.logger.error(f"Error processing {plant_name}: {str(e)}")
+                    current_app.logger.error(f"Error fetching data for {plant_name}: {str(e)}")
                     continue
             
             time.sleep(2)  # Delay between batches
-            
-        db.session.commit()
+        
         session.close()
         
     except Exception as e:
         current_app.logger.error(f"Error in fetch_and_store_hydro_data: {str(e)}")
-        db.session.rollback()
 
 def fetch_and_store_natural_gas_data(date):
     return fetch_and_store_data(date, 'natural_gas')
 
 def fetch_and_store_imported_coal_data(date):
     return fetch_and_store_data(date, 'imported_coal')
-
-def update_daily_data(app, fetch_next_day=False):
-    """Update daily data for all plant types"""
-    with app.app_context():
-        try:
-            # Get the target date (tomorrow if fetch_next_day is True)
-            target_date = datetime.now(timezone('Europe/Istanbul')).date()
-            if fetch_next_day:
-                target_date += timedelta(days=1)
-            
-            app.logger.info(f"Starting daily data update for date: {target_date}")
-            
-            # Fetch and store data for each plant type
-            fetch_and_store_hydro_data(target_date)
-            fetch_and_store_natural_gas_data(target_date)
-            fetch_and_store_imported_coal_data(target_date)
-            
-            app.logger.info(f"Completed daily data update for date: {target_date}")
-            
-        except Exception as e:
-            app.logger.error(f"Error in daily data update: {str(e)}")

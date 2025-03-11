@@ -1,6 +1,6 @@
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from flask import abort, app, Blueprint, session, render_template, redirect, url_for, Response, request, jsonify, Request, Response, current_app
 from requests import post, Session
 from .functions import get_tgt_token, asutc, invalidates_or_none, fetch_plant_data
@@ -1299,7 +1299,7 @@ def hydro_heatmap_data():
         return jsonify({"code": 400, "error": f"Invalid date format: {str(ve)}"})
     except Exception as e:
         current_app.logger.error(f"Error in hydro_heatmap_data: {str(e)}")
-        return jsonify({"code": 500, "error": str(e)}), 500
+        return jsonify({"code": 500, "error": "Internal server error"})
 
 @main.route('/hydro_realtime_heatmap_data', methods=['POST'])
 def hydro_realtime_heatmap_data():
@@ -1473,39 +1473,3 @@ def imported_coal_heatmap_data():
     except Exception as e:
         current_app.logger.error(f"Error in imported_coal_heatmap_data: {str(e)}")
         return jsonify({"code": 500, "error": "Internal server error"})
-
-@main.route('/trigger_data_update', methods=['POST'])
-def trigger_data_update():
-    try:
-        data = request.json
-        # If no date provided, default to tomorrow
-        target_date = None
-        if data and 'date' in data:
-            target_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
-        else:
-            target_date = (datetime.now(timezone('Europe/Istanbul')) + timedelta(days=1)).date()
-
-        current_app.logger.info(f"Manually triggering data update for date: {target_date}")
-        
-        # Use the same update function as the scheduler
-        with current_app.app_context():
-            fetch_and_store_hydro_data(target_date)
-            fetch_and_store_natural_gas_data(target_date)
-            fetch_and_store_imported_coal_data(target_date)
-        
-        return jsonify({
-            "code": 200,
-            "message": f"Data update triggered successfully for {target_date}"
-        })
-        
-    except ValueError as ve:
-        return jsonify({
-            "code": 400,
-            "error": f"Invalid date format: {str(ve)}"
-        })
-    except Exception as e:
-        current_app.logger.error(f"Error triggering data update: {str(e)}")
-        return jsonify({
-            "code": 500,
-            "error": "Internal server error"
-        })
