@@ -70,71 +70,37 @@ def resolve_dns(hostname):
         return hostname
 
 def get_tgt_token(username, password, max_retries=5):
-    """Get TGT token with improved connection handling"""
-    # Check cache first
-    cache_key = f"{username}:{password}"
-    if cache_key in _token_cache:
-        return _token_cache[cache_key]
-    
+    """Get TGT token with retries and backoff"""
     tgt_url = "https://giris.epias.com.tr/cas/v1/tickets"
-    session = get_session()
-    
-    # Resolve DNS
-    hostname = "giris.epias.com.tr"
-    ip = resolve_dns(hostname)
-    if ip != hostname:
-        tgt_url = tgt_url.replace(hostname, ip)
+    headers = {"Accept": "text/plain"}
     
     retry_count = 0
-    last_error = None
-    
     while retry_count < max_retries:
         try:
-            # Get TGT
-            response = session.post(
-                tgt_url,
-                data={
-                    'username': username,
-                    'password': password
-                },
-                headers={
-                    'Host': hostname,
-                    'Connection': 'keep-alive'
-                },
-                verify=True
+            session = requests.Session()
+            # Configure retry strategy
+            retries = Retry(
+                total=5,
+                backoff_factor=1,
+                status_forcelist=[500, 502, 503, 504],
+                allowed_methods=["POST"]
             )
+            session.mount('https://', HTTPAdapter(max_retries=retries))
             
-            if response.status_code == 201:
-                tgt = response.text
-                # Get service ticket
-                st_response = session.post(
-                    f"{tgt_url}/{tgt}",
-                    data={'service': 'https://seffaflik.epias.com.tr'},
-                    headers={
-                        'Host': hostname,
-                        'Connection': 'keep-alive'
-                    }
-                )
-                
-                if st_response.status_code == 200:
-                    token = st_response.text
-                    _token_cache[cache_key] = token
-                    return token
+            response = session.post(
+                tgt_url, 
+                data={"username": username, "password": password}, 
+                headers=headers,
+                timeout=30  # Set timeout
+            )
+            response.raise_for_status()
+            return response.text.strip()
             
-            retry_count += 1
-            current_app.logger.warning(f"Failed to get token (attempt {retry_count}/{max_retries})")
-            time.sleep(min(2 ** retry_count + random.uniform(0, 1), 60))
-            
-        except Exception as e:
-            last_error = str(e)
+        except requests.exceptions.RequestException as e:
             retry_count += 1
             if retry_count == max_retries:
-                current_app.logger.error(f"Failed to get token after {max_retries} retries: {last_error}")
-                return None
-            current_app.logger.warning(f"Connection error (attempt {retry_count}/{max_retries}): {last_error}")
-            time.sleep(min(2 ** retry_count + random.uniform(0, 1), 60))
-    
-    return None
+                raise Exception(f"Failed to obtain TGT token after {max_retries} retries: {str(e)}")
+            time.sleep(2 ** retry_count)  # Exponential backoff
 
 def asutc(date_str):
     """Convert date string to UTC format required by the API"""
@@ -170,8 +136,12 @@ def invalidates_or_none(start, end):
     return {'code': 200, 'start_date': start_date, 'end_date': end_date}
 
 def fetch_plant_data(start_date, end_date, org_id, plant_id, url, token, max_retries=5):
-    """Fetch plant data with improved connection handling"""
-    session = get_session()
+    """Fetch plant data with improved error handling and retries"""
+    headers = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'TGT': token
+    }
     
     # Format dates
     if isinstance(start_date, (date, datetime)):
@@ -201,32 +171,30 @@ def fetch_plant_data(start_date, end_date, org_id, plant_id, url, token, max_ret
     }
     
     retry_count = 0
-    last_error = None
-    
     while retry_count < max_retries:
         try:
-            response = session.post(
-                url,
-                headers={
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'TGT': token,
-                    'Connection': 'keep-alive'
-                },
-                json=data,
-                verify=True
+            session = requests.Session()
+            # Configure retry strategy
+            retries = Retry(
+                total=5,
+                backoff_factor=1,
+                status_forcelist=[500, 502, 503, 504, 406],
+                allowed_methods=["POST"]
             )
+            session.mount('https://', HTTPAdapter(max_retries=retries))
             
+            response = session.post(
+                url, 
+                headers=headers, 
+                json=data,
+                timeout=30  # Set timeout
+            )
             response.raise_for_status()
             return response.json()
             
-        except Exception as e:
-            last_error = str(e)
+        except requests.exceptions.RequestException as e:
             retry_count += 1
             if retry_count == max_retries:
-                current_app.logger.error(f"Failed to fetch data after {max_retries} retries: {last_error}")
+                current_app.logger.error(f"Error in fetch_plant_data after {max_retries} retries: {str(e)}")
                 return None
-            current_app.logger.warning(f"Connection error (attempt {retry_count}/{max_retries}): {last_error}")
-            time.sleep(min(2 ** retry_count + random.uniform(0, 1), 60))
-    
-    return None
+            time.sleep(2 ** retry_count)  # Exponential backoff
