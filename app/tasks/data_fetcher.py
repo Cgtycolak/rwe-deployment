@@ -5,6 +5,10 @@ from ..functions import get_tgt_token, fetch_plant_data
 from ..mappings import hydro_mapping, plant_mapping, import_coal_mapping
 from flask import current_app
 import time
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import logging
 
 def get_plant_config(plant_type):
     """Helper function to get plant configuration based on type"""
@@ -16,6 +20,33 @@ def get_plant_config(plant_type):
     if plant_type not in configs:
         raise ValueError(f"Invalid plant type: {plant_type}")
     return configs[plant_type]
+
+def create_session():
+    session = requests.Session()
+    retries = Retry(
+        total=5,
+        backoff_factor=0.5,
+        status_forcelist=[500, 502, 503, 504]
+    )
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+def fetch_data_from_api(url, params=None, timeout=60):
+    session = create_session()
+    try:
+        response = session.get(url, params=params, timeout=timeout)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.Timeout:
+        logging.error(f"Timeout while fetching data from {url}")
+        return None
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error fetching data from {url}: {str(e)}")
+        return None
+    finally:
+        session.close()
 
 def fetch_and_store_data_chunk(start_date, end_date, plant_type='hydro'):
     """
@@ -99,3 +130,30 @@ def fetch_and_store_natural_gas_data(date):
 
 def fetch_and_store_imported_coal_data(date):
     return fetch_and_store_data(date, 'imported_coal')
+
+def fetch_and_store_hydro_data():
+    # Use the new fetch_data_from_api function
+    data = fetch_data_from_api("https://giris.epias.com.tr/...", timeout=60)
+    if data:
+        # Process and store data
+        pass
+    else:
+        logging.error("Failed to fetch hydro data from API")
+
+def fetch_and_store_natural_gas_data():
+    # Use the new fetch_data_from_api function
+    data = fetch_data_from_api("https://giris.epias.com.tr/...", timeout=60)
+    if data:
+        # Process and store data
+        pass
+    else:
+        logging.error("Failed to fetch natural gas data from API")
+
+def fetch_and_store_imported_coal_data():
+    # Use the new fetch_data_from_api function
+    data = fetch_data_from_api("https://giris.epias.com.tr/...", timeout=60)
+    if data:
+        # Process and store data
+        pass
+    else:
+        logging.error("Failed to fetch imported coal data from API")
