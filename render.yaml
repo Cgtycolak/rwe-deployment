@@ -3,7 +3,9 @@ services:
   - type: web
     name: flask-energy-app
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      pip install -r requirements.txt
+      flask db upgrade  # Run migrations before starting the app
     startCommand: gunicorn --config gunicorn_config.py app:app
     envVars:
       - key: PYTHON_VERSION
@@ -20,6 +22,8 @@ services:
         sync: false  # Will be set manually in Render dashboard
       - key: PORT
         value: 5000
+      - key: FLASK_APP  # Required for Flask CLI commands
+        value: app
 
   # Scheduler worker service
   - type: worker

@@ -26,3 +26,4 @@ psycopg2-binary>=2.9.9
 Flask-SQLAlchemy>=3.0.0
 Flask-Migrate>=4.0.0
 APScheduler>=3.10.4
+alembic>=1.12.0
