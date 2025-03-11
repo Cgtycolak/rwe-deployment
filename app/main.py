@@ -691,13 +691,102 @@ def import_coal_heatmap_data():
     try:
         data = request.json
         date = datetime.strptime(data['date'], '%Y-%m-%d').date()
-        version = data.get('version', 'current')
+        version = data.get('version', 'first')
         
+        # First try to get data from database
         heatmap_data = ImportedCoalHeatmapData.query.filter_by(
             date=date,
             version=version
         ).all()
         
+        if not heatmap_data:
+            current_app.logger.info(f"No imported coal data in DB for {date}, fetching from API...")
+            
+            # Get authentication token and URL
+            dpp_url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
+            tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+            
+            # Initialize DataFrame with hours and fill with 0
+            hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+            df = pd.DataFrame(0, index=hours, columns=import_coal_mapping['plant_names'])
+            
+            # Iterate through all plants with their IDs
+            for plant_name, o_id, pl_id in zip(
+                import_coal_mapping['plant_names'],
+                import_coal_mapping['o_ids'],
+                import_coal_mapping['uevcb_ids']
+            ):
+                try:
+                    # Format request data exactly as shown in working example
+                    request_data = {
+                        'startDate': f"{date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+                        'endDate': f"{date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+                        'region': 'TR1',
+                        'organizationId': int(o_id),
+                        'uevcbId': int(pl_id)
+                    }
+                    
+                    current_app.logger.info(f"Fetching data for {plant_name} with data: {request_data}")
+                    
+                    response = requests.post(
+                        dpp_url,
+                        headers={
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'TGT': tgt_token
+                        },
+                        json=request_data,
+                        timeout=30
+                    )
+                    
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        current_app.logger.info(f"Raw response for {plant_name}: {str(response_data)[:200]}...")
+                        
+                        if response_data and 'items' in response_data:
+                            for item in response_data['items']:
+                                try:
+                                    hour = item.get('time', '00:00').split(':')[0]
+                                    # Try both toplam and ithalKomur fields
+                                    value = None
+                                    if item.get('ithalKomur') is not None:
+                                        value = float(item['ithalKomur'])
+                                    elif item.get('toplam') is not None:
+                                        value = float(item['toplam'])
+                                        
+                                    if value is not None:
+                                        df.at[f"{hour.zfill(2)}:00", plant_name] = value
+                                        current_app.logger.info(f"Added value {value} for {plant_name} at hour {hour}")
+                                except (ValueError, TypeError) as e:
+                                    current_app.logger.warning(f"Invalid value for {plant_name} at hour {hour}")
+                                    continue
+                        else:
+                            current_app.logger.warning(f"No items in response for {plant_name}")
+                    else:
+                        current_app.logger.error(f"Bad response status {response.status_code} for {plant_name}")
+                    
+                    time.sleep(0.5)  # Small delay between API calls
+                    
+                except Exception as e:
+                    current_app.logger.error(f"Error fetching data for {plant_name}: {str(e)}")
+                    continue
+            
+            # Process the dataframe
+            result = {
+                "code": 200,
+                "data": {
+                    "hours": df.index.tolist(),
+                    "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                        import_coal_mapping['plant_names'],
+                        import_coal_mapping['capacities']
+                    )],
+                    "values": df.values.tolist()
+                }
+            }
+            
+            return jsonify(result)
+        
+        # If we have data in DB, process it as before
         df = process_heatmap_data(heatmap_data, import_coal_mapping)
         
         if df.empty:
@@ -717,7 +806,7 @@ def import_coal_heatmap_data():
                 "values": df.values.tolist()
             }
         })
-    
+
     except ValueError as ve:
         return jsonify({"code": 400, "error": f"Invalid date format: {str(ve)}"})
     except Exception as e:
@@ -1090,25 +1179,102 @@ def hydro_heatmap_data():
     try:
         data = request.json
         date = datetime.strptime(data['date'], '%Y-%m-%d').date()
-        version = data.get('version', 'current')
+        version = data.get('version', 'first')
         
-        # Try database first
+        # First try to get data from database
         heatmap_data = HydroHeatmapData.query.filter_by(
             date=date,
             version=version
         ).all()
         
-        # If no data, fetch from API
         if not heatmap_data:
             current_app.logger.info(f"No hydro data in DB for {date}, fetching from API...")
-            fetch_and_store_hydro_data(date)  # This function already handles API fetching and DB storage
             
-            # Try to get the newly stored data
-            heatmap_data = HydroHeatmapData.query.filter_by(
-                date=date,
-                version=version
-            ).all()
+            # Get authentication token and URL
+            dpp_url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
+            tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+            
+            # Initialize DataFrame with hours and fill with 0
+            hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+            df = pd.DataFrame(0, index=hours, columns=hydro_mapping['plant_names'])
+            
+            # Iterate through all plants with their IDs
+            for plant_name, o_id, pl_id in zip(
+                hydro_mapping['plant_names'],
+                hydro_mapping['o_ids'],
+                hydro_mapping['uevcb_ids']
+            ):
+                try:
+                    # Format request data exactly as shown in working example
+                    request_data = {
+                        'startDate': f"{date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+                        'endDate': f"{date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+                        'region': 'TR1',
+                        'organizationId': int(o_id),
+                        'uevcbId': int(pl_id)
+                    }
+                    
+                    current_app.logger.info(f"Fetching data for {plant_name} with data: {request_data}")
+                    
+                    response = requests.post(
+                        dpp_url,
+                        headers={
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'TGT': tgt_token
+                        },
+                        json=request_data,
+                        timeout=30
+                    )
+                    
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        current_app.logger.info(f"Raw response for {plant_name}: {str(response_data)[:200]}...")
+                        
+                        if response_data and 'items' in response_data:
+                            for item in response_data['items']:
+                                try:
+                                    hour = item.get('time', '00:00').split(':')[0]
+                                    # Try both toplam and barajli fields
+                                    value = None
+                                    if item.get('barajli') is not None:
+                                        value = float(item['barajli'])
+                                    elif item.get('toplam') is not None:
+                                        value = float(item['toplam'])
+                                        
+                                    if value is not None:
+                                        df.at[f"{hour.zfill(2)}:00", plant_name] = value
+                                        current_app.logger.info(f"Added value {value} for {plant_name} at hour {hour}")
+                                except (ValueError, TypeError) as e:
+                                    current_app.logger.warning(f"Invalid value for {plant_name} at hour {hour}")
+                                    continue
+                        else:
+                            current_app.logger.warning(f"No items in response for {plant_name}")
+                    else:
+                        current_app.logger.error(f"Bad response status {response.status_code} for {plant_name}")
+                    
+                    time.sleep(0.5)  # Small delay between API calls
+                    
+                except Exception as e:
+                    current_app.logger.error(f"Error fetching data for {plant_name}: {str(e)}")
+                    continue
+            
+            # Process the dataframe
+            result = {
+                "code": 200,
+                "data": {
+                    "hours": df.index.tolist(),
+                    "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                        hydro_mapping['plant_names'],
+                        hydro_mapping['capacities']
+                    )],
+                    "values": df.values.tolist()
+                }
+            }
+            
+            return jsonify(result)
         
+        # If we have data in DB, process it as before
         df = process_heatmap_data(heatmap_data, hydro_mapping)
         
         if df.empty:
@@ -1128,7 +1294,7 @@ def hydro_heatmap_data():
                 "values": df.values.tolist()
             }
         })
-    
+
     except ValueError as ve:
         return jsonify({"code": 400, "error": f"Invalid date format: {str(ve)}"})
     except Exception as e:
