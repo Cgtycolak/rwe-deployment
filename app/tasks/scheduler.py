@@ -66,6 +66,15 @@ def init_scheduler(app):
         EVENT_SCHEDULER_SHUTDOWN
     )
     
+    # Add a test job
+    scheduler.add_job(
+        lambda: app.logger.info("Test job executed"),
+        trigger=CronTrigger(second='*/30'),  # Runs every 30 seconds
+        id='test_job',
+        name='Test job every 30 seconds',
+        replace_existing=True
+    )
+    
     try:
         scheduler.start()
         app.logger.info("Scheduler started. Daily updates scheduled for 13:06")
