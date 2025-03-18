@@ -94,12 +94,12 @@ def init_scheduler(app):
     )
     
     # Schedule the hourly update task (runs every hour)
-    hourly_run = CronTrigger(minute=33, timezone=tz)  # Run at 33 minutes past every hour
+    hourly_run = CronTrigger(minute=30, timezone=tz)  # Run at 30 minutes past every hour
     scheduler.add_job(
         update_hourly_data,
         trigger=hourly_run,
         id='hourly_data_update',
-        name='Update current version data hourly at :33',
+        name='Update current version data hourly at :30',
         args=[app],
         replace_existing=True,
         misfire_grace_time=300  # 5 minutes grace time for misfired jobs
