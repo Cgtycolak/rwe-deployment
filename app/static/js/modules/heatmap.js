@@ -148,6 +148,9 @@ export const heatmap = {
 
         // Function to determine text color based on background value
         const getTextColor = (value) => {
+            if (version === 'difference' || version === 'realtime_difference') {
+                if (value === 0) return 'black';
+            }
             const threshold = 0.3;
             const normalizedValue = (value - minValue) / (maxValue - minValue);
             return normalizedValue > threshold ? 'black' : 'white';
