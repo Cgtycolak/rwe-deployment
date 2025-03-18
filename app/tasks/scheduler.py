@@ -29,12 +29,12 @@ def init_scheduler(app):
     """Initialize the scheduler with proper timezone and error handling"""
     scheduler = BackgroundScheduler(timezone=timezone('Europe/Istanbul'))
     
-    # Schedule the update task to run at 16:05 every day
+    # Schedule the update task to run at 13:06 every day
     scheduler.add_job(
         lambda: update_daily_data(app),
-        trigger=CronTrigger(hour=16, minute=5),
+        trigger=CronTrigger(hour=13, minute=6),
         id='daily_data_update',
-        name='Update heatmap data daily at 16:05',
+        name='Update heatmap data daily at 13:06',
         replace_existing=True,
         misfire_grace_time=900  # 15 minutes grace time for misfired jobs
     )
@@ -68,6 +68,6 @@ def init_scheduler(app):
     
     try:
         scheduler.start()
-        app.logger.info("Scheduler started. Daily updates scheduled for 16:05")
+        app.logger.info("Scheduler started. Daily updates scheduled for 13:06")
     except Exception as e:
         app.logger.error(f"Error starting scheduler: {str(e)}")
