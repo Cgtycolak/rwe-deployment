@@ -12,7 +12,6 @@ import pytz
 from .mappings import hydro_mapping, plant_mapping, import_coal_mapping
 from .models.heatmap import HydroHeatmapData, NaturalGasHeatmapData, ImportedCoalHeatmapData
 from .models.realtime import HydroRealtimeData, NaturalGasRealtimeData
-from .tasks.data_fetcher import fetch_and_store_hydro_data, fetch_and_store_natural_gas_data, fetch_and_store_imported_coal_data
 from .database.config import db
 import requests
 import json
@@ -486,7 +485,6 @@ def heatmap_data():
                                         try:
                                             value = float(toplam)
                                             df.at[f"{hour.zfill(2)}:00", plant_name] = value
-                                            current_app.logger.info(f"Added value {value} for {plant_name} at hour {hour}")
                                         except (ValueError, TypeError):
                                             current_app.logger.warning(f"Invalid value for {plant_name} at hour {hour}: {toplam}")
                                             continue

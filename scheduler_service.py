@@ -1,6 +1,6 @@
 import os
 import sys
-from app import create_app
+from app.factory import create_app
 
 # Initialize Flask app
 app = create_app()

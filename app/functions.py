@@ -11,7 +11,7 @@ import requests
 
 # Function to get the TGT token
 def get_tgt_token(username, password, max_retries=5):
-    """Get TGT token with retries and backoff"""
+    """Get TGT token with improved retry handling and timeouts"""
     tgt_url = "https://giris.epias.com.tr/cas/v1/tickets"
     headers = {"Accept": "text/plain"}
     
@@ -19,20 +19,30 @@ def get_tgt_token(username, password, max_retries=5):
     while retry_count < max_retries:
         try:
             session = requests.Session()
-            # Configure retry strategy
+            # Configure retry strategy with longer timeouts
             retries = Retry(
                 total=5,
-                backoff_factor=1,
-                status_forcelist=[500, 502, 503, 504],
-                allowed_methods=["POST"]
+                backoff_factor=2,  # Increased backoff
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=["POST"],
+                connect=5,  # Maximum number of connect retries
+                read=5,     # Maximum number of read retries
+                backoff_jitter=1  # Add jitter to avoid thundering herd
             )
-            session.mount('https://', HTTPAdapter(max_retries=retries))
+            adapter = HTTPAdapter(
+                max_retries=retries,
+                pool_connections=3,
+                pool_maxsize=3,
+                pool_block=True
+            )
+            session.mount('https://', adapter)
             
+            # Make request with increased timeouts
             response = session.post(
                 tgt_url, 
                 data={"username": username, "password": password}, 
                 headers=headers,
-                timeout=30  # Set timeout
+                timeout=(30, 90)  # (connect timeout, read timeout)
             )
             response.raise_for_status()
             return response.text.strip()
@@ -41,7 +51,13 @@ def get_tgt_token(username, password, max_retries=5):
             retry_count += 1
             if retry_count == max_retries:
                 raise Exception(f"Failed to obtain TGT token after {max_retries} retries: {str(e)}")
-            time.sleep(2 ** retry_count)  # Exponential backoff
+            
+            # Calculate sleep time with exponential backoff and maximum cap
+            sleep_time = min(300, 2 ** (retry_count + 2))  # Cap at 5 minutes
+            print(f"Token request failed, retrying in {sleep_time} seconds... ({retry_count}/{max_retries})")
+            time.sleep(sleep_time)
+        finally:
+            session.close()
 
 def asutc(date_str):
     """Convert date string to UTC format required by the API"""
@@ -85,23 +101,12 @@ def fetch_plant_data(start_date, end_date, org_id, plant_id, url, token, max_ret
     }
     
     # Format dates
-    if isinstance(start_date, (date, datetime)):
-        start_str = start_date.strftime('%Y-%m-%d')
-    else:
-        try:
-            start_str = datetime.strptime(start_date, '%Y-%m-%d').strftime('%Y-%m-%d')
-        except (ValueError, TypeError):
-            current_app.logger.error(f"Invalid start_date format: {start_date}")
-            return None
-    
-    if isinstance(end_date, (date, datetime)):
-        end_str = end_date.strftime('%Y-%m-%d')
-    else:
-        try:
-            end_str = datetime.strptime(end_date, '%Y-%m-%d').strftime('%Y-%m-%d')
-        except (ValueError, TypeError):
-            current_app.logger.error(f"Invalid end_date format: {end_date}")
-            return None
+    try:
+        start_str = start_date.strftime('%Y-%m-%d') if isinstance(start_date, (date, datetime)) else datetime.strptime(start_date, '%Y-%m-%d').strftime('%Y-%m-%d')
+        end_str = end_date.strftime('%Y-%m-%d') if isinstance(end_date, (date, datetime)) else datetime.strptime(end_date, '%Y-%m-%d').strftime('%Y-%m-%d')
+    except (ValueError, TypeError) as e:
+        current_app.logger.error(f"Invalid date format: {e}")
+        return None
     
     data = {
         'startDate': f"{start_str}T00:00:00+03:00",
@@ -111,31 +116,27 @@ def fetch_plant_data(start_date, end_date, org_id, plant_id, url, token, max_ret
         'uevcbId': int(plant_id)
     }
     
-    retry_count = 0
-    while retry_count < max_retries:
+    session = requests.Session()
+    retries = Retry(
+        total=max_retries,
+        backoff_factor=0.5,  # Reduced backoff factor for faster retries
+        status_forcelist=[500, 502, 503, 504, 406],
+        allowed_methods=["POST"]
+    )
+    session.mount('https://', HTTPAdapter(max_retries=retries))
+    
+    for retry_count in range(max_retries):
         try:
-            session = requests.Session()
-            # Configure retry strategy
-            retries = Retry(
-                total=5,
-                backoff_factor=1,
-                status_forcelist=[500, 502, 503, 504, 406],
-                allowed_methods=["POST"]
-            )
-            session.mount('https://', HTTPAdapter(max_retries=retries))
-            
             response = session.post(
                 url, 
                 headers=headers, 
                 json=data,
-                timeout=30  # Set timeout
+                timeout=15  # Reduced timeout for faster failure detection
             )
             response.raise_for_status()
             return response.json()
-            
         except requests.exceptions.RequestException as e:
-            retry_count += 1
-            if retry_count == max_retries:
+            if retry_count == max_retries - 1:
                 current_app.logger.error(f"Error in fetch_plant_data after {max_retries} retries: {str(e)}")
                 return None
-            time.sleep(2 ** retry_count)  # Exponential backoff
+            time.sleep(0.5 * (2 ** retry_count))  # Faster exponential backoff
