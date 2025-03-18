@@ -18,14 +18,14 @@ from flask import current_app
 def update_daily_data():
     """Fetch and store data for today and tomorrow"""
     try:
-        # Get the application instance
-        app = current_app._get_current_object()
-        tz = timezone('Europe/Istanbul')
-        current_time = datetime.now(tz)
-        
-        app.logger.info(f"Update daily data triggered at {current_time}")
-        
-        with app.app_context():
+        # Use the app context
+        with current_app.app_context():
+            app = current_app._get_current_object()
+            tz = timezone('Europe/Istanbul')
+            current_time = datetime.now(tz)
+            
+            app.logger.info(f"Update daily data triggered at {current_time}")
+            
             today = current_time.date()
             tomorrow = today + timedelta(days=1)
             
@@ -67,12 +67,12 @@ def init_scheduler(app):
     )
     
     # Schedule the main update task
-    next_run = CronTrigger(hour=14, minute=21, timezone=tz)
+    next_run = CronTrigger(hour=14, minute=27, timezone=tz)
     scheduler.add_job(
         update_daily_data,
         trigger=next_run,
         id='daily_data_update',
-        name='Update heatmap data daily at 14:21',
+        name='Update heatmap data daily at 14:27',
         replace_existing=True,
         misfire_grace_time=900  # 15 minutes grace time for misfired jobs
     )
@@ -109,6 +109,6 @@ def init_scheduler(app):
     
     try:
         scheduler.start()
-        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates scheduled for 14:21 Istanbul time")
+        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates scheduled for 14:27 Istanbul time")
     except Exception as e:
         app.logger.error(f"Error starting scheduler: {str(e)}")
