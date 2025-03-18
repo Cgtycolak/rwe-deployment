@@ -178,7 +178,7 @@ def populate_heatmap_data(plant_type: str, start_date: datetime.date, end_date: 
                         time.sleep(0.1)  # Delay between requests
         
         # Only store in local db if requested
-        if local_db:
+        if local_session:
             try:
                 local_session.commit()
             except Exception as e:
@@ -194,18 +194,136 @@ def populate_single_day(date: datetime.date, plant_type: str, local_db=True):
     """Populate data for a single date"""
     return populate_heatmap_data(plant_type, date, date, local_db)
 
-def populate_multiple_types(date: datetime.date, plant_types=None, local_db=True):
-    """Populate data for multiple plant types on a single date"""
-    if plant_types is None:
-        plant_types = list(TYPE_MAPPINGS.keys())
+def populate_multiple_types(date, local_db=True, versions=['first', 'current']):
+    """Populate data for multiple plant types for a specific date"""
+    app = create_app()
+    local_session = get_local_session() if local_db else None
     
-    for plant_type in plant_types:
-        try:
-            populate_single_day(date, plant_type, local_db)
-        except Exception as e:
-            print(f"Error processing {plant_type}: {str(e)}")
-            with open('error.log', 'a') as f:
-                f.write(f"FATAL,{plant_type},{str(e)}\n")
+    try:
+        with app.app_context():
+            # Process each plant type
+            for plant_type, (model, mapping) in TYPE_MAPPINGS.items():
+                print(f"\nProcessing plant type: {plant_type}")
+                
+                # Process each version (first and current)
+                for version in versions:
+                    print(f"Processing {version} version data...")
+                    
+                    url = (app.config['DPP_FIRST_VERSION_URL'] if version == 'first' 
+                          else app.config['DPP_URL'])
+                    
+                    # Delete existing data for this date and version
+                    try:
+                        # Delete from deployed database
+                        model.query.filter(
+                            model.date == date,
+                            model.version == version
+                        ).delete()
+                        db.session.commit()
+                        
+                        # Delete from local database
+                        if local_db:
+                            local_session.query(model).filter(
+                                model.date == date,
+                                model.version == version
+                            ).delete()
+                            local_session.commit()
+                    except Exception as e:
+                        print(f"Error clearing existing data: {str(e)}")
+                        db.session.rollback()
+                        if local_db:
+                            local_session.rollback()
+                    
+                    tgt_token = get_tgt_token(
+                        app.config.get('USERNAME'),
+                        app.config.get('PASSWORD')
+                    )
+                    
+                    # Fetch and store data for each plant
+                    for plant_name, o_id, pl_id in zip(
+                        mapping['plant_names'],
+                        mapping['o_ids'],
+                        mapping['uevcb_ids']
+                    ):
+                        print(f"Fetching {version} data for {plant_name}")
+                        
+                        try:
+                            response = fetch_plant_data(
+                                start_date=date,
+                                end_date=date,
+                                org_id=o_id,
+                                plant_id=pl_id,
+                                url=url,
+                                token=tgt_token
+                            )
+                            
+                            if response and 'items' in response and response['items']:
+                                # Store new data in both databases
+                                for item in response['items']:
+                                    try:
+                                        date_str = item.get('date', '').split('T')[0]
+                                        item_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                                        hour = int(item.get('time', '00:00').split(':')[0])
+                                        value = float(item.get('toplam', 0))
+                                        
+                                        # Create record for deployed database
+                                        deployed_record = model(
+                                            date=item_date,
+                                            hour=hour,
+                                            plant_name=plant_name,
+                                            value=value,
+                                            version=version
+                                        )
+                                        db.session.add(deployed_record)
+                                        
+                                        # Create record for local database
+                                        if local_db:
+                                            local_record = model(
+                                                date=item_date,
+                                                hour=hour,
+                                                plant_name=plant_name,
+                                                value=value,
+                                                version=version
+                                            )
+                                            local_session.add(local_record)
+                                        
+                                    except (ValueError, TypeError, AttributeError) as e:
+                                        print(f"Error processing item for {plant_name}: {str(e)}")
+                                        continue
+                                
+                                # Commit to both databases
+                                try:
+                                    db.session.commit()
+                                    if local_db:
+                                        local_session.commit()
+                                except Exception as e:
+                                    print(f"Error committing data: {str(e)}")
+                                    db.session.rollback()
+                                    if local_db:
+                                        local_session.rollback()
+                                    
+                            else:
+                                print(f"No data returned for {plant_name}")
+                                
+                        except Exception as e:
+                            print(f"Error fetching data for {plant_name}: {str(e)}")
+                            db.session.rollback()
+                            if local_db:
+                                local_session.rollback()
+                            with open('error.log', 'a') as f:
+                                f.write(f"{date},{date},{plant_type},{plant_name},{str(e)}\n")
+                        
+                        time.sleep(0.1)  # Delay between requests
+    
+    except Exception as e:
+        print(f"Error in populate_multiple_types: {str(e)}")
+        if local_db:
+            local_session.rollback()
+    
+    finally:
+        # Close local session if it exists
+        if local_db and local_session:
+            local_session.close()
 
 def main():
     parser = argparse.ArgumentParser(description='Populate historical heatmap data')

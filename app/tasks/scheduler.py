@@ -16,33 +16,59 @@ from ..scripts.populate_historical_data import populate_multiple_types
 from flask import current_app
 
 def update_daily_data(app):
-    """Fetch and store data for today and tomorrow"""
+    """Fetch and store data for today and tomorrow (both first and current versions)"""
     try:
         with app.app_context():
             tz = timezone('Europe/Istanbul')
             current_time = datetime.now(tz)
             
-            app.logger.info(f"Update daily data triggered at {current_time}")
+            app.logger.info(f"Daily update job triggered at {current_time}")
             
             today = current_time.date()
-            tomorrow = today + timedelta(days=1)
             
-            app.logger.info(f"Starting daily update job for dates: {today} and {tomorrow}")
+            app.logger.info(f"Starting daily update job for date: {today}")
             
-            # Fetch data for both days (don't store in local DB for scheduled updates)
-            for date in [today, tomorrow]:
-                app.logger.info(f"Fetching data for {date}")
-                try:
-                    populate_multiple_types(date, local_db=False)
-                    app.logger.info(f"Successfully fetched data for {date}")
-                except Exception as e:
-                    app.logger.error(f"Error fetching data for {date}: {str(e)}")
-                    raise
+            # Fetch data for today (don't store in local DB for scheduled updates)
+            app.logger.info(f"Fetching data for {today} (all versions)")
+            try:
+                populate_multiple_types(today, local_db=False, versions=['first', 'current'])
+                app.logger.info(f"Successfully fetched all version data for {today}")
+            except Exception as e:
+                app.logger.error(f"Error fetching data for {today}: {str(e)}")
+                raise
             
             app.logger.info("Daily update job completed successfully")
             
     except Exception as e:
         app.logger.error(f"Error in update_daily_data: {str(e)}")
+        raise
+
+def update_hourly_data(app):
+    """Fetch and store current version data for today only"""
+    try:
+        with app.app_context():
+            tz = timezone('Europe/Istanbul')
+            current_time = datetime.now(tz)
+            
+            app.logger.info(f"Hourly update job triggered at {current_time}")
+            
+            today = current_time.date()
+            
+            app.logger.info(f"Starting hourly update job for date: {today}")
+            
+            # Fetch only current version data for today
+            app.logger.info(f"Fetching current version data for {today}")
+            try:
+                populate_multiple_types(today, local_db=False, versions=['current'])
+                app.logger.info(f"Successfully fetched current version data for {today}")
+            except Exception as e:
+                app.logger.error(f"Error fetching current data for {today}: {str(e)}")
+                raise
+            
+            app.logger.info("Hourly update job completed successfully")
+            
+    except Exception as e:
+        app.logger.error(f"Error in update_hourly_data: {str(e)}")
         raise
 
 def init_scheduler(app):
@@ -55,25 +81,28 @@ def init_scheduler(app):
     current_ist = datetime.now(tz)
     app.logger.info(f"Initializing scheduler at UTC: {current_utc}, Istanbul: {current_ist}")
     
-    # Schedule test job to run every minute to verify scheduler is working
-    scheduler.add_job(
-        lambda: app.logger.info(f"Test job executed at {datetime.now(tz)}"),
-        trigger=CronTrigger(second='*/30', timezone=tz),
-        id='test_job',
-        name='Test job every 30 seconds',
-        replace_existing=True
-    )
-    
-    # Schedule the main update task
-    next_run = CronTrigger(hour=16, minute=5, timezone=tz)
+    # Schedule the daily update task (runs once a day)
+    daily_run = CronTrigger(hour=16, minute=5, timezone=tz)
     scheduler.add_job(
         update_daily_data,
-        trigger=next_run,
+        trigger=daily_run,
         id='daily_data_update',
         name='Update heatmap data daily at 16:05',
-        args=[app],  # Pass the app instance to the job
+        args=[app],
         replace_existing=True,
         misfire_grace_time=900  # 15 minutes grace time for misfired jobs
+    )
+    
+    # Schedule the hourly update task (runs every hour)
+    hourly_run = CronTrigger(minute=33, timezone=tz)  # Run at 33 minutes past every hour
+    scheduler.add_job(
+        update_hourly_data,
+        trigger=hourly_run,
+        id='hourly_data_update',
+        name='Update current version data hourly at :33',
+        args=[app],
+        replace_existing=True,
+        misfire_grace_time=300  # 5 minutes grace time for misfired jobs
     )
     
     # Add error listener
@@ -108,6 +137,6 @@ def init_scheduler(app):
     
     try:
         scheduler.start()
-        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates scheduled for 16:05 Istanbul time")
+        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates at 16:05, hourly updates at :30 past each hour")
     except Exception as e:
         app.logger.error(f"Error starting scheduler: {str(e)}")
