@@ -15,12 +15,10 @@ from apscheduler.events import (
 from ..scripts.populate_historical_data import populate_multiple_types
 from flask import current_app
 
-def update_daily_data():
+def update_daily_data(app):
     """Fetch and store data for today and tomorrow"""
     try:
-        # Use the app context
-        with current_app.app_context():
-            app = current_app._get_current_object()
+        with app.app_context():
             tz = timezone('Europe/Istanbul')
             current_time = datetime.now(tz)
             
@@ -44,7 +42,7 @@ def update_daily_data():
             app.logger.info("Daily update job completed successfully")
             
     except Exception as e:
-        current_app.logger.error(f"Error in update_daily_data: {str(e)}")
+        app.logger.error(f"Error in update_daily_data: {str(e)}")
         raise
 
 def init_scheduler(app):
@@ -73,6 +71,7 @@ def init_scheduler(app):
         trigger=next_run,
         id='daily_data_update',
         name='Update heatmap data daily at 14:27',
+        args=[app],  # Pass the app instance to the job
         replace_existing=True,
         misfire_grace_time=900  # 15 minutes grace time for misfired jobs
     )
