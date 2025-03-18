@@ -65,12 +65,12 @@ def init_scheduler(app):
     )
     
     # Schedule the main update task
-    next_run = CronTrigger(hour=14, minute=27, timezone=tz)
+    next_run = CronTrigger(hour=14, minute=32, timezone=tz)
     scheduler.add_job(
         update_daily_data,
         trigger=next_run,
         id='daily_data_update',
-        name='Update heatmap data daily at 14:27',
+        name='Update heatmap data daily at 14:32',
         args=[app],  # Pass the app instance to the job
         replace_existing=True,
         misfire_grace_time=900  # 15 minutes grace time for misfired jobs
@@ -108,6 +108,6 @@ def init_scheduler(app):
     
     try:
         scheduler.start()
-        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates scheduled for 14:27 Istanbul time")
+        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates scheduled for 14:32 Istanbul time")
     except Exception as e:
         app.logger.error(f"Error starting scheduler: {str(e)}")
