@@ -77,10 +77,6 @@ def init_scheduler(app):
         misfire_grace_time=900  # 15 minutes grace time for misfired jobs
     )
     
-    # Calculate and log next run time
-    next_run_time = scheduler.get_job('daily_data_update').next_run_time
-    app.logger.info(f"Next scheduled run time: {next_run_time}")
-    
     # Add error listener
     def job_listener(event):
         """Handle different types of scheduler events"""
@@ -96,6 +92,8 @@ def init_scheduler(app):
                 app.logger.info(f'Job submitted at {current_time}: {event.job_id}')
             elif event.code == EVENT_SCHEDULER_STARTED:
                 app.logger.info(f'Scheduler started at {current_time}')
+                for job in scheduler.get_jobs():
+                    app.logger.info(f"Next run for job '{job.name}': {job.next_run_time}")
             elif event.code == EVENT_SCHEDULER_SHUTDOWN:
                 app.logger.info(f'Scheduler shutdown at {current_time}')
     
