@@ -16,7 +16,7 @@ from ..scripts.populate_historical_data import populate_multiple_types
 from flask import current_app
 
 def update_daily_data(app):
-    """Fetch and store data for today and tomorrow (both first and current versions)"""
+    """Fetch and store data for today and attempt tomorrow if available"""
     try:
         with app.app_context():
             tz = timezone('Europe/Istanbul')
@@ -25,6 +25,7 @@ def update_daily_data(app):
             app.logger.info(f"Daily update job triggered at {current_time}")
             
             today = current_time.date()
+            tomorrow = today + timedelta(days=1)
             
             app.logger.info(f"Starting daily update job for date: {today}")
             
@@ -35,7 +36,17 @@ def update_daily_data(app):
                 app.logger.info(f"Successfully fetched all version data for {today}")
             except Exception as e:
                 app.logger.error(f"Error fetching data for {today}: {str(e)}")
-                raise
+                # Don't raise here, so we can still try tomorrow's data
+            
+            # Try to fetch tomorrow's data, but don't fail the job if it's not available
+            app.logger.info(f"Attempting to fetch data for {tomorrow} (all versions)")
+            try:
+                populate_multiple_types(tomorrow, local_db=False, versions=['first', 'current'])
+                app.logger.info(f"Successfully fetched all version data for {tomorrow}")
+            except Exception as e:
+                app.logger.warning(f"Could not fetch data for {tomorrow}: {str(e)}")
+                app.logger.info("This is expected if tomorrow's data is not yet available")
+                # Don't raise here, it's okay if tomorrow's data isn't available yet
             
             app.logger.info("Daily update job completed successfully")
             
