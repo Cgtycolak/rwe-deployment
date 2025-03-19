@@ -82,6 +82,33 @@ def update_hourly_data(app):
         app.logger.error(f"Error in update_hourly_data: {str(e)}")
         raise
 
+def update_realtime_data(app):
+    """Fetch and store realtime data for yesterday"""
+    try:
+        with app.app_context():
+            tz = timezone('Europe/Istanbul')
+            current_time = datetime.now(tz)
+            yesterday = (current_time - timedelta(days=1)).date()
+            
+            app.logger.info(f"Realtime update job triggered at {current_time}")
+            app.logger.info(f"Fetching realtime data for {yesterday}")
+            
+            # Import here to avoid circular imports
+            from ..scripts.populate_realtime_data import populate_realtime_data
+            
+            for plant_type in ['hydro', 'natural_gas']:
+                try:
+                    populate_realtime_data(plant_type, yesterday, yesterday, local_db=False)
+                    app.logger.info(f"Successfully updated realtime data for {plant_type}")
+                except Exception as e:
+                    app.logger.error(f"Error updating realtime data for {plant_type}: {str(e)}")
+            
+            app.logger.info(f"Realtime update completed for {yesterday}")
+            
+    except Exception as e:
+        app.logger.error(f"Error in update_realtime_data: {str(e)}")
+        raise
+
 def init_scheduler(app):
     """Initialize the scheduler with proper timezone and error handling"""
     tz = timezone('Europe/Istanbul')
@@ -101,7 +128,7 @@ def init_scheduler(app):
         name='Update heatmap data daily at 16:05',
         args=[app],
         replace_existing=True,
-        misfire_grace_time=900  # 15 minutes grace time for misfired jobs
+        misfire_grace_time=900  # 15 minutes grace time
     )
     
     # Schedule the hourly update task (runs every hour)
@@ -113,7 +140,33 @@ def init_scheduler(app):
         name='Update current version data hourly at :30',
         args=[app],
         replace_existing=True,
-        misfire_grace_time=300  # 5 minutes grace time for misfired jobs
+        misfire_grace_time=300  # 5 minutes grace time
+    )
+    
+    # Schedule realtime update task (runs twice a day)
+    realtime_morning = CronTrigger(hour=5, minute=0, timezone=tz)  # Run at 05:00
+    realtime_noon = CronTrigger(hour=12, minute=0, timezone=tz)    # Run at 12:00
+    
+    # Add morning job
+    scheduler.add_job(
+        update_realtime_data,
+        trigger=realtime_morning,
+        id='realtime_data_update_morning',
+        name='Update realtime data at 05:00',
+        args=[app],
+        replace_existing=True,
+        misfire_grace_time=900  # 15 minutes grace time
+    )
+    
+    # Add noon job
+    scheduler.add_job(
+        update_realtime_data,
+        trigger=realtime_noon,
+        id='realtime_data_update_noon',
+        name='Update realtime data at 12:00',
+        args=[app],
+        replace_existing=True,
+        misfire_grace_time=900  # 15 minutes grace time
     )
     
     # Add error listener
@@ -148,6 +201,6 @@ def init_scheduler(app):
     
     try:
         scheduler.start()
-        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates at 16:05, hourly updates at :30 past each hour")
+        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates at 16:05, hourly updates at :30, realtime updates at 05:00 and 12:00")
     except Exception as e:
         app.logger.error(f"Error starting scheduler: {str(e)}")
