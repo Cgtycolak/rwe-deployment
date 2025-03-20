@@ -132,7 +132,7 @@ def init_scheduler(app):
     )
     
     # Schedule the hourly update task (runs every hour)
-    hourly_run = CronTrigger(minute=3, timezone=tz)  # Run at 30 minutes past every hour
+    hourly_run = CronTrigger(minute=30, timezone=tz)  # Run at 30 minutes past every hour
     scheduler.add_job(
         update_hourly_data,
         trigger=hourly_run,
