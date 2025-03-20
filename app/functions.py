@@ -8,56 +8,70 @@ from requests import Session
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import requests
+import logging
 
 # Function to get the TGT token
-def get_tgt_token(username, password, max_retries=5):
-    """Get TGT token with improved retry handling and timeouts"""
-    tgt_url = "https://giris.epias.com.tr/cas/v1/tickets"
-    headers = {"Accept": "text/plain"}
+def get_tgt_token(username, password, max_retries=5, retry_delay=10):
+    """
+    Get a TGT token for authentication with the EPIAS API
     
-    retry_count = 0
-    while retry_count < max_retries:
+    Args:
+        username: EPIAS username
+        password: EPIAS password
+        max_retries: Maximum number of retry attempts
+        retry_delay: Delay between retries in seconds
+        
+    Returns:
+        TGT token string
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Create a session with retry capability
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["POST"]
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("https://", adapter)
+    
+    # Increase timeout for the authentication request
+    timeout = 60  # 60 seconds timeout
+    
+    for attempt in range(max_retries):
         try:
-            session = requests.Session()
-            # Configure retry strategy with longer timeouts
-            retries = Retry(
-                total=5,
-                backoff_factor=2,  # Increased backoff
-                status_forcelist=[429, 500, 502, 503, 504],
-                allowed_methods=["POST"],
-                connect=5,  # Maximum number of connect retries
-                read=5,     # Maximum number of read retries
-                backoff_jitter=1  # Add jitter to avoid thundering herd
+            # Get TGT
+            tgt_response = session.post(
+                'https://giris.epias.com.tr/cas/v1/tickets',
+                data={'username': username, 'password': password},
+                timeout=timeout
             )
-            adapter = HTTPAdapter(
-                max_retries=retries,
-                pool_connections=3,
-                pool_maxsize=3,
-                pool_block=True
-            )
-            session.mount('https://', adapter)
+            tgt_response.raise_for_status()
             
-            # Make request with increased timeouts
-            response = session.post(
-                tgt_url, 
-                data={"username": username, "password": password}, 
-                headers=headers,
-                timeout=(30, 90)  # (connect timeout, read timeout)
+            # Extract TGT from response
+            tgt = tgt_response.text
+            
+            # Get service ticket
+            st_response = session.post(
+                f'https://giris.epias.com.tr/cas/v1/tickets/{tgt}',
+                data={'service': 'https://seffaflik.epias.com.tr'},
+                timeout=timeout
             )
-            response.raise_for_status()
-            return response.text.strip()
+            st_response.raise_for_status()
+            
+            # Return the service ticket
+            return st_response.text
             
         except requests.exceptions.RequestException as e:
-            retry_count += 1
-            if retry_count == max_retries:
-                raise Exception(f"Failed to obtain TGT token after {max_retries} retries: {str(e)}")
-            
-            # Calculate sleep time with exponential backoff and maximum cap
-            sleep_time = min(300, 2 ** (retry_count + 2))  # Cap at 5 minutes
-            print(f"Token request failed, retrying in {sleep_time} seconds... ({retry_count}/{max_retries})")
-            time.sleep(sleep_time)
-        finally:
-            session.close()
+            logger.warning(f"Authentication attempt {attempt+1}/{max_retries} failed: {str(e)}")
+            if attempt < max_retries - 1:
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                logger.error(f"Authentication failed after {max_retries} attempts")
+                raise
 
 def asutc(date_str):
     """Convert date string to UTC format required by the API"""
