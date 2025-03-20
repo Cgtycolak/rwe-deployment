@@ -3,6 +3,7 @@ import sys
 import argparse
 from datetime import datetime, timedelta
 import time
+import pandas as pd
 
 # Add the parent directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -132,6 +133,10 @@ def populate_realtime_data(plant_type: str, start_date: datetime.date, end_date:
                                 item_date = datetime.strptime(date_str, '%Y-%m-%d').date()
                                 hour = int(item.get('hour', '00:00').split(':')[0])
                                 total = item.get('total', 0)
+
+                                # Handle NaN values
+                                if pd.isna(total) or total is None:
+                                    total = 0
 
                                 # Distribute value among plant instances
                                 count = p_id_count[p_id]

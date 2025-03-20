@@ -570,6 +570,9 @@ def realtime_heatmap_data():
                 hour = f"{str(record.hour).zfill(2)}:00"
                 df.at[hour, record.plant_name] = record.value
 
+            # Replace NaN values with 0
+            df = df.fillna(0)
+
             return jsonify({
                 "code": 200,
                 "data": {
@@ -1324,6 +1327,9 @@ def hydro_realtime_heatmap_data():
             for record in heatmap_data:
                 hour = f"{str(record.hour).zfill(2)}:00"
                 df.at[hour, record.plant_name] = record.value
+
+            # Replace NaN values with 0
+            df = df.fillna(0)
 
             return jsonify({
                 "code": 200,
