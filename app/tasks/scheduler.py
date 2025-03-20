@@ -14,6 +14,7 @@ from apscheduler.events import (
 )
 from ..scripts.populate_historical_data import populate_multiple_types
 from flask import current_app
+import time
 
 def update_daily_data(app):
     """Fetch and store data for today and attempt tomorrow if available"""
@@ -29,13 +30,24 @@ def update_daily_data(app):
             
             app.logger.info(f"Starting daily update job for date: {today}")
             
-            # Fetch data for today (don't store in local DB for scheduled updates)
+            # Fetch data with better error handling
             app.logger.info(f"Fetching data for {today} (all versions)")
             try:
-                populate_multiple_types(today, local_db=False, versions=['first', 'current'])
-                app.logger.info(f"Successfully fetched all version data for {today}")
+                max_attempts = 3
+                for attempt in range(max_attempts):
+                    try:
+                        populate_multiple_types(today, local_db=False, versions=['first', 'current'])
+                        app.logger.info(f"Successfully fetched all version data for {today}")
+                        break
+                    except Exception as e:
+                        if attempt < max_attempts - 1:
+                            app.logger.warning(f"Attempt {attempt+1}/{max_attempts} failed: {str(e)}")
+                            app.logger.info(f"Retrying in 30 seconds...")
+                            time.sleep(30)
+                        else:
+                            raise
             except Exception as e:
-                app.logger.error(f"Error fetching data for {today}: {str(e)}")
+                app.logger.error(f"All attempts to fetch data for {today} failed: {str(e)}")
                 # Don't raise here, so we can still try tomorrow's data
             
             # Try to fetch tomorrow's data, but don't fail the job if it's not available
@@ -120,7 +132,7 @@ def init_scheduler(app):
     app.logger.info(f"Initializing scheduler at UTC: {current_utc}, Istanbul: {current_ist}")
     
     # Schedule the daily update task (runs once a day)
-    daily_run = CronTrigger(hour=16, minute=30, timezone=tz)
+    daily_run = CronTrigger(hour=16, minute=43, timezone=tz)
     scheduler.add_job(
         update_daily_data,
         trigger=daily_run,
@@ -132,7 +144,7 @@ def init_scheduler(app):
     )
     
     # Schedule the hourly update task (runs every hour)
-    hourly_run = CronTrigger(minute=30, timezone=tz)  # Run at 30 minutes past every hour
+    hourly_run = CronTrigger(minute=48, timezone=tz)  # Run at 30 minutes past every hour
     scheduler.add_job(
         update_hourly_data,
         trigger=hourly_run,
