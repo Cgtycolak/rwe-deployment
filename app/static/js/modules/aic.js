@@ -6,7 +6,6 @@ export const aic = {
 
     // Initialize with helper functions
     setup(helpers) {
-        console.log('Setting up AIC module with helpers:', helpers);
         if (!helpers) {
             console.error('No helpers provided to AIC module');
             return;

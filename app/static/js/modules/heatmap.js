@@ -6,7 +6,6 @@ export const heatmap = {
 
     // Initialize with helper functions
     setup(helpers) {
-        console.log('Setting up Heatmap module with helpers:', helpers);
         if (!helpers) {
             console.error('No helpers provided to Heatmap module');
             return;
