@@ -120,7 +120,7 @@ def init_scheduler(app):
     app.logger.info(f"Initializing scheduler at UTC: {current_utc}, Istanbul: {current_ist}")
     
     # Schedule the daily update task (runs once a day)
-    daily_run = CronTrigger(hour=16, minute=5, timezone=tz)
+    daily_run = CronTrigger(hour=16, minute=56, timezone=tz)
     scheduler.add_job(
         update_daily_data,
         trigger=daily_run,
