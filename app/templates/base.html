@@ -345,6 +345,12 @@
                 <span>Generation Comparison</span>
             </a>
         </div>
+        <div class="nav-item">
+            <a href="#" class="nav-link" data-section="rolling-averages">
+                <i class="fas fa-chart-line"></i>
+                <span>CAO Charts</span>
+            </a>
+        </div>
 
         <!-- Reports & Heatmaps -->
         <div class="nav-category">Reports & Heatmaps</div>
@@ -392,10 +398,16 @@
                 mainContent.classList.toggle('expanded');
             });
 
-            // Add click handler for home link
-            document.querySelector('.home-link').addEventListener('click', (e) => {
-                e.preventDefault();
-                showSection('home');
+            // Add click handler for navigation links
+            navLinks.forEach(link => {
+                if (link.dataset.section) {
+                    link.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        showSection(link.dataset.section);
+                        // Update URL fragment
+                        history.pushState(null, null, '#' + link.dataset.section);
+                    });
+                }
             });
 
             // Update navigation functionality
@@ -458,19 +470,26 @@
                         }
                     }
                 }
+                
+                // Dispatch section activated event
+                document.dispatchEvent(new CustomEvent('section:activated', {
+                    detail: { section: sectionId }
+                }));
             }
 
-            // Set up navigation click handlers
-            navLinks.forEach(link => {
-                link.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const sectionId = e.currentTarget.dataset.section;
+            // Check for fragment identifier in URL
+            if (window.location.hash) {
+                const sectionId = window.location.hash.substring(1);
+                const targetSection = document.querySelector(`.content-section[data-section="${sectionId}"]`);
+                if (targetSection) {
                     showSection(sectionId);
-                });
-            });
-
-            // Show home section initially
-            showSection('home');
+                } else {
+                    showSection('home');
+                }
+            } else {
+                // Show home section initially
+                showSection('home');
+            }
 
             // Add click handlers for quick link cards
             document.querySelectorAll('.quick-link-card').forEach(card => {
@@ -478,7 +497,22 @@
                     e.preventDefault();
                     const sectionId = e.currentTarget.dataset.section;
                     showSection(sectionId);
+                    // Update URL fragment
+                    history.pushState(null, null, '#' + sectionId);
                 });
+            });
+            
+            // Listen for popstate events (browser back/forward)
+            window.addEventListener('popstate', function() {
+                if (window.location.hash) {
+                    const sectionId = window.location.hash.substring(1);
+                    const targetSection = document.querySelector(`.content-section[data-section="${sectionId}"]`);
+                    if (targetSection) {
+                        showSection(sectionId);
+                    }
+                } else {
+                    showSection('home');
+                }
             });
         });
     </script>

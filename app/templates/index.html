@@ -425,6 +425,108 @@
     background: var(--hover-color);
     transform: translateY(-5px);
   }
+
+  /* Load all font weights and styles */
+  @font-face {
+    font-family: 'RWE Sans Web';
+    src: url("{{ url_for('static', filename='fonts/rwe-sans-web/RWESansWeb-Regular.woff2') }}") format('woff2'),
+         url("{{ url_for('static', filename='fonts/rwe-sans-web/RWESansWeb-Regular.woff') }}") format('woff'),
+         url("{{ url_for('static', filename='fonts/rwe-sans-web/RWE Sans Web.otf') }}") format('opentype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+  }
+  
+  @font-face {
+    font-family: 'RWE Sans Web';
+    src: url("{{ url_for('static', filename='fonts/rwe-sans-web/RWESansWeb-Bold.woff2') }}") format('woff2'),
+         url("{{ url_for('static', filename='fonts/rwe-sans-web/RWESansWeb-Bold.woff') }}") format('woff'),
+         url("{{ url_for('static', filename='fonts/rwe-sans-web/RWE Sans Web Bold.otf') }}") format('opentype');
+    font-weight: bold;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  /* Update the chart container CSS */
+  .content-section[data-section="rolling-averages"] .chart-container {
+    margin-bottom: 2rem;
+    padding: 0;
+    background: transparent;
+    height: 480px;  /* Reduced height */
+    width: 100%;
+    max-width: 100%;
+    position: relative;
+    margin: 0 auto;
+    aspect-ratio: 16 / 9;  /* Force a widescreen aspect ratio */
+  }
+
+  /* Add responsive container for charts */
+  .content-section[data-section="rolling-averages"] .col-md-6 {
+    padding: 0 15px;
+  }
+
+  /* Adjust chart title position at different zoom levels */
+  @media screen and (min-width: 1200px) {
+    .content-section[data-section="rolling-averages"] .gtitle {
+      transform: translateX(-20px);
+    }
+  }
+
+  .content-section[data-section="rolling-averages"] h2 {
+    font-family: 'RWE Sans Web', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    font-weight: normal;
+    color: #2c3e50;
+  }
+
+  /* Force Plotly to use our font */
+  .content-section[data-section="rolling-averages"] .js-plotly-plot .plotly .main-svg text {
+    font-family: 'RWE Sans Web', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif !important;
+  }
+  
+  /* Ensure title uses correct font */
+  .content-section[data-section="rolling-averages"] .gtitle {
+    font-family: 'RWE Sans Web', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif !important;
+    font-weight: normal !important;
+  }
+  
+  /* Move modebar to bottom of chart */
+  .content-section[data-section="rolling-averages"] .js-plotly-plot .plotly .modebar {
+    top: auto !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    background-color: rgba(255, 255, 255, 0.7);
+    border-radius: 4px;
+  }
+  
+  /* Option to hide modebar completely */
+  .content-section[data-section="rolling-averages"] .hide-modebar .js-plotly-plot .plotly .modebar {
+    display: none !important;
+  }
+  
+  /* Debug info */
+  .content-section[data-section="rolling-averages"] #debug-data {
+    font-family: monospace;
+    white-space: pre;
+    font-size: 12px;
+    margin-top: 20px;
+    padding: 10px;
+    background: #f5f5f5;
+    border-radius: 4px;
+    display: none;
+  }
+  
+  .content-section[data-section="rolling-averages"] #loading {
+    text-align: center;
+    padding: 20px;
+  }
+  
+  /* Controls for all charts */
+  .content-section[data-section="rolling-averages"] .chart-controls {
+    margin-bottom: 20px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+  }
 </style>
 
 <div class="container-fluid">
@@ -1412,6 +1514,45 @@
             </div>
         </div>
     </div>
+
+    <!-- Add this after the hydro-heatmap section -->
+    <div class="content-section" data-section="rolling-averages">
+        <div class="container-fluid">
+            <div class="chart-controls" style="background-color: white;">
+                <div class="row">
+                    <div class="col-md-6">
+                        <button id="load-rolling-charts" class="btn btn-primary" style="min-width: 120px;">
+                            <span class="button-content">Load Charts</span>
+                            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        </button>
+                        <button id="toggle-modebar-all" class="btn btn-outline-secondary ms-2" style="min-width: 120px;">Hide All Chart Controls</button>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <button id="update-rolling-database" class="btn btn-outline-success" style="min-width: 120px;">
+                            <span class="button-content">Update Database</span>
+                            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        </button>
+                        <span id="last-update-info" class="ms-2 text-muted small"></span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="loading" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p>Loading charts...</p>
+            </div>
+            
+            <div id="status-message" class="alert alert-info" style="display: none;"></div>
+            
+            <div class="row" id="charts-container">
+                <!-- Charts will be inserted here -->
+            </div>
+            
+            <div id="debug-data"></div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 {% block page_scripts %}
@@ -1478,5 +1619,505 @@
 
   // Call this function when the page loads
   document.addEventListener("DOMContentLoaded", addCheckboxesToOptions);
+</script>
+
+<!-- Add the rolling averages script -->
+<script>
+// Add this debounce function at the top of your script
+function debounce(func, wait) {
+    let timeout;
+    return function() {
+        const context = this;
+        const args = arguments;
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(context, args), wait);
+    };
+}
+
+// Add a flag to track if charts are already loaded
+let chartsLoaded = false;
+
+function loadRollingCharts() {
+    // Prevent multiple loads
+    if (chartsLoaded) {
+        console.log("Charts already loaded, skipping");
+        return;
+    }
+    
+    // Show loading indicator
+    const loadingDiv = document.getElementById('loading');
+    loadingDiv.style.display = 'block';
+    
+    // Clear any existing charts
+    const chartsContainer = document.getElementById('charts-container');
+    chartsContainer.innerHTML = '';
+    
+    // Toggle button state
+    toggleButtonLoading('load-rolling-charts', true);
+    
+    // Hide any previous status messages
+    document.getElementById('status-message').style.display = 'none';
+    
+    // Get data and render charts directly without complex font loading
+    fetch('{{ url_for("main.get_rolling_data") }}')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(rollingData => {
+            if (rollingData.error) {
+                throw new Error(rollingData.error);
+            }
+            
+            // Store data globally for access
+            window.rollingData = rollingData;
+            
+            // Render the charts
+            renderCharts();
+            
+            // Set the loaded flag
+            chartsLoaded = true;
+            
+            // Hide loading indicator when done
+            loadingDiv.style.display = 'none';
+            
+            // Reset button state
+            toggleButtonLoading('load-rolling-charts', false);
+            
+            // Add a single global resize handler
+            if (!window.chartResizeHandlerAdded) {
+                window.addEventListener('resize', debounce(function() {
+                    const charts = document.querySelectorAll('.chart-container');
+                    charts.forEach(chart => {
+                        if (chart.id && window.Plotly) {
+                            Plotly.Plots.resize(chart);
+                        }
+                    });
+                }, 250)); // 250ms debounce
+                
+                window.chartResizeHandlerAdded = true;
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching rolling data:', error);
+            showStatusMessage('Error loading charts: ' + error.message, 'danger');
+            loadingDiv.style.display = 'none';
+            toggleButtonLoading('load-rolling-charts', false);
+            chartsLoaded = false;
+        });
+}
+
+function updateRollingDatabase() {
+    // Toggle button state
+    toggleButtonLoading('update-rolling-database', true);
+    
+    // Show status message
+    showStatusMessage('Updating database with latest production data...', 'info');
+    
+    fetch('{{ url_for("main.update_rolling_data") }}')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            // Show success message
+            showStatusMessage(`Database updated successfully. Added ${data.records_added} new records.`, 'success');
+            
+            // Update last update info
+            fetchLastUpdateInfo();
+            
+            // Reset button state
+            toggleButtonLoading('update-rolling-database', false);
+        })
+        .catch(error => {
+            console.error('Error updating database:', error);
+            showStatusMessage('Error updating database: ' + error.message, 'danger');
+            toggleButtonLoading('update-rolling-database', false);
+        });
+}
+
+function showStatusMessage(message, type) {
+    const statusDiv = document.getElementById('status-message');
+    statusDiv.className = `alert alert-${type}`;
+    statusDiv.textContent = message;
+    statusDiv.style.display = 'block';
+    
+    // Auto-hide success messages after 5 seconds
+    if (type === 'success') {
+        setTimeout(() => {
+            statusDiv.style.display = 'none';
+        }, 5000);
+    }
+}
+
+function toggleButtonLoading(buttonId, isLoading) {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+    
+    const spinner = button.querySelector('.spinner-border');
+    const content = button.querySelector('.button-content');
+    
+    if (isLoading) {
+        button.disabled = true;
+        if (spinner) spinner.classList.remove('d-none');
+        if (content) content.style.opacity = '0.5';
+    } else {
+        button.disabled = false;
+        if (spinner) spinner.classList.add('d-none');
+        if (content) content.style.opacity = '1';
+    }
+}
+
+function renderCharts() {
+    const rollingData = window.rollingData;
+    const chartsContainer = document.getElementById('charts-container');
+    const currentYear = new Date().getFullYear();
+    
+    // Filter for specific fuel types and define their display order
+    const fuelTypes = [
+        'naturalgas',    // CCGT
+        'lignite',       // Lignite
+        'wind',          // Wind
+        'sun',           // Solar
+        'importcoal',    // HardCoal
+        'importexport',  // ImportExport
+        'river',         // Run of River
+        'dammedhydro',   // Dam
+        'renewablesratio_monthly' // Renewables/Total Ratio (Monthly)
+    ];
+    
+    // Map column names to display names
+    const typeMapping = {
+        'naturalgas': 'CCGT',
+        'importcoal': 'HardCoal',
+        'lignite': 'Lignite',
+        'wind': 'Wind',
+        'sun': 'Solar',
+        'importexport': 'ImportExport',
+        'river': 'River',
+        'dammedhydro': 'Dam',
+        'renewablesratio_monthly': 'Renewables/Total Generation Ratio'
+    };
+    
+    // Process each fuel type in the specified order
+    let rowDiv; // Declare rowDiv outside the loop
+    fuelTypes.forEach((type, index) => {
+        if (!rollingData[type]) {
+            console.warn(`No data found for ${type}`);
+            return; // Skip if no data
+        }
+        
+        // Create column for chart
+        if (index % 2 === 0) {
+            // Start a new row for every 2 charts
+            rowDiv = document.createElement('div');
+            rowDiv.className = 'row mb-4';
+            chartsContainer.appendChild(rowDiv);
+        }
+        
+        // Create column
+        const colDiv = document.createElement('div');
+        colDiv.className = 'col-md-6';
+        rowDiv.appendChild(colDiv);
+        
+        // Create chart container
+        const chartDiv = document.createElement('div');
+        chartDiv.className = 'chart-container';
+        chartDiv.id = `chart-${type}`;
+        colDiv.appendChild(chartDiv);
+        
+        // Get data for this fuel type
+        const data = rollingData[type];
+        const traces = [];
+        
+        // Add historical range area
+        if (data.historical_range) {
+            const rangeData = data.historical_range;
+            
+            // Use different x values for monthly data
+            let x;
+            if (type === 'renewablesratio_monthly') {
+                x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // Month numbers
+            } else {
+                x = Array.from({length: rangeData.length}, (_, i) => i);
+            }
+            
+            // Create the range area with a single fill
+            traces.push({
+                name: '2016-2024 range',
+                x: x.concat(x.slice().reverse()),
+                y: rangeData.map(d => d ? d.max : null).concat(rangeData.map(d => d ? d.min : null).reverse()),
+                fill: 'toself',
+                type: 'scatter',
+                mode: 'none',
+                fillcolor: 'rgba(135, 206, 250, 0.4)',
+                line: {color: 'transparent', width: 0},
+                showlegend: true
+            });
+        }
+        
+        // Add historical average
+        if (data.historical_avg) {
+            // Use different x values for monthly data
+            let x;
+            if (type === 'renewablesratio_monthly') {
+                x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // Month numbers
+            } else {
+                x = Array.from({length: data.historical_avg.length}, (_, i) => i);
+            }
+            
+            traces.push({
+                name: '2016-2024 avg.',
+                x: x,
+                y: data.historical_avg,
+                type: 'scatter',
+                mode: 'lines',
+                line: {
+                    color: 'rgba(0, 0, 255, 0.8)',
+                    width: 1.5,
+                    dash: '3,3'
+                }
+            });
+        }
+        
+        // Add previous year
+        if (data[currentYear - 1]) {
+            // Use different x values for monthly data
+            let x;
+            if (type === 'renewablesratio_monthly') {
+                x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // Month numbers
+            } else {
+                x = Array.from({length: data[currentYear - 1].length}, (_, i) => i);
+            }
+            
+            traces.push({
+                name: (currentYear - 1).toString(),
+                x: x,
+                y: data[currentYear - 1],
+                type: 'scatter',
+                mode: 'lines',
+                line: {
+                    color: 'black',
+                    width: 2.5,
+                    dash: '6,3'
+                }
+            });
+        }
+        
+        // Add current year
+        if (data[currentYear]) {
+            // Use different x values for monthly data
+            let x;
+            if (type === 'renewablesratio_monthly') {
+                x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // Month numbers
+            } else {
+                x = Array.from({length: data[currentYear].length}, (_, i) => i);
+            }
+            
+            traces.push({
+                name: currentYear.toString(),
+                x: x,
+                y: data[currentYear],
+                type: 'scatter',
+                mode: 'lines',
+                line: {
+                    color: 'red',
+                    width: 2.5
+                }
+            });
+        }
+        
+        // Get display name for the fuel type
+        let displayType = typeMapping[type] || type;
+        
+        // Special handling for renewables ratio
+        let yaxisFormat = ',d';
+        let yaxisTitle = '';
+        let chartTitle = `TR 7-Day Rolling ${displayType} Generation - MWh`;
+        let xaxisTicktext = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                             'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        let xaxisTickvals = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+
+        if (type === 'renewablesratio_monthly') {
+            yaxisFormat = '.0%';  // Format as percentage
+            chartTitle = `${displayType}`;  // No need for "Generation - MWh" suffix
+            xaxisTickvals = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // Month numbers
+        }
+        
+        const layout = {
+            title: {
+                text: chartTitle,
+                font: {
+                    family: 'RWE Sans Web',
+                    size: 22,
+                    color: '#333333'
+                },
+                x: 0.127,
+                y: 0.95,
+                xanchor: 'left',
+                yanchor: 'top'
+            },
+            xaxis: {
+                ticktext: xaxisTicktext,
+                tickvals: xaxisTickvals,
+                showgrid: true,
+                gridcolor: 'rgba(0,0,0,0.2)',
+                tickfont: {
+                    family: 'RWE Sans Web',
+                    size: 14,
+                    color: '#333333'
+                },
+                linecolor: 'black',
+                linewidth: 1,
+                mirror: true,
+                zeroline: true,
+                zerolinecolor: 'rgba(0,0,0,0.2)',
+                zerolinewidth: 1
+            },
+            yaxis: {
+                showgrid: true,
+                gridcolor: 'rgba(0,0,0,0.2)',
+                tickfont: {
+                    family: 'RWE Sans Web',
+                    size: 14,
+                    color: '#333333'
+                },
+                exponentformat: 'none',
+                separatethousands: true,
+                rangemode: 'normal',
+                autorange: true,
+                tickformat: yaxisFormat,
+                title: yaxisTitle,
+                linecolor: 'black',
+                linewidth: 1,
+                mirror: true,
+                zeroline: true,
+                zerolinecolor: 'rgba(0,0,0,0.2)',
+                zerolinewidth: 1
+            },
+            showlegend: true,
+            legend: {
+                orientation: 'v',
+                y: 1,
+                x: 1,
+                xanchor: 'right',
+                yanchor: 'top',
+                bgcolor: 'rgba(255, 255, 255, 0.9)',
+                bordercolor: 'rgba(0, 0, 0, 0.2)',
+                borderwidth: 1,
+                font: {
+                    family: 'RWE Sans Web',
+                    size: 14,
+                    color: '#333333'
+                },
+                traceorder: 'reversed'
+            },
+            margin: {
+                l: 70,
+                r: 20,
+                t: 60,
+                b: 50
+            },
+            autosize: true,
+            height: 480,
+            hovermode: 'x unified',
+            plot_bgcolor: 'white',
+            paper_bgcolor: 'white',
+            font: {
+                family: 'RWE Sans Web'
+            },
+            shapes: [{
+                type: 'rect',
+                xref: 'paper',
+                yref: 'paper',
+                x0: 0,
+                y0: 0,
+                x1: 1,
+                y1: 1,
+                line: {
+                    color: 'black',
+                    width: 1
+                },
+                layer: 'below'
+            }]
+        };
+        
+        Plotly.newPlot(chartDiv, traces, layout, {
+            displayModeBar: true,
+            responsive: true,
+            modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d'],
+            toImageButtonOptions: {
+                format: 'png',
+                filename: `TR_7Day_Rolling_${displayType}`,
+                height: 480,
+                width: 853,  // 16:9 aspect ratio
+                scale: 2,
+                bgcolor: 'white',
+                font: {
+                    family: 'RWE Sans Web'
+                }
+            }
+        });
+        
+        // IMPORTANT: Remove the individual resize handlers from each chart
+        // Delete these lines from your existing code:
+        // window.addEventListener('resize', function() {
+        //     Plotly.Plots.resize(chartDiv);
+        // });
+    });
+}
+
+// Fallback in case fonts.ready doesn't work
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        if (!document.fonts.check('12px "RWE Sans Web"')) {
+            console.log("Font not loaded yet, using fallback");
+            // Only initialize if we're on the rolling-averages section
+            if (document.querySelector('.content-section[data-section="rolling-averages"]').style.display !== 'none') {
+                setupRollingAveragesControls();
+            }
+        }
+    }, 1000);
+});
+
+// Reset charts when leaving the section
+document.addEventListener('section:activated', function(e) {
+    if (e.detail.section !== 'rolling-averages') {
+        chartsLoaded = false;
+    }
+});
+
+function setupRollingAveragesControls() {
+    // Load charts button
+    const loadChartsBtn = document.getElementById('load-rolling-charts');
+    loadChartsBtn.addEventListener('click', function() {
+        if (!chartsLoaded) {
+            loadRollingCharts();
+        } else {
+            console.log("Charts already loaded");
+        }
+    });
+    
+    // Update database button
+    const updateDbBtn = document.getElementById('update-rolling-database');
+    updateDbBtn.addEventListener('click', function() {
+        updateRollingDatabase();
+    });
+    
+    // Toggle modebar for all charts
+    document.getElementById('toggle-modebar-all').addEventListener('click', function() {
+        const container = document.getElementById('charts-container');
+        if (container.classList.contains('hide-modebar')) {
+            container.classList.remove('hide-modebar');
+            this.textContent = 'Hide All Chart Controls';
+        } else {
+            container.classList.add('hide-modebar');
+            this.textContent = 'Show All Chart Controls';
+        }
+    });
+}
 </script>
 {% endblock page_scripts %}

@@ -55,7 +55,10 @@ def create_app():
     app.config['AIC_URL'] = app.config['BASEURL_1'] + app.config['AIC_ENDPOINT']
 
     # Configure database
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
+    if os.getenv('USE_LOCAL_DB', 'false').lower() == 'true':
+        app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('LOCAL_DATABASE_URL')
+    else:
+        app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('PRODUCTION_DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Initialize database

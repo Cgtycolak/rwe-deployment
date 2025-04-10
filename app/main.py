@@ -15,6 +15,9 @@ from .models.realtime import HydroRealtimeData, NaturalGasRealtimeData
 from .database.config import db
 import requests
 import json
+from .models.production import ProductionData
+import plotly.graph_objects as go
+from sqlalchemy import text
 
 pd.set_option('future.no_silent_downcasting', True)
 
@@ -48,7 +51,7 @@ def get_orgs():
                     "endDate":  asutc(valid_dates['end_date'])
                 }, headers={'TGT': tgt_token})
             res.raise_for_status()
-            data = res.json().get('items')
+            data = res.json().get('items', [])
             return jsonify({'code': 200, 'data': data})
         else:
             # return the invalid date valdation res to client with message related
@@ -93,7 +96,7 @@ def get_orgs_uevcbids():
                             "organizationId": org_id
                         }, headers={"TGT": tgt_token}, timeout=30)
             res.raise_for_status()
-            system_orgs[org_id] = res.json().get('items')
+            system_orgs[org_id] = res.json().get('items', [])
             time.sleep(0.2)
             
         return jsonify({'code': 200, 'data': system_orgs})
@@ -148,7 +151,7 @@ def get_dpp_data():
                 res = session.post(dpp_url, json=data3, headers=headers, timeout=30)
                 res.raise_for_status()
                 data = res.json()
-                items = data.get('items')
+                items = data.get('items', [])
                 df3 = pd.DataFrame.from_records(items)
 
                 # df3['date'] = pd.to_datetime(df3['date']) db
@@ -1439,3 +1442,487 @@ def hydro_realtime_heatmap_data():
     except Exception as e:
         print(f"Error in hydro_realtime_heatmap_data: {str(e)}")
         return jsonify({"code": 500, "error": str(e)})
+
+@main.route('/production_data', methods=['POST'])
+def get_production_data():
+    try:
+        data = request.get_json()
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        
+        if not start_date or not end_date:
+            return jsonify({
+                'code': 400,
+                'message': 'Start date and end date are required'
+            }), 400
+            
+        # Check if data exists in database
+        existing_data = ProductionData.query.filter(
+            ProductionData.datetime.between(
+                datetime.strptime(start_date, '%Y-%m-%d'),
+                datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+            )
+        ).all()
+        
+        if existing_data:
+            return jsonify({
+                'code': 200,
+                'data': [record.to_dict() for record in existing_data]
+            })
+        
+        # If no data in database, fetch from API
+        tgt_token = get_tgt_token(
+            current_app.config.get('USERNAME'),
+            current_app.config.get('PASSWORD')
+        )
+        
+        url = "https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/realtime-generation"
+        
+        payload = {
+            "startDate": f"{start_date}T00:00:00+03:00",
+            "endDate": f"{end_date}T23:59:59+03:00",
+            "region": "TR1",
+        }
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': "application/json",
+            'TGT': tgt_token
+        }
+        
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        
+        # Process the data
+        items = response.json().get('items', [])
+        if not items:
+            return jsonify({
+                'code': 404,
+                'message': 'No data found for the specified date range'
+            }), 404
+            
+        # Convert to DataFrame for easier processing
+        df = pd.json_normalize(items)
+        df['date'] = pd.to_datetime(df['date'])
+        
+        # Create DateTime column
+        if 'hour' in df.columns:
+            df['DateTime'] = pd.to_datetime(
+                df['date'].dt.date.astype(str) + ' ' + df['hour']
+            )
+            df['DateTime'] = df['DateTime'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Store in database
+        for _, row in df.iterrows():
+            record = ProductionData(
+                datetime=datetime.strptime(row['DateTime'], '%Y-%m-%d %H:%M:%S'),
+                fueloil=row.get('fueloil', 0),
+                gasoil=0,  # Setting default as 0 as per crawler
+                blackcoal=row.get('blackCoal', 0),
+                lignite=row.get('lignite', 0),
+                geothermal=row.get('geothermal', 0),
+                naturalgas=row.get('naturalGas', 0),
+                river=row.get('river', 0),
+                dammedhydro=row.get('dammedHydro', 0),
+                lng=row.get('lng', 0),
+                biomass=row.get('biomass', 0),
+                naphta=row.get('naphta', 0),
+                importcoal=row.get('importCoal', 0),
+                asphaltitecoal=row.get('asphaltiteCoal', 0),
+                wind=row.get('wind', 0),
+                nuclear=0,  # Setting default as 0 as per crawler
+                sun=row.get('sun', 0),
+                importexport=row.get('importExport', 0),
+                total=row.get('total', 0),
+                wasteheat=row.get('wasteheat', 0)
+            )
+            db.session.add(record)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'data': [record.to_dict() for record in ProductionData.query.filter(
+                ProductionData.datetime.between(
+                    datetime.strptime(start_date, '%Y-%m-%d'),
+                    datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+                )
+            ).all()]
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in get_production_data: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'Error fetching production data: {str(e)}'
+        }), 500
+
+@main.route('/check-data-completeness')
+def check_data_completeness():
+    try:
+        # Get min and max dates
+        min_date = db.session.query(db.func.min(ProductionData.datetime)).scalar()
+        max_date = db.session.query(db.func.max(ProductionData.datetime)).scalar()
+        
+        # Get count of records
+        total_records = db.session.query(ProductionData).count()
+        
+        # Calculate expected records (assuming 24 records per day)
+        days = (max_date - min_date).days + 1
+        expected_records = days * 24
+        
+        # Find gaps in data using SQLAlchemy's text()
+        query = text("""
+            WITH dates AS (
+                SELECT generate_series(
+                    date_trunc('hour', min(datetime)),
+                    date_trunc('hour', max(datetime)),
+                    '1 hour'::interval
+                ) as expected_datetime
+                FROM production_data
+            )
+            SELECT expected_datetime::timestamp
+            FROM dates
+            LEFT JOIN production_data ON dates.expected_datetime = date_trunc('hour', production_data.datetime)
+            WHERE production_data.id IS NULL
+            ORDER BY expected_datetime;
+        """)
+        
+        missing_dates = db.session.execute(query).fetchall()
+        
+        return jsonify({
+            'start_date': min_date.strftime('%Y-%m-%d %H:%M'),
+            'end_date': max_date.strftime('%Y-%m-%d %H:%M'),
+            'total_days': days,
+            'total_records': total_records,
+            'expected_records': expected_records,
+            'missing_records': expected_records - total_records,
+            'coverage_percentage': (total_records / expected_records) * 100,
+            'missing_dates': [d[0].strftime('%Y-%m-%d %H:%M') for d in missing_dates[:100]] if missing_dates else [],
+            'total_missing_dates': len(missing_dates) if missing_dates else 0
+        })
+        
+    except Exception as e:
+        print(f"Error in check_data_completeness: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+@main.route('/get-rolling-data')
+def get_rolling_data():
+    try:
+        # Get all production data
+        data = db.session.query(ProductionData).order_by(ProductionData.datetime).all()
+        
+        # Convert to DataFrame with timezone handling
+        df = pd.DataFrame([{
+            'datetime': d.datetime.astimezone(pytz.UTC),  # Convert to UTC
+            'fueloil': d.fueloil,
+            'gasoil': d.gasoil,
+            'blackcoal': d.blackcoal,
+            'lignite': d.lignite,
+            'geothermal': d.geothermal,
+            'naturalgas': d.naturalgas,
+            'river': d.river,
+            'dammedhydro': d.dammedhydro,
+            'lng': d.lng,
+            'biomass': d.biomass,
+            'naphta': d.naphta,
+            'importcoal': d.importcoal,
+            'asphaltitecoal': d.asphaltitecoal,
+            'wind': d.wind,
+            'nuclear': d.nuclear,
+            'sun': d.sun,
+            'importexport': d.importexport,
+            'total': d.total,
+            'wasteheat': d.wasteheat
+        } for d in data])
+        
+        # Convert datetime to pandas datetime with UTC timezone
+        df['datetime'] = pd.to_datetime(df['datetime'], utc=True)
+        df = df.set_index('datetime')
+        
+        # Convert to local time (Istanbul)
+        istanbul_tz = pytz.timezone('Europe/Istanbul')
+        df.index = df.index.tz_convert(istanbul_tz)
+        
+        # Calculate renewables total and ratio
+        df['renewablestotal'] = df['geothermal'] + df['biomass'] + df['wind'] + df['sun']
+        df['renewablesratio'] = df['renewablestotal'] / df['total']
+        
+        # Calculate rolling averages for most columns
+        rolling_data = {}
+        current_year = datetime.now().year
+        
+        # Process regular columns with 7-day rolling averages
+        regular_columns = [col for col in df.columns if col != 'renewablesratio']
+        for column in regular_columns:
+            # Resample to daily frequency
+            daily_avg = df[column].resample('D', closed='left', label='left').mean()
+            rolling_avg = daily_avg.rolling(window=7, min_periods=1).mean()
+            
+            by_year = {}
+            
+            # Get all years except current
+            historical_years = [y for y in rolling_avg.index.year.unique() 
+                              if y <= current_year - 1]
+            
+            if historical_years:
+                # Calculate historical range and average
+                historical_data = {}
+                for day in range(366):  # Include leap years
+                    day_values = []
+                    for year in historical_years:
+                        year_data = rolling_avg[rolling_avg.index.year == year]
+                        if len(year_data) > day:
+                            day_values.append(year_data.iloc[day])
+                    
+                    if day_values:
+                        historical_data[day] = {
+                            'min': min(day_values),
+                            'max': max(day_values),
+                            'avg': sum(day_values) / len(day_values)
+                        }
+                
+                # Store historical range and average
+                by_year['historical_range'] = [
+                    {'min': historical_data[d]['min'], 'max': historical_data[d]['max']}
+                    if d in historical_data else None
+                    for d in range(366)
+                ]
+                by_year['historical_avg'] = [
+                    round(historical_data[d]['avg'], 2) if d in historical_data else None
+                    for d in range(366)
+                ]
+            
+            # Add current and previous year data
+            for year in [current_year, current_year - 1]:
+                year_data = rolling_avg[rolling_avg.index.year == year]
+                by_year[str(year)] = [
+                    round(float(x), 2) if pd.notnull(x) else None 
+                    for x in year_data.values
+                ]
+            
+            rolling_data[column] = by_year
+        
+        # Special handling for renewables ratio - monthly averages
+        monthly_ratio = {}
+        
+        # Calculate monthly averages for renewables ratio
+        # Group by month and year, then calculate mean
+        monthly_data = df.groupby([df.index.month, df.index.year])['renewablesratio'].mean()
+        
+        # Convert to DataFrame for easier manipulation
+        monthly_df = pd.DataFrame(monthly_data)
+        monthly_df.index.names = ['month', 'year']
+        monthly_df.reset_index(inplace=True)
+        
+        # Get all years except current for historical data
+        historical_years = [y for y in monthly_df['year'].unique() if y <= current_year - 1]
+        
+        # Calculate historical range and average by month
+        if historical_years:
+            historical_data = {}
+            for month in range(1, 13):
+                month_values = []
+                for year in historical_years:
+                    value = monthly_df[(monthly_df['month'] == month) & (monthly_df['year'] == year)]['renewablesratio'].values
+                    if len(value) > 0:
+                        month_values.append(value[0])
+                
+                if month_values:
+                    historical_data[month] = {
+                        'min': min(month_values),
+                        'max': max(month_values),
+                        'avg': sum(month_values) / len(month_values)
+                    }
+            
+            # Store historical range and average
+            monthly_ratio['historical_range'] = [
+                {'min': historical_data[m]['min'], 'max': historical_data[m]['max']}
+                if m in historical_data else None
+                for m in range(1, 13)
+            ]
+            monthly_ratio['historical_avg'] = [
+                round(float(historical_data[m]['avg']), 4) if m in historical_data else None
+                for m in range(1, 13)
+            ]
+        
+        # Add current and previous year data
+        for year in [current_year, current_year - 1]:
+            year_data = []
+            for month in range(1, 13):
+                value = monthly_df[(monthly_df['month'] == month) & (monthly_df['year'] == year)]['renewablesratio'].values
+                if len(value) > 0:
+                    year_data.append(round(float(value[0]), 4))
+                else:
+                    year_data.append(None)
+            
+            monthly_ratio[str(year)] = year_data
+        
+        # Add monthly renewables ratio to rolling data
+        rolling_data['renewablesratio_monthly'] = monthly_ratio
+        
+        return jsonify(rolling_data)
+        
+    except Exception as e:
+        print(f"Error in get_rolling_data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/get-rolling-last-update')
+def get_rolling_last_update():
+    try:
+        # Get the most recent record's datetime
+        latest_record = db.session.query(ProductionData.datetime).order_by(ProductionData.datetime.desc()).first()
+        
+        if latest_record:
+            # Format the datetime for display
+            latest_datetime = latest_record[0]
+            istanbul_tz = pytz.timezone('Europe/Istanbul')
+            localized_datetime = latest_datetime.replace(tzinfo=pytz.UTC).astimezone(istanbul_tz)
+            formatted_datetime = localized_datetime.strftime('%Y-%m-%d %H:%M:%S %Z')
+            
+            return jsonify({
+                'last_update': formatted_datetime,
+                'timestamp': latest_datetime.timestamp()
+            })
+        else:
+            return jsonify({
+                'last_update': None
+            })
+            
+    except Exception as e:
+        print(f"Error in get_rolling_last_update: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/update-rolling-data')
+def update_rolling_data():
+    try:
+        # Get the most recent record's datetime
+        latest_record = db.session.query(ProductionData.datetime).order_by(ProductionData.datetime.desc()).first()
+        
+        if not latest_record:
+            return jsonify({
+                'error': 'No existing records found. Please populate the database first.'
+            }), 400
+            
+        # Get the start date (day after the latest record)
+        start_date = latest_record[0] + timedelta(days=1)
+        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Get the end date (today)
+        end_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        # Format dates for API
+        start_date_str = start_date.strftime('%Y-%m-%d')
+        end_date_str = end_date.strftime('%Y-%m-%d')
+        
+        # Check if we need to update (start date should be before end date)
+        if start_date.date() > end_date.date():
+            return jsonify({
+                'message': 'Database is already up to date.',
+                'records_added': 0
+            })
+            
+        # Get TGT token for API authentication
+        tgt_token = get_tgt_token(
+            current_app.config.get('USERNAME'),
+            current_app.config.get('PASSWORD')
+        )
+        
+        # Prepare API request
+        url = "https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/realtime-generation"
+        
+        payload = {
+            "startDate": f"{start_date_str}T00:00:00+03:00",
+            "endDate": f"{end_date_str}T23:59:59+03:00",
+            "region": "TR1",
+        }
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': "application/json",
+            'TGT': tgt_token
+        }
+        
+        # Make API request
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        
+        # Process the data
+        items = response.json().get('items', [])
+        if not items:
+            return jsonify({
+                'message': 'No new data found for the specified date range.',
+                'records_added': 0
+            })
+            
+        # Convert to DataFrame for easier processing
+        df = pd.json_normalize(items)
+        df['date'] = pd.to_datetime(df['date'])
+        
+        # Create DateTime column
+        if 'hour' in df.columns:
+            df['DateTime'] = pd.to_datetime(
+                df['date'].dt.date.astype(str) + ' ' + df['hour']
+            )
+            df['DateTime'] = df['DateTime'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Store in database
+        records_added = 0
+        for _, row in df.iterrows():
+            # Check if record already exists
+            existing_record = ProductionData.query.filter_by(
+                datetime=datetime.strptime(row['DateTime'], '%Y-%m-%d %H:%M:%S')
+            ).first()
+            
+            if not existing_record:
+                record = ProductionData(
+                    datetime=datetime.strptime(row['DateTime'], '%Y-%m-%d %H:%M:%S'),
+                    fueloil=row.get('fueloil', 0),
+                    gasoil=0,  # Setting default as 0 as per crawler
+                    blackcoal=row.get('blackCoal', 0),
+                    lignite=row.get('lignite', 0),
+                    geothermal=row.get('geothermal', 0),
+                    naturalgas=row.get('naturalGas', 0),
+                    river=row.get('river', 0),
+                    dammedhydro=row.get('dammedHydro', 0),
+                    lng=row.get('lng', 0),
+                    biomass=row.get('biomass', 0),
+                    naphta=row.get('naphta', 0),
+                    importcoal=row.get('importCoal', 0),
+                    asphaltitecoal=row.get('asphaltiteCoal', 0),
+                    wind=row.get('wind', 0),
+                    nuclear=0,  # Setting default as 0 as per crawler
+                    sun=row.get('sun', 0),
+                    importexport=row.get('importExport', 0),
+                    total=row.get('total', 0),
+                    wasteheat=row.get('wasteheat', 0)
+                )
+                db.session.add(record)
+                records_added += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': f'Successfully added {records_added} new records.',
+            'records_added': records_added,
+            'date_range': {
+                'start': start_date_str,
+                'end': end_date_str
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in update_rolling_data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500

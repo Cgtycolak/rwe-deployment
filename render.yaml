@@ -11,10 +11,16 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
-      - key: DATABASE_URL
+      - key: PRODUCTION_DATABASE_URL
         fromDatabase:
           name: rwe-postgres
           property: connectionString
+      - key: DATABASE_URL  # Keep for compatibility
+        fromDatabase:
+          name: rwe-postgres
+          property: connectionString
+      - key: USE_LOCAL_DB
+        value: false
       - key: USERNAME
         sync: false
       - key: PASSWORD
@@ -31,10 +37,16 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
-      - key: DATABASE_URL
+      - key: PRODUCTION_DATABASE_URL
         fromDatabase:
           name: rwe-postgres
           property: connectionString
+      - key: DATABASE_URL  # Keep for compatibility
+        fromDatabase:
+          name: rwe-postgres
+          property: connectionString
+      - key: USE_LOCAL_DB
+        value: false
       - key: USERNAME
         sync: true
       - key: PASSWORD

@@ -107,6 +107,18 @@ const app = {
             // Store intervals and active requests
             this.intervals = {};
             this.activeRequests = {};
+            
+            // Add event dispatching for section changes
+            document.addEventListener('click', function(e) {
+                const target = e.target.closest('[data-section]');
+                if (target) {
+                    const section = target.dataset.section;
+                    // Dispatch a custom event when a section is activated
+                    document.dispatchEvent(new CustomEvent('section:activated', {
+                        detail: { section }
+                    }));
+                }
+            });
         });
     }
 };
