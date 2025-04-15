@@ -18,6 +18,7 @@ import json
 from .models.production import ProductionData
 import plotly.graph_objects as go
 from sqlalchemy import text
+import os
 
 pd.set_option('future.no_silent_downcasting', True)
 
@@ -1614,159 +1615,114 @@ def check_data_completeness():
 @main.route('/get-rolling-data')
 def get_rolling_data():
     try:
-        # Get all production data
-        data = db.session.query(ProductionData).order_by(ProductionData.datetime).all()
+        # Load pre-calculated historical data
+        historical_file = os.path.join(current_app.static_folder, 'data', 'historical_averages.json')
         
-        # Convert to DataFrame with timezone handling
-        df = pd.DataFrame([{
-            'datetime': d.datetime.astimezone(pytz.UTC),  # Convert to UTC
-            'fueloil': d.fueloil,
-            'gasoil': d.gasoil,
-            'blackcoal': d.blackcoal,
-            'lignite': d.lignite,
-            'geothermal': d.geothermal,
-            'naturalgas': d.naturalgas,
-            'river': d.river,
-            'dammedhydro': d.dammedhydro,
-            'lng': d.lng,
-            'biomass': d.biomass,
-            'naphta': d.naphta,
-            'importcoal': d.importcoal,
-            'asphaltitecoal': d.asphaltitecoal,
-            'wind': d.wind,
-            'nuclear': d.nuclear,
-            'sun': d.sun,
-            'importexport': d.importexport,
-            'total': d.total,
-            'wasteheat': d.wasteheat
-        } for d in data])
+        if os.path.exists(historical_file):
+            print("Using pre-calculated historical data")
+            with open(historical_file, 'r') as f:
+                historical_data = json.load(f)
+        else:
+            print("Historical data file not found, calculating from scratch")
+            historical_data = {}
         
-        # Convert datetime to pandas datetime with UTC timezone
-        df['datetime'] = pd.to_datetime(df['datetime'], utc=True)
-        df = df.set_index('datetime')
-        
-        # Convert to local time (Istanbul)
-        istanbul_tz = pytz.timezone('Europe/Istanbul')
-        df.index = df.index.tz_convert(istanbul_tz)
-        
-        # Calculate renewables total and ratio
-        df['renewablestotal'] = df['geothermal'] + df['biomass'] + df['wind'] + df['sun']
-        df['renewablesratio'] = df['renewablestotal'] / df['total']
-        
-        # Calculate rolling averages for most columns
-        rolling_data = {}
+        # Get current year data only (2025 and beyond)
         current_year = datetime.now().year
+        cutoff_date = datetime(current_year, 1, 1)
         
-        # Process regular columns with 7-day rolling averages
-        regular_columns = [col for col in df.columns if col != 'renewablesratio']
-        for column in regular_columns:
-            # Resample to daily frequency
-            daily_avg = df[column].resample('D', closed='left', label='left').mean()
-            rolling_avg = daily_avg.rolling(window=7, min_periods=1).mean()
+        current_data = db.session.query(ProductionData).filter(
+            ProductionData.datetime >= cutoff_date
+        ).order_by(ProductionData.datetime).all()
+        
+        if current_data:
+            print(f"Processing {len(current_data)} current year records")
             
-            by_year = {}
+            # Convert to DataFrame with timezone handling
+            df = pd.DataFrame([{
+                'datetime': d.datetime.astimezone(pytz.UTC),
+                'fueloil': d.fueloil,
+                'gasoil': d.gasoil,
+                'blackcoal': d.blackcoal,
+                'lignite': d.lignite,
+                'geothermal': d.geothermal,
+                'naturalgas': d.naturalgas,
+                'river': d.river,
+                'dammedhydro': d.dammedhydro,
+                'lng': d.lng,
+                'biomass': d.biomass,
+                'naphta': d.naphta,
+                'importcoal': d.importcoal,
+                'asphaltitecoal': d.asphaltitecoal,
+                'wind': d.wind,
+                'nuclear': d.nuclear,
+                'sun': d.sun,
+                'importexport': d.importexport,
+                'total': d.total,
+                'wasteheat': d.wasteheat
+            } for d in current_data])
             
-            # Get all years except current
-            historical_years = [y for y in rolling_avg.index.year.unique() 
-                              if y <= current_year - 1]
+            # Convert datetime to pandas datetime with UTC timezone
+            df['datetime'] = pd.to_datetime(df['datetime'], utc=True)
+            df = df.set_index('datetime')
             
-            if historical_years:
-                # Calculate historical range and average
-                historical_data = {}
-                for day in range(366):  # Include leap years
-                    day_values = []
-                    for year in historical_years:
-                        year_data = rolling_avg[rolling_avg.index.year == year]
-                        if len(year_data) > day:
-                            day_values.append(year_data.iloc[day])
-                    
-                    if day_values:
-                        historical_data[day] = {
-                            'min': min(day_values),
-                            'max': max(day_values),
-                            'avg': sum(day_values) / len(day_values)
-                        }
+            # Convert to local time (Istanbul)
+            istanbul_tz = pytz.timezone('Europe/Istanbul')
+            df.index = df.index.tz_convert(istanbul_tz)
+            
+            # Calculate renewables total and ratio
+            df['renewablestotal'] = df['geothermal'] + df['biomass'] + df['wind'] + df['sun']
+            df['renewablesratio'] = df['renewablestotal'] / df['total']
+            
+            # Calculate rolling averages for current year
+            rolling_data = historical_data.copy() if historical_data else {}
+            
+            # Process regular columns with 7-day rolling averages
+            regular_columns = [col for col in df.columns if col != 'renewablesratio']
+            for column in regular_columns:
+                # Resample to daily frequency
+                daily_avg = df[column].resample('D', closed='left', label='left').mean()
+                rolling_avg = daily_avg.rolling(window=7, min_periods=1).mean()
                 
-                # Store historical range and average
-                by_year['historical_range'] = [
-                    {'min': historical_data[d]['min'], 'max': historical_data[d]['max']}
-                    if d in historical_data else None
-                    for d in range(366)
-                ]
-                by_year['historical_avg'] = [
-                    round(historical_data[d]['avg'], 2) if d in historical_data else None
-                    for d in range(366)
-                ]
-            
-            # Add current and previous year data
-            for year in [current_year, current_year - 1]:
-                year_data = rolling_avg[rolling_avg.index.year == year]
-                by_year[str(year)] = [
+                # Get current year data
+                year_data = rolling_avg[rolling_avg.index.year == current_year]
+                
+                # Create or update column data
+                if column not in rolling_data:
+                    rolling_data[column] = {}
+                
+                # Add current year data
+                rolling_data[column][str(current_year)] = [
                     round(float(x), 2) if pd.notnull(x) else None 
                     for x in year_data.values
                 ]
             
-            rolling_data[column] = by_year
-        
-        # Special handling for renewables ratio - monthly averages
-        monthly_ratio = {}
-        
-        # Calculate monthly averages for renewables ratio
-        # Group by month and year, then calculate mean
-        monthly_data = df.groupby([df.index.month, df.index.year])['renewablesratio'].mean()
-        
-        # Convert to DataFrame for easier manipulation
-        monthly_df = pd.DataFrame(monthly_data)
-        monthly_df.index.names = ['month', 'year']
-        monthly_df.reset_index(inplace=True)
-        
-        # Get all years except current for historical data
-        historical_years = [y for y in monthly_df['year'].unique() if y <= current_year - 1]
-        
-        # Calculate historical range and average by month
-        if historical_years:
-            historical_data = {}
-            for month in range(1, 13):
-                month_values = []
-                for year in historical_years:
-                    value = monthly_df[(monthly_df['month'] == month) & (monthly_df['year'] == year)]['renewablesratio'].values
-                    if len(value) > 0:
-                        month_values.append(value[0])
-                
-                if month_values:
-                    historical_data[month] = {
-                        'min': min(month_values),
-                        'max': max(month_values),
-                        'avg': sum(month_values) / len(month_values)
-                    }
+            # Special handling for renewables ratio - monthly averages for current year
+            monthly_data = df.groupby([df.index.month, df.index.year])['renewablesratio'].mean()
             
-            # Store historical range and average
-            monthly_ratio['historical_range'] = [
-                {'min': historical_data[m]['min'], 'max': historical_data[m]['max']}
-                if m in historical_data else None
-                for m in range(1, 13)
-            ]
-            monthly_ratio['historical_avg'] = [
-                round(float(historical_data[m]['avg']), 4) if m in historical_data else None
-                for m in range(1, 13)
-            ]
-        
-        # Add current and previous year data
-        for year in [current_year, current_year - 1]:
+            # Convert to DataFrame for easier manipulation
+            monthly_df = pd.DataFrame(monthly_data)
+            monthly_df.index.names = ['month', 'year']
+            monthly_df.reset_index(inplace=True)
+            
+            # Create or update renewablesratio_monthly
+            if 'renewablesratio_monthly' not in rolling_data:
+                rolling_data['renewablesratio_monthly'] = {}
+            
+            # Add current year data
             year_data = []
             for month in range(1, 13):
-                value = monthly_df[(monthly_df['month'] == month) & (monthly_df['year'] == year)]['renewablesratio'].values
+                value = monthly_df[(monthly_df['month'] == month) & (monthly_df['year'] == current_year)]['renewablesratio'].values
                 if len(value) > 0:
                     year_data.append(round(float(value[0]), 4))
                 else:
                     year_data.append(None)
             
-            monthly_ratio[str(year)] = year_data
-        
-        # Add monthly renewables ratio to rolling data
-        rolling_data['renewablesratio_monthly'] = monthly_ratio
-        
-        return jsonify(rolling_data)
+            rolling_data['renewablesratio_monthly'][str(current_year)] = year_data
+            
+            return jsonify(rolling_data)
+        else:
+            # If no current year data, just return historical data
+            return jsonify(historical_data)
         
     except Exception as e:
         print(f"Error in get_rolling_data: {str(e)}")

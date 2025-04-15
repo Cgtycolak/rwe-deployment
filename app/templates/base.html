@@ -302,6 +302,22 @@
             font-family: monospace;
         }
     </style>
+    
+    <!-- Use system fonts as fallbacks -->
+    <style>
+        @font-face {
+            font-family: 'RWE Sans Web';
+            src: url("{{ url_for('static', filename='fonts/rwe-sans-web/RWE Sans Web.otf') }}") format('opentype');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+        
+        body {
+            font-family: 'RWE Sans Web', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+    </style>
+    
     {% block page_styles %}{% endblock %}
 </head>
 <body>
