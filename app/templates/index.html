@@ -1636,6 +1636,8 @@ function debounce(func, wait) {
 
 // Add a flag to track if charts are already loaded
 let chartsLoaded = false;
+// Add a flag to track if we're currently fetching last update info
+let fetchingLastUpdate = false;
 
 function loadRollingCharts() {
     // Prevent multiple loads
@@ -1709,6 +1711,139 @@ function loadRollingCharts() {
         });
 }
 
+// Debounced version of fetchLastUpdateInfo to prevent multiple calls
+const debouncedFetchLastUpdateInfo = debounce(function() {
+    // Check if already fetching
+    if (fetchingLastUpdate) {
+        console.log("Already fetching last update info, skipping");
+        return;
+    }
+    
+    console.log("Fetching last update info");
+    fetchingLastUpdate = true;
+    
+    fetch('{{ url_for("main.get_rolling_last_update") }}')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            const infoSpan = document.getElementById('last-update-info');
+            if (data.last_update) {
+                infoSpan.textContent = `Last updated: ${data.last_update}`;
+            } else {
+                infoSpan.textContent = 'No update history found';
+            }
+            fetchingLastUpdate = false;
+        })
+        .catch(error => {
+            console.error('Error fetching last update info:', error);
+            fetchingLastUpdate = false;
+        });
+}, 500); // Increase debounce time to 500ms
+
+// Track if controls are already set up
+let controlsSetup = false;
+
+function setupRollingAveragesControls() {
+    // Skip if already set up
+    if (controlsSetup) {
+        console.log("Controls already set up, skipping");
+        return;
+    }
+    
+    // Load charts button
+    const loadChartsBtn = document.getElementById('load-rolling-charts');
+    if (loadChartsBtn) {
+        // Clear any existing listeners by cloning and replacing
+        const newLoadBtn = loadChartsBtn.cloneNode(true);
+        loadChartsBtn.parentNode.replaceChild(newLoadBtn, loadChartsBtn);
+        
+        // Add new event listener
+        newLoadBtn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent event bubbling
+            if (!chartsLoaded) {
+                loadRollingCharts();
+            } else {
+                console.log("Charts already loaded");
+            }
+        });
+    }
+    
+    // Update database button
+    const updateDbBtn = document.getElementById('update-rolling-database');
+    if (updateDbBtn) {
+        // Clear any existing listeners by cloning and replacing
+        const newUpdateBtn = updateDbBtn.cloneNode(true);
+        updateDbBtn.parentNode.replaceChild(newUpdateBtn, updateDbBtn);
+        
+        // Add new event listener
+        newUpdateBtn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent event bubbling
+            updateRollingDatabase();
+        });
+    }
+    
+    // Toggle modebar for all charts
+    const toggleBtn = document.getElementById('toggle-modebar-all');
+    if (toggleBtn) {
+        // Clear any existing listeners by cloning and replacing
+        const newToggleBtn = toggleBtn.cloneNode(true);
+        toggleBtn.parentNode.replaceChild(newToggleBtn, toggleBtn);
+        
+        // Add new event listener
+        newToggleBtn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent event bubbling
+            const container = document.getElementById('charts-container');
+            if (container.classList.contains('hide-modebar')) {
+                container.classList.remove('hide-modebar');
+                this.textContent = 'Hide All Chart Controls';
+            } else {
+                container.classList.add('hide-modebar');
+                this.textContent = 'Show All Chart Controls';
+            }
+        });
+    }
+    
+    // Mark controls as set up
+    controlsSetup = true;
+}
+
+// Use a flag to prevent multiple event listeners
+let sectionActivatedListenerAdded = false;
+
+// Remove any existing listeners
+document.removeEventListener('section:activated', sectionActivatedHandler);
+
+// Define the handler function separately so we can remove it if needed
+function sectionActivatedHandler(e) {
+    if (e.detail.section === 'rolling-averages') {
+        console.log("Rolling averages section activated");
+        
+        // Reset control setup flag when section is activated
+        controlsSetup = false;
+        
+        // Get last update info (only once)
+        debouncedFetchLastUpdateInfo();
+        
+        // Setup button handlers
+        setupRollingAveragesControls();
+    }
+    
+    if (e.detail.section !== 'rolling-averages') {
+        chartsLoaded = false;
+        controlsSetup = false;
+    }
+}
+
+// Add the listener only once
+if (!sectionActivatedListenerAdded) {
+    document.addEventListener('section:activated', sectionActivatedHandler);
+    sectionActivatedListenerAdded = true;
+}
+
 function updateRollingDatabase() {
     // Toggle button state
     toggleButtonLoading('update-rolling-database', true);
@@ -1727,7 +1862,7 @@ function updateRollingDatabase() {
             showStatusMessage(`Database updated successfully. Added ${data.records_added} new records.`, 'success');
             
             // Update last update info
-            fetchLastUpdateInfo();
+            debouncedFetchLastUpdateInfo();
             
             // Reset button state
             toggleButtonLoading('update-rolling-database', false);
@@ -2089,35 +2224,5 @@ document.addEventListener('section:activated', function(e) {
         chartsLoaded = false;
     }
 });
-
-function setupRollingAveragesControls() {
-    // Load charts button
-    const loadChartsBtn = document.getElementById('load-rolling-charts');
-    loadChartsBtn.addEventListener('click', function() {
-        if (!chartsLoaded) {
-            loadRollingCharts();
-        } else {
-            console.log("Charts already loaded");
-        }
-    });
-    
-    // Update database button
-    const updateDbBtn = document.getElementById('update-rolling-database');
-    updateDbBtn.addEventListener('click', function() {
-        updateRollingDatabase();
-    });
-    
-    // Toggle modebar for all charts
-    document.getElementById('toggle-modebar-all').addEventListener('click', function() {
-        const container = document.getElementById('charts-container');
-        if (container.classList.contains('hide-modebar')) {
-            container.classList.remove('hide-modebar');
-            this.textContent = 'Hide All Chart Controls';
-        } else {
-            container.classList.add('hide-modebar');
-            this.textContent = 'Show All Chart Controls';
-        }
-    });
-}
 </script>
 {% endblock page_scripts %}
