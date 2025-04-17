@@ -1769,9 +1769,20 @@ def update_rolling_data():
                 'error': 'No existing records found. Please populate the database first.'
             }), 400
             
-        # Get the start date (day after the latest record)
-        start_date = latest_record[0] + timedelta(days=1)
-        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Find the last complete day (all 24 hours present)
+        latest_date = latest_record[0].date()
+        
+        # Check if the latest day has all 24 hours
+        hours_count = db.session.query(ProductionData).filter(
+            db.func.date(ProductionData.datetime) == latest_date
+        ).count()
+        
+        # If we don't have all 24 hours, start from the beginning of this day
+        if hours_count < 24:
+            start_date = datetime.combine(latest_date, datetime.min.time())
+        else:
+            # Otherwise start from the next day
+            start_date = datetime.combine(latest_date + timedelta(days=1), datetime.min.time())
         
         # Get the end date (today)
         end_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
