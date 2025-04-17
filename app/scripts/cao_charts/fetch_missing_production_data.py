@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import text
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from sqlalchemy import create_engine
 
 # Add the parent directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -20,7 +21,7 @@ from app.factory import create_app
 from app.database.config import db
 from app.models.production import ProductionData
 from app.functions import get_tgt_token
-from app.scripts.populate_production_data import parse_datetime
+from app.scripts.cao_charts.populate_production_data import parse_datetime
 
 def setup_session():
     """Set up a requests session with retry logic"""
@@ -259,12 +260,98 @@ def fetch_missing_dates(missing_dates, local_db=True):
                 json.dump({'failed_dates': failed_dates}, f)
             print("\nFailed dates have been saved to failed_dates.json")
 
+def sync_to_production():
+    """Sync the local database to production after filling missing data"""
+    print("\nSyncing to production database...")
+    
+    # Create app context
+    app = create_app()
+    
+    with app.app_context():
+        # Create a connection to the production database
+        prod_db_uri = "postgresql://rwe_user:yzxKIZVU8y32aMMF2vK5OXPXlWxOxWKC@dpg-cv7v6p5umphs73fu4ijg-a.oregon-postgres.render.com/rwe_data"
+        
+        # Use SQLAlchemy to connect and transfer the data
+        from sqlalchemy import text
+        local_engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
+        prod_engine = create_engine(prod_db_uri)
+        
+        # Get all records from local that don't exist in production
+        with local_engine.connect() as local_conn:
+            with prod_engine.connect() as prod_conn:
+                # Get all datetimes from production
+                prod_datetimes = prod_conn.execute(text("SELECT datetime FROM production_data")).fetchall()
+                prod_dt_set = set(dt[0].strftime('%Y-%m-%d %H:%M:%S') for dt in prod_datetimes)
+                
+                # Get records from local that don't exist in production
+                local_records = local_conn.execute(text("""
+                    SELECT datetime, fueloil, gasoil, blackcoal, lignite, geothermal, 
+                           naturalgas, river, dammedhydro, lng, biomass, naphta, 
+                           importcoal, asphaltitecoal, wind, nuclear, sun, 
+                           importexport, total, wasteheat
+                    FROM production_data
+                """)).fetchall()
+                
+                # Filter for records not in production
+                missing_records = [r for r in local_records if r[0].strftime('%Y-%m-%d %H:%M:%S') not in prod_dt_set]
+                
+                print(f"Found {len(missing_records)} records to sync to production")
+                
+                if not missing_records:
+                    print("No records to sync.")
+                    return
+                
+                # Insert missing records using upsert
+                records_added = 0
+                for record in missing_records:
+                    # Create upsert statement using ON CONFLICT
+                    upsert_stmt = f"""
+                    INSERT INTO production_data (
+                        datetime, fueloil, gasoil, blackcoal, lignite, geothermal, 
+                        naturalgas, river, dammedhydro, lng, biomass, naphta, 
+                        importcoal, asphaltitecoal, wind, nuclear, sun, 
+                        importexport, total, wasteheat
+                    ) VALUES (
+                        '{record[0]}', {record[1]}, {record[2]}, 
+                        {record[3]}, {record[4]}, {record[5]}, 
+                        {record[6]}, {record[7]}, {record[8]}, 
+                        {record[9]}, {record[10]}, {record[11]}, 
+                        {record[12]}, {record[13]}, {record[14]}, 
+                        {record[15]}, {record[16]}, {record[17]}, 
+                        {record[18]}, {record[19]}
+                    )
+                    ON CONFLICT (datetime) DO NOTHING
+                    """
+                    
+                    try:
+                        prod_conn.execute(text(upsert_stmt))
+                        records_added += 1
+                        
+                        if records_added % 10 == 0:
+                            print(f"Added {records_added} records so far...")
+                    except Exception as e:
+                        print(f"Error adding record for {record[0]}: {str(e)}")
+                
+                # Commit all changes
+                prod_conn.commit()
+                
+                print(f"Successfully synced {records_added} records to production")
+                
+                # Verify final counts
+                local_count = local_conn.execute(text("SELECT COUNT(*) FROM production_data")).scalar()
+                prod_count = prod_conn.execute(text("SELECT COUNT(*) FROM production_data")).scalar()
+                
+                print(f"Local database has {local_count} records")
+                print(f"Production database now has {prod_count} records")
+
 def main():
     parser = argparse.ArgumentParser(description='Fetch missing production data')
     parser.add_argument('--input-file', type=str, default=None,
                       help='JSON file containing missing dates')
     parser.add_argument('--check-first', action='store_true',
                       help='Check for missing dates before fetching')
+    parser.add_argument('--sync-to-production', action='store_true',
+                      help='Sync the local database to production after fetching')
     
     args = parser.parse_args()
     
@@ -338,6 +425,9 @@ def main():
         fetch_missing_dates(missing_dates)
     else:
         print("No missing dates to fetch")
+
+    if args.sync_to_production:
+        sync_to_production()
 
 if __name__ == "__main__":
     main() 

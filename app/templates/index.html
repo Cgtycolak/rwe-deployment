@@ -437,7 +437,9 @@
   
   @font-face {
     font-family: 'RWE Sans Web';
-    src: url("{{ url_for('static', filename='fonts/rwe-sans-web/RWE Sans Web Bold.otf') }}") format('opentype');
+    src: url("{{ url_for('static', filename='fonts/rwe-sans-web/RWESansWeb-Bold.woff2') }}") format('woff2'),
+         url("{{ url_for('static', filename='fonts/rwe-sans-web/RWESansWeb-Bold.woff') }}") format('woff'),
+         url("{{ url_for('static', filename='fonts/rwe-sans-web/RWE Sans Web Bold.otf') }}") format('opentype');
     font-weight: bold;
     font-style: normal;
     font-display: swap;
@@ -1976,9 +1978,26 @@ function renderCharts() {
                 x = Array.from({length: rangeData.length}, (_, i) => i);
             }
             
+            // Calculate min and max values for the legend
+            const maxValue = Math.max(...rangeData.map(d => d ? d.max : 0).filter(v => v !== null));
+            const minValue = Math.min(...rangeData.map(d => d ? d.min : 0).filter(v => v !== null));
+            
+            // Format the values based on chart type
+            let rangeLabel;
+            if (type === 'renewablesratio_monthly') {
+                // Format as percentage for renewables ratio
+                const minPercent = (minValue * 100).toFixed(0);
+                const maxPercent = (maxValue * 100).toFixed(0);
+                rangeLabel = `${minPercent}%-${maxPercent}%`;
+            } else {
+                // Format with thousands separator for other types
+                const formatter = new Intl.NumberFormat('en-US');
+                rangeLabel = `${formatter.format(Math.round(minValue))}-${formatter.format(Math.round(maxValue))} MWh`;
+            }
+            
             // Create the range area with a single fill
             traces.push({
-                name: '2016-2024 range',
+                name: `2016-2024 range: ${rangeLabel}`,
                 x: x.concat(x.slice().reverse()),
                 y: rangeData.map(d => d ? d.max : null).concat(rangeData.map(d => d ? d.min : null).reverse()),
                 fill: 'toself',
@@ -1986,7 +2005,9 @@ function renderCharts() {
                 mode: 'none',
                 fillcolor: 'rgba(135, 206, 250, 0.4)',
                 line: {color: 'transparent', width: 0},
-                showlegend: true
+                showlegend: true,
+                hoverinfo: 'skip',  // Skip hover information for the range area
+                hoverlabel: {namelength: -1}  // Show full name in hover label
             });
         }
         
@@ -2176,6 +2197,51 @@ function renderCharts() {
             }]
         };
         
+        // Add this to the layout object
+        layout.hovermode = 'closest';
+        layout.hoverlabel = {
+            namelength: -1,  // Show full trace name
+            font: {
+                family: 'RWE Sans Web',
+                size: 12
+            }
+        };
+
+        // Modify the range trace to use custom hover template
+        traces[0].hovertemplate = '%{y:,.0f} MWh<extra></extra>';
+        
+        // Modify all traces to use custom hover templates with proper date formatting
+        traces.forEach((trace, i) => {
+            if (i === 0) {
+                // For the range area, we already set hoverinfo: 'skip'
+                return;
+            }
+            
+            // For time series data, create a custom hover template with formatted dates
+            if (type === 'renewablesratio_monthly') {
+                // For monthly data, show month names
+                const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                               'July', 'August', 'September', 'October', 'November', 'December'];
+                trace.hovertemplate = 
+                    '<b>%{data.name}</b><br>' +
+                    '%{x|%B}: %{y:,.0f} MWh<extra></extra>';
+            } else {
+                // For daily data, format as proper dates
+                trace.hovertemplate = 
+                    '<b>%{data.name}</b><br>' +
+                    '%{text}: %{y:,.0f} MWh<extra></extra>';
+                
+                // Add formatted dates as text array
+                const dateTexts = [];
+                for (let i = 0; i < trace.x.length; i++) {
+                    const dayOfYear = trace.x[i];
+                    const date = new Date(currentYear, 0, dayOfYear + 1); // +1 because day of year is 0-indexed
+                    dateTexts.push(date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'}));
+                }
+                trace.text = dateTexts;
+            }
+        });
+        
         Plotly.newPlot(chartDiv, traces, layout, {
             displayModeBar: true,
             responsive: true,
@@ -2183,8 +2249,8 @@ function renderCharts() {
             toImageButtonOptions: {
                 format: 'png',
                 filename: `TR_7Day_Rolling_${displayType}`,
-                height: 480,
-                width: 853,  // 16:9 aspect ratio
+                height: 600,
+                width: 800,
                 scale: 2,
                 bgcolor: 'white',
                 font: {

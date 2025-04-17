@@ -357,9 +357,26 @@ function renderCharts() {
                 x = Array.from({length: rangeData.length}, (_, i) => i);
             }
             
+            // Calculate min and max values for the legend
+            const maxValue = Math.max(...rangeData.map(d => d ? d.max : 0).filter(v => v !== null));
+            const minValue = Math.min(...rangeData.map(d => d ? d.min : 0).filter(v => v !== null));
+            
+            // Format the values based on chart type
+            let rangeLabel;
+            if (type === 'renewablesratio_monthly') {
+                // Format as percentage for renewables ratio
+                const minPercent = (minValue * 100).toFixed(0);
+                const maxPercent = (maxValue * 100).toFixed(0);
+                rangeLabel = `${minPercent}%-${maxPercent}%`;
+            } else {
+                // Format with thousands separator for other types
+                const formatter = new Intl.NumberFormat('en-US');
+                rangeLabel = `${formatter.format(Math.round(minValue))}-${formatter.format(Math.round(maxValue))} MWh`;
+            }
+            
             // Create the range area with a single fill
             traces.push({
-                name: '2016-2024 range',
+                name: `2016-2024 range: ${rangeLabel}`,
                 x: x.concat(x.slice().reverse()),
                 y: rangeData.map(d => d ? d.max : null).concat(rangeData.map(d => d ? d.min : null).reverse()),
                 fill: 'toself',
@@ -367,7 +384,9 @@ function renderCharts() {
                 mode: 'none',
                 fillcolor: 'rgba(135, 206, 250, 0.4)',
                 line: {color: 'transparent', width: 0},
-                showlegend: true
+                showlegend: true,
+                hoverinfo: 'skip',  // Skip hover information for the range area
+                hoverlabel: {namelength: -1}  // Show full name in hover label
             });
         }
         

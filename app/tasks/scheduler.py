@@ -12,7 +12,7 @@ from apscheduler.events import (
     EVENT_SCHEDULER_SHUTDOWN,
     JobExecutionEvent
 )
-from ..scripts.populate_historical_data import populate_multiple_types
+from ..scripts.dpp_charts.populate_historical_data import populate_multiple_types
 from flask import current_app
 
 def update_daily_data(app):
@@ -94,7 +94,7 @@ def update_realtime_data(app):
             app.logger.info(f"Fetching realtime data for {yesterday}")
             
             # Import here to avoid circular imports
-            from ..scripts.populate_realtime_data import populate_realtime_data
+            from ..scripts.dpp_charts.populate_realtime_data import populate_realtime_data
             
             for plant_type in ['hydro', 'natural_gas']:
                 try:
