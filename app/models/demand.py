@@ -8,9 +8,6 @@ class DemandData(db.Model):
     datetime = db.Column(db.DateTime, nullable=False, unique=True)
     consumption = db.Column(db.Float, nullable=False)
     
-    # Fix the created_at column by using a function reference correctly
-    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), nullable=True)
-    
     def __repr__(self):
         return f"<DemandData(datetime='{self.datetime}', consumption={self.consumption})>"
     

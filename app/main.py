@@ -1951,50 +1951,40 @@ def get_demand_data():
         
         # Get current date to limit the data range
         current_date = datetime.now()
-        start_of_current_year = datetime(current_year, 1, 1)
-        days_elapsed = (current_date - start_of_current_year).days
         
         # Use raw SQL to avoid ORM issues with missing columns
-        current_year_data_query = text("""
+        query = text("""
             SELECT id, datetime, consumption 
             FROM demand_data
-            WHERE EXTRACT(year FROM datetime) = :year
-            AND datetime <= :current_date
+            WHERE (EXTRACT(year FROM datetime) = :current_year AND datetime <= :current_date)
+               OR (EXTRACT(year FROM datetime) = :previous_year)
             ORDER BY datetime
         """)
         
-        previous_year_data_query = text("""
-            SELECT id, datetime, consumption 
-            FROM demand_data
-            WHERE EXTRACT(year FROM datetime) = :year
-            ORDER BY datetime
-        """)
-        
-        # Execute queries
-        current_year_result = db.session.execute(
-            current_year_data_query, 
-            {"year": current_year, "current_date": current_date}
-        ).fetchall()
-        
-        previous_year_result = db.session.execute(
-            previous_year_data_query,
-            {"year": previous_year}
+        # Execute query
+        result = db.session.execute(
+            query, 
+            {
+                "current_year": current_year, 
+                "current_date": current_date,
+                "previous_year": previous_year
+            }
         ).fetchall()
         
         # Process the data
         current_year_data = []
-        for row in current_year_result:
-            current_year_data.append({
-                "datetime": row.datetime.strftime("%Y-%m-%d %H:%M:%S"),
-                "consumption": float(row.consumption)
-            })
-            
         previous_year_data = []
-        for row in previous_year_result:
-            previous_year_data.append({
+        
+        for row in result:
+            data_point = {
                 "datetime": row.datetime.strftime("%Y-%m-%d %H:%M:%S"),
                 "consumption": float(row.consumption)
-            })
+            }
+            
+            if row.datetime.year == current_year:
+                current_year_data.append(data_point)
+            else:
+                previous_year_data.append(data_point)
         
         # Return the data
         return jsonify({
