@@ -269,12 +269,11 @@ def sync_to_production():
     
     with app.app_context():
         # Create a connection to the production database
-        prod_db_uri = "postgresql://rwe_user:yzxKIZVU8y32aMMF2vK5OXPXlWxOxWKC@dpg-cv7v6p5umphs73fu4ijg-a.oregon-postgres.render.com/rwe_data"
         
         # Use SQLAlchemy to connect and transfer the data
         from sqlalchemy import text
         local_engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
-        prod_engine = create_engine(prod_db_uri)
+        prod_engine = create_engine('PRODUCTION_DATABASE_URL')
         
         # Get all records from local that don't exist in production
         with local_engine.connect() as local_conn:

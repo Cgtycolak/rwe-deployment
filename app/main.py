@@ -1954,47 +1954,56 @@ def get_demand_data():
         start_of_current_year = datetime(current_year, 1, 1)
         days_elapsed = (current_date - start_of_current_year).days
         
-        # Get data for both years but only up to current date
-        current_year_data = DemandData.query.filter(
-            extract('year', DemandData.datetime) == current_year,
-            DemandData.datetime <= current_date
-        ).order_by(DemandData.datetime).all()
+        # Use raw SQL to avoid ORM issues with missing columns
+        current_year_data_query = text("""
+            SELECT id, datetime, consumption 
+            FROM demand_data
+            WHERE EXTRACT(year FROM datetime) = :year
+            AND datetime <= :current_date
+            ORDER BY datetime
+        """)
         
-        previous_year_end = datetime(previous_year, 12, 31)
-        previous_year_cutoff = datetime(previous_year, 1, 1) + timedelta(days=days_elapsed)
-        previous_year_data = DemandData.query.filter(
-            extract('year', DemandData.datetime) == previous_year,
-            DemandData.datetime <= previous_year_cutoff
-        ).order_by(DemandData.datetime).all()
+        previous_year_data_query = text("""
+            SELECT id, datetime, consumption 
+            FROM demand_data
+            WHERE EXTRACT(year FROM datetime) = :year
+            ORDER BY datetime
+        """)
         
-        result = {'consumption': {}}
+        # Execute queries
+        current_year_result = db.session.execute(
+            current_year_data_query, 
+            {"year": current_year, "current_date": current_date}
+        ).fetchall()
         
-        # Process current year data
-        if current_year_data:
-            df = pd.DataFrame([{
-                'datetime': d.datetime,
-                'consumption': d.consumption
-            } for d in current_year_data])
-            df.set_index('datetime', inplace=True)
-            weekly_avg = df.resample('W').mean()
-            result['consumption'][str(current_year)] = weekly_avg['consumption'].tolist()
+        previous_year_result = db.session.execute(
+            previous_year_data_query,
+            {"year": previous_year}
+        ).fetchall()
         
-        # Process previous year data
-        if previous_year_data:
-            df = pd.DataFrame([{
-                'datetime': d.datetime,
-                'consumption': d.consumption
-            } for d in previous_year_data])
-            df.set_index('datetime', inplace=True)
-            weekly_avg = df.resample('W').mean()
-            result['consumption'][str(previous_year)] = weekly_avg['consumption'].tolist()
+        # Process the data
+        current_year_data = []
+        for row in current_year_result:
+            current_year_data.append({
+                "datetime": row.datetime.strftime("%Y-%m-%d %H:%M:%S"),
+                "consumption": float(row.consumption)
+            })
+            
+        previous_year_data = []
+        for row in previous_year_result:
+            previous_year_data.append({
+                "datetime": row.datetime.strftime("%Y-%m-%d %H:%M:%S"),
+                "consumption": float(row.consumption)
+            })
         
-        return jsonify(result)
-    
+        # Return the data
+        return jsonify({
+            "current_year": current_year_data,
+            "previous_year": previous_year_data
+        })
+        
     except Exception as e:
         print(f"Error in get_demand_data: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @main.route('/update_demand_data_api')
