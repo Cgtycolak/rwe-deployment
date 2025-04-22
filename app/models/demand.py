@@ -8,8 +8,8 @@ class DemandData(db.Model):
     datetime = db.Column(db.DateTime, nullable=False, unique=True)
     consumption = db.Column(db.Float, nullable=False)
     
-    # Make created_at optional to handle both schemas
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)
+    # Fix the created_at column by using a function reference correctly
+    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), nullable=True)
     
     def __repr__(self):
         return f"<DemandData(datetime='{self.datetime}', consumption={self.consumption})>"
@@ -17,7 +17,6 @@ class DemandData(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
-            'datetime': self.datetime.strftime('%Y-%m-%d %H:%M:%S'),
-            'consumption': self.consumption,
-            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None
+            'datetime': self.datetime,
+            'consumption': self.consumption
         } 
