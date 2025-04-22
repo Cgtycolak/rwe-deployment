@@ -1971,7 +1971,7 @@ def get_demand_data():
             }
         ).fetchall()
         
-        # Process the data
+        # Process the data for the frontend
         current_year_data = []
         previous_year_data = []
         
@@ -1986,11 +1986,33 @@ def get_demand_data():
             else:
                 previous_year_data.append(data_point)
         
-        # Return the data
-        return jsonify({
-            "current_year": current_year_data,
-            "previous_year": previous_year_data
-        })
+        # Convert to pandas DataFrame for resampling
+        if current_year_data:
+            df_current = pd.DataFrame(current_year_data)
+            df_current['datetime'] = pd.to_datetime(df_current['datetime'])
+            df_current.set_index('datetime', inplace=True)
+            weekly_avg_current = df_current.resample('W').mean()
+        else:
+            weekly_avg_current = pd.DataFrame()
+            
+        if previous_year_data:
+            df_previous = pd.DataFrame(previous_year_data)
+            df_previous['datetime'] = pd.to_datetime(df_previous['datetime'])
+            df_previous.set_index('datetime', inplace=True)
+            weekly_avg_previous = df_previous.resample('W').mean()
+        else:
+            weekly_avg_previous = pd.DataFrame()
+        
+        # Format the response as expected by the frontend
+        result = {'consumption': {}}
+        
+        if not weekly_avg_current.empty:
+            result['consumption'][str(current_year)] = weekly_avg_current['consumption'].tolist()
+            
+        if not weekly_avg_previous.empty:
+            result['consumption'][str(previous_year)] = weekly_avg_previous['consumption'].tolist()
+        
+        return jsonify(result)
         
     except Exception as e:
         print(f"Error in get_demand_data: {str(e)}")
