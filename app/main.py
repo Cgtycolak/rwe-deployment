@@ -19,6 +19,8 @@ from .models.production import ProductionData
 import plotly.graph_objects as go
 from sqlalchemy import text
 import os
+from app.models.demand import DemandData
+from sqlalchemy import extract
 
 pd.set_option('future.no_silent_downcasting', True)
 
@@ -1892,4 +1894,214 @@ def update_rolling_data():
         print(f"Error in update_rolling_data: {str(e)}")
         import traceback
         traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/check-demand-completeness')
+def check_demand_completeness():
+    try:
+        # Get min and max dates
+        min_date = db.session.query(db.func.min(DemandData.datetime)).scalar()
+        max_date = db.session.query(db.func.max(DemandData.datetime)).scalar()
+        
+        # Get count of records
+        total_records = db.session.query(DemandData).count()
+        
+        # Calculate expected records (assuming 24 records per day)
+        days = (max_date - min_date).days + 1
+        expected_records = days * 24
+        
+        # Find gaps in data using SQLAlchemy's text()
+        query = text("""
+            WITH dates AS (
+                SELECT generate_series(
+                    date_trunc('hour', min(datetime)),
+                    date_trunc('hour', max(datetime)),
+                    '1 hour'::interval
+                ) as expected_datetime
+                FROM demand_data
+            )
+            SELECT expected_datetime::timestamp
+            FROM dates
+            LEFT JOIN demand_data ON dates.expected_datetime = date_trunc('hour', demand_data.datetime)
+            WHERE demand_data.id IS NULL
+            ORDER BY expected_datetime;
+        """)
+        
+        missing_dates = db.session.execute(query).fetchall()
+        
+        return jsonify({
+            'start_date': min_date.strftime('%Y-%m-%d %H:%M'),
+            'end_date': max_date.strftime('%Y-%m-%d %H:%M'),
+            'total_days': days,
+            'total_records': total_records,
+            'expected_records': expected_records,
+            'missing_records': expected_records - total_records,
+            'coverage_percentage': (total_records / expected_records) * 100,
+            'missing_dates': [d[0].strftime('%Y-%m-%d %H:%M') for d in missing_dates[:100]] if missing_dates else [],
+            'total_missing_dates': len(missing_dates)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/get_demand_data')
+def get_demand_data():
+    try:
+        current_year = datetime.now().year
+        previous_year = current_year - 1
+        
+        # Get current date to limit the data range
+        current_date = datetime.now()
+        start_of_current_year = datetime(current_year, 1, 1)
+        days_elapsed = (current_date - start_of_current_year).days
+        
+        # Get data for both years but only up to current date
+        current_year_data = DemandData.query.filter(
+            extract('year', DemandData.datetime) == current_year,
+            DemandData.datetime <= current_date
+        ).order_by(DemandData.datetime).all()
+        
+        previous_year_end = datetime(previous_year, 12, 31)
+        previous_year_cutoff = datetime(previous_year, 1, 1) + timedelta(days=days_elapsed)
+        previous_year_data = DemandData.query.filter(
+            extract('year', DemandData.datetime) == previous_year,
+            DemandData.datetime <= previous_year_cutoff
+        ).order_by(DemandData.datetime).all()
+        
+        result = {'consumption': {}}
+        
+        # Process current year data
+        if current_year_data:
+            df = pd.DataFrame([{
+                'datetime': d.datetime,
+                'consumption': d.consumption
+            } for d in current_year_data])
+            df.set_index('datetime', inplace=True)
+            weekly_avg = df.resample('W').mean()
+            result['consumption'][str(current_year)] = weekly_avg['consumption'].tolist()
+        
+        # Process previous year data
+        if previous_year_data:
+            df = pd.DataFrame([{
+                'datetime': d.datetime,
+                'consumption': d.consumption
+            } for d in previous_year_data])
+            df.set_index('datetime', inplace=True)
+            weekly_avg = df.resample('W').mean()
+            result['consumption'][str(previous_year)] = weekly_avg['consumption'].tolist()
+        
+        return jsonify(result)
+    
+    except Exception as e:
+        print(f"Error in get_demand_data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/update_demand_data_api')
+def update_demand_data_api():
+    try:
+        # Get the latest date in the database
+        latest_date = db.session.query(db.func.max(DemandData.datetime)).scalar()
+        
+        # If no data, start from a default date
+        if not latest_date:
+            start_date = datetime(2023, 1, 1)
+        else:
+            # Start from the day after the latest date
+            start_date = latest_date + timedelta(days=1)
+            start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # End date is today
+        end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # If already up to date
+        if start_date >= end_date:
+            return jsonify({
+                'message': 'Database is already up to date.',
+                'records_added': 0
+            })
+        
+        # Format dates for API
+        start_date_str = start_date.strftime('%Y-%m-%d')
+        end_date_str = end_date.strftime('%Y-%m-%d')
+        
+        # Get TGT token
+        tgt_token = get_tgt_token(
+            current_app.config.get('USERNAME'),
+            current_app.config.get('PASSWORD')
+        )
+        
+        # Prepare API request
+        url = "https://seffaflik.epias.com.tr/electricity-service/v1/consumption/data/realtime-consumption"
+        
+        payload = {
+            "startDate": f"{start_date_str}T00:00:00+03:00",
+            "endDate": f"{end_date_str}T23:59:59+03:00",
+            "region": "TR1",
+        }
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': "application/json",
+            'TGT': tgt_token
+        }
+        
+        # Make API request
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        
+        # Process the data
+        items = response.json().get('items', [])
+        if not items:
+            return jsonify({
+                'message': 'No new data found for the specified date range.',
+                'records_added': 0
+            })
+            
+        # Convert to DataFrame for easier processing
+        df = pd.json_normalize(items)
+        df['date'] = pd.to_datetime(df['date'])
+        
+        # Store in database
+        records_added = 0
+        for _, row in df.iterrows():
+            # Parse datetime from the date field
+            dt = row['date'].to_pydatetime()
+            
+            # Check if record already exists
+            existing_record = DemandData.query.filter_by(
+                datetime=dt
+            ).first()
+            
+            if not existing_record:
+                record = DemandData(
+                    datetime=dt,
+                    consumption=row.get('consumption', 0)
+                )
+                db.session.add(record)
+                records_added += 1
+        
+        db.session.commit()
+        
+        # Recalculate demand averages
+        if records_added > 0:
+            try:
+                # Import the script
+                from app.scripts.cao_charts.precalculate_demand_averages import precalculate_demand_averages
+                precalculate_demand_averages()
+            except Exception as e:
+                print(f"Error recalculating demand averages: {str(e)}")
+        
+        return jsonify({
+            'message': f'Successfully added {records_added} new records.',
+            'records_added': records_added,
+            'date_range': {
+                'start': start_date_str,
+                'end': end_date_str
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in update_demand_data_api: {str(e)}")
         return jsonify({'error': str(e)}), 500

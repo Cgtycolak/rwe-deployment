@@ -1845,8 +1845,9 @@ function updateRollingDatabase() {
     toggleButtonLoading('update-rolling-database', true);
     
     // Show status message
-    showStatusMessage('Updating database with latest production data...', 'info');
+    showStatusMessage('Updating database with latest production and demand data...', 'info');
     
+    // First update production data
     fetch('{{ url_for("main.update_rolling_data") }}')
         .then(response => response.json())
         .then(data => {
@@ -1854,14 +1855,31 @@ function updateRollingDatabase() {
                 throw new Error(data.error);
             }
             
+            // Show intermediate message
+            showStatusMessage(`Production data updated successfully. Added ${data.records_added} new records. Updating demand data...`, 'info');
+            
+            // Now update demand data - updated URL to match the new endpoint
+            return fetch('{{ url_for("main.update_demand_data_api") }}');
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
             // Show success message
-            showStatusMessage(`Database updated successfully. Added ${data.records_added} new records.`, 'success');
+            showStatusMessage(`Database updated successfully. Added ${data.records_added} new demand records.`, 'success');
             
             // Update last update info
             debouncedFetchLastUpdateInfo();
             
             // Reset button state
             toggleButtonLoading('update-rolling-database', false);
+            
+            // If charts are loaded, reload them to show new data
+            if (chartsLoaded) {
+                loadRollingCharts();
+            }
         })
         .catch(error => {
             console.error('Error updating database:', error);
@@ -1903,8 +1921,21 @@ function toggleButtonLoading(buttonId, isLoading) {
 }
 
 function renderCharts() {
-    const rollingData = window.rollingData;
     const chartsContainer = document.getElementById('charts-container');
+    
+    // Add 7-Day Rolling Averages title first
+    const rollingTitle = document.createElement('div');
+    rollingTitle.className = 'row mt-4 mb-3';
+    rollingTitle.innerHTML = `
+        <div class="col-12">
+            <h3 class="section-title" style="color: #2c3e50; font-family: 'RWE Sans Web'; border-bottom: 2px solid #eee; padding-bottom: 10px;">
+                7-Day Rolling Averages
+            </h3>
+        </div>
+    `;
+    chartsContainer.appendChild(rollingTitle);
+
+    const rollingData = window.rollingData;
     const currentYear = new Date().getFullYear();
     
     // Filter for specific fuel types and define their display order
@@ -1917,7 +1948,8 @@ function renderCharts() {
         'importexport',  // ImportExport
         'river',         // Run of River
         'dammedhydro',   // Dam
-        'renewablesratio_monthly' // Renewables/Total Ratio (Monthly)
+        'renewablesratio_monthly', // Renewables/Total Ratio (Monthly)
+        'consumption',    // Demand
     ];
     
     // Map column names to display names
@@ -1930,7 +1962,8 @@ function renderCharts() {
         'importexport': 'ImportExport',
         'river': 'Run-of-River',
         'dammedhydro': 'Dam',
-        'renewablesratio_monthly': 'Renewables/Total Generation Ratio'
+        'renewablesratio_monthly': 'Renewables/Total Generation Ratio',
+        'consumption': 'Electricity Demand',
     };
     
     // Process each fuel type in the specified order
@@ -2284,5 +2317,256 @@ document.addEventListener('section:activated', function(e) {
         chartsLoaded = false;
     }
 });
+
+function renderDemandChart() {
+    const chartsContainer = document.getElementById('charts-container');
+    if (!chartsContainer) {
+        console.error('Charts container not found');
+        return;
+    }
+    
+    // Check if Demand title already exists
+    const existingDemandTitle = Array.from(document.querySelectorAll('.section-title'))
+        .find(el => el.textContent.trim() === 'Demand');
+    
+    if (!existingDemandTitle) {
+        const sectionDivider = document.createElement('div');
+        sectionDivider.className = 'row mt-4 mb-3';
+        sectionDivider.innerHTML = `
+            <div class="col-12">
+                <h3 class="section-title" style="color: #2c3e50; font-family: 'RWE Sans Web'; border-bottom: 2px solid #eee; padding-bottom: 10px;">
+                    Average Demand
+                </h3>
+            </div>
+        `;
+        chartsContainer.appendChild(sectionDivider);
+    }
+    
+    // Create demand chart container if it doesn't exist
+    let chartDiv = document.getElementById('demand-chart');
+    if (!chartDiv) {
+        const chartContainer = document.createElement('div');
+        chartContainer.className = 'col-md-12';
+        chartContainer.innerHTML = `
+            <div class="chart-container" id="demand-chart" style="max-width: 800px; margin: 0 auto;"></div>
+        `;
+        chartsContainer.appendChild(chartContainer);
+        chartDiv = document.getElementById('demand-chart');
+    }
+
+    fetch('{{ url_for("main.get_demand_data") }}')
+        .then(response => response.json())
+        .then(data => {
+            const currentYear = new Date().getFullYear();
+            const previousYear = currentYear - 1;
+            const traces = [];
+            
+            // Get current date to limit the data range
+            const now = new Date();
+            const currentWeek = Math.ceil((now - new Date(now.getFullYear(), 0, 1)) / (1000 * 60 * 60 * 24 * 7));
+            
+            // Create date array for x-axis with weekly points
+            const dateArray = [];
+            const startDate = new Date(currentYear, 0, 1);
+            for (let i = 0; i < currentWeek; i++) {
+                const date = new Date(startDate);
+                date.setDate(date.getDate() + (i * 7));
+                dateArray.push(date.toISOString().split('T')[0]);
+            }
+
+            // Create tick values and labels for first day of each month
+            const tickVals = [];
+            const tickText = [];
+            let currentMonth = -1;
+            dateArray.forEach(date => {
+                const d = new Date(date);
+                if (d.getMonth() !== currentMonth) {
+                    currentMonth = d.getMonth();
+                    const firstOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+                    tickVals.push(firstOfMonth.toISOString().split('T')[0]);
+                    tickText.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+                }
+            });
+            
+            // Add previous year data (2024) - solid blue line
+            if (data.consumption && data.consumption[previousYear]) {
+                const y = data.consumption[previousYear].slice(0, currentWeek);
+                
+                traces.push({
+                    name: previousYear.toString(),
+                    x: dateArray,
+                    y: y,
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: {
+                        color: 'blue',
+                        width: 2
+                    }
+                });
+            }
+            
+            // Add current year data (2025) - solid red line
+            if (data.consumption && data.consumption[currentYear]) {
+                const y = data.consumption[currentYear].slice(0, currentWeek);
+                
+                traces.push({
+                    name: currentYear.toString(),
+                    x: dateArray,
+                    y: y,
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: {
+                        color: 'red',
+                        width: 2
+                    }
+                });
+            }
+            
+            const layout = {
+                title: {
+                    text: 'Avg. Demand',
+                    font: {
+                        family: 'RWE Sans Web',
+                        size: 20
+                    },
+                    x: 0.125,  // Moved title slightly to the right
+                    y: 0.97,
+                    xanchor: 'left',
+                    yanchor: 'top'
+                },
+                xaxis: {
+                    showgrid: true,
+                    gridcolor: 'rgba(0,0,0,0.1)',
+                    zeroline: true,
+                    zerolinecolor: 'rgba(0,0,0,0.1)',
+                    linecolor: 'black',
+                    linewidth: 1,
+                    mirror: true,
+                    type: 'date',
+                    tickformat: '%Y-%m-%d',
+                    tickangle: 325,
+                    tickmode: 'array',
+                    ticktext: tickText,
+                    tickvals: tickVals,
+                    nticks: tickVals.length
+                },
+                yaxis: {
+                    title: 'MWh',
+                    showgrid: true,
+                    gridcolor: 'rgba(0,0,0,0.1)',
+                    zeroline: true,
+                    zerolinecolor: 'rgba(0,0,0,0.1)',
+                    linecolor: 'black',
+                    linewidth: 1,
+                    mirror: true,
+                    tickformat: ',d'
+                },
+                showlegend: true,
+                legend: {
+                    x: 1,
+                    xanchor: 'right',
+                    y: 1,
+                    yanchor: 'top',
+                    bgcolor: 'rgba(255,255,255,0.9)',
+                    bordercolor: 'rgba(0,0,0,0.1)',
+                    borderwidth: 1
+                },
+                plot_bgcolor: 'white',
+                paper_bgcolor: 'white',
+                hovermode: 'x unified',
+                margin: {
+                    l: 80,
+                    r: 20,
+                    t: 40,  // Reduced top margin
+                    b: 80   // Increased bottom margin for date labels
+                },
+                height: 500,
+                width: 800,
+                autosize: false
+            };
+            
+            // Container style remains the same...
+            
+            Plotly.newPlot(chartDiv, traces, layout, {
+                displayModeBar: true,
+                responsive: true,
+                modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d']
+            });
+        })
+        .catch(error => {
+            // Error handling remains the same...
+        });
+}
+
+// Modify the loadRollingCharts function to call renderDemandChart
+function loadRollingCharts() {
+    // Prevent multiple loads
+    if (chartsLoaded) {
+        console.log("Charts already loaded, skipping");
+        return;
+    }
+    
+    // Show loading indicator
+    const loadingDiv = document.getElementById('loading');
+    loadingDiv.style.display = 'block';
+    
+    // Clear any existing charts
+    const chartsContainer = document.getElementById('charts-container');
+    chartsContainer.innerHTML = '';
+    
+    // Toggle button state
+    toggleButtonLoading('load-rolling-charts', true);
+    
+    // Hide any previous status messages
+    document.getElementById('status-message').style.display = 'none';
+    
+    // Get data and render charts
+    fetch('{{ url_for("main.get_rolling_data") }}')
+        .then(response => response.json())
+        .then(rollingData => {
+            if (rollingData.error) {
+                throw new Error(rollingData.error);
+            }
+            
+            // Store data globally for access
+            window.rollingData = rollingData;
+            
+            // Render the charts
+            renderCharts();
+            
+            // Render the demand chart
+            renderDemandChart();
+            
+            // Set the loaded flag
+            chartsLoaded = true;
+            
+            // Hide loading indicator
+            loadingDiv.style.display = 'none';
+            
+            // Reset button state
+            toggleButtonLoading('load-rolling-charts', false);
+            
+            // Add resize handler if not already added
+            if (!window.chartResizeHandlerAdded) {
+                window.addEventListener('resize', debounce(function() {
+                    const charts = document.querySelectorAll('.chart-container');
+                    charts.forEach(chart => {
+                        if (chart.id && window.Plotly) {
+                            Plotly.Plots.resize(chart);
+                        }
+                    });
+                }, 250));
+                
+                window.chartResizeHandlerAdded = true;
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching rolling data:', error);
+            showStatusMessage('Error loading charts: ' + error.message, 'danger');
+            loadingDiv.style.display = 'none';
+            toggleButtonLoading('load-rolling-charts', false);
+            chartsLoaded = false;
+        });
+}
 </script>
 {% endblock page_scripts %}

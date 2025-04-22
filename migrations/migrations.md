@@ -1,10 +1,11 @@
 # Database Migration History
 
 ## Current State
-- **Latest Migration**: 20240325152900
+- **Latest Migration**: 20240423000000
 - **Migration Chain**:
   1. Base -> dfdfe7849931 (initial_migration)
   2. dfdfe7849931 -> 20240325152900 (add_production_table)
+  3. 20240325152900 -> 20240423000000 (add_demand_table)
 
 ## Tables
 1. **hydro_heatmap_data** (from dfdfe7849931)
@@ -30,6 +31,10 @@
 6. **production_data** (from 20240325152900)
    - Created: 2025-03-25
    - Purpose: Store aggregated production data for all energy types
+
+7. **demand_data** (from 20240423000000)
+   - Created: 2025-04-23
+   - Purpose: Store electricity demand data
 
 ## How to Verify Current State
 sql
