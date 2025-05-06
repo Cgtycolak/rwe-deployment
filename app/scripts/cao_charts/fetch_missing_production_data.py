@@ -273,7 +273,11 @@ def sync_to_production():
         # Use SQLAlchemy to connect and transfer the data
         from sqlalchemy import text
         local_engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
-        prod_engine = create_engine('PRODUCTION_DATABASE_URL')
+        prod_db_url = os.environ.get('PRODUCTION_DATABASE_URL')
+        if not prod_db_url:
+            print("Error: PRODUCTION_DATABASE_URL environment variable not set")
+            return
+        prod_engine = create_engine(prod_db_url)
         
         # Get all records from local that don't exist in production
         with local_engine.connect() as local_conn:

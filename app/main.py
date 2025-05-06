@@ -2022,18 +2022,17 @@ def get_demand_data():
 def update_demand_data_api():
     try:
         # Get the latest date in the database
-        latest_date = db.session.query(db.func.max(DemandData.datetime)).scalar()
+        latest_record = db.session.query(DemandData.datetime).order_by(DemandData.datetime.desc()).first()
         
         # If no data, start from a default date
-        if not latest_date:
+        if not latest_record:
             start_date = datetime(2023, 1, 1)
         else:
-            # Start from the day after the latest date
-            start_date = latest_date + timedelta(days=1)
-            start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            # Start from the hour after the latest record
+            start_date = latest_record[0] + timedelta(hours=1)
         
-        # End date is today
-        end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        # End date is current hour
+        end_date = datetime.now().replace(minute=0, second=0, microsecond=0)
         
         # If already up to date
         if start_date >= end_date:
@@ -2097,32 +2096,136 @@ def update_demand_data_api():
             if not existing_record:
                 record = DemandData(
                     datetime=dt,
-                    consumption=row.get('consumption', 0)
+                    consumption=row.get('consumption', 0),
+                    created_at=datetime.now()  # Explicitly set created_at
                 )
                 db.session.add(record)
                 records_added += 1
         
         db.session.commit()
         
-        # Recalculate demand averages
-        if records_added > 0:
-            try:
-                # Import the script
-                from app.scripts.cao_charts.precalculate_demand_averages import precalculate_demand_averages
-                precalculate_demand_averages()
-            except Exception as e:
-                print(f"Error recalculating demand averages: {str(e)}")
-        
         return jsonify({
             'message': f'Successfully added {records_added} new records.',
             'records_added': records_added,
             'date_range': {
-                'start': start_date_str,
-                'end': end_date_str
+                'start': start_date.strftime('%Y-%m-%d %H:%M'),
+                'end': end_date.strftime('%Y-%m-%d %H:%M')
             }
         })
         
     except Exception as e:
         db.session.rollback()
         print(f"Error in update_demand_data_api: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/check_demand_updates')
+def check_demand_updates():
+    try:
+        # Get the last 15 days of data
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=15)
+        
+        # Get TGT token
+        tgt_token = get_tgt_token(
+            current_app.config.get('USERNAME'),
+            current_app.config.get('PASSWORD')
+        )
+        
+        # Prepare API request
+        url = "https://seffaflik.epias.com.tr/electricity-service/v1/consumption/data/realtime-consumption"
+        
+        payload = {
+            "startDate": f"{start_date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+            "endDate": f"{end_date.strftime('%Y-%m-%d')}T23:59:59+03:00",
+            "region": "TR1",
+        }
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': "application/json",
+            'TGT': tgt_token
+        }
+        
+        # Make API request
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        
+        # Process the data
+        items = response.json().get('items', [])
+        if not items:
+            return jsonify({
+                'message': 'No data found for the specified date range.',
+                'updated_records': 0
+            })
+            
+        # Convert to DataFrame for easier processing
+        df = pd.json_normalize(items)
+        df['date'] = pd.to_datetime(df['date'])
+        
+        # Get existing records for this date range
+        existing_records = {}
+        query = text("""
+            SELECT datetime, consumption 
+            FROM demand_data 
+            WHERE datetime >= :start_date AND datetime <= :end_date
+        """)
+        result = db.session.execute(query, {
+            'start_date': start_date,
+            'end_date': end_date
+        }).fetchall()
+        
+        for record in result:
+            existing_records[record[0].strftime('%Y-%m-%d %H:%M')] = float(record[1])
+        
+        # Check for updated values
+        updated_records = []
+        current_time = datetime.now()
+        
+        for _, row in df.iterrows():
+            dt = row['date'].to_pydatetime()
+            dt_key = dt.strftime('%Y-%m-%d %H:%M')
+            consumption = float(row.get('consumption', 0))
+            
+            if dt_key in existing_records:
+                # Compare with existing value with a small tolerance for floating point differences
+                if abs(existing_records[dt_key] - consumption) > 0.01:
+                    updated_records.append({
+                        'datetime': dt,
+                        'old_value': existing_records[dt_key],
+                        'new_value': consumption,
+                        'created_at': current_time
+                    })
+        
+        # Update records with different values
+        if updated_records:
+            for record in updated_records:
+                # Update the record
+                update_stmt = text("""
+                UPDATE demand_data 
+                SET consumption = :consumption, created_at = :created_at
+                WHERE datetime = :datetime
+                """)
+                
+                db.session.execute(update_stmt, {
+                    'consumption': record['new_value'],
+                    'created_at': record['created_at'],
+                    'datetime': record['datetime']
+                })
+            
+            db.session.commit()
+        
+        return jsonify({
+            'message': f'Successfully checked for updates. Found {len(updated_records)} records with changed values.',
+            'updated_records': len(updated_records),
+            'date_range': {
+                'start': start_date.strftime('%Y-%m-%d %H:%M'),
+                'end': end_date.strftime('%Y-%m-%d %H:%M')
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in check_demand_updates: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500

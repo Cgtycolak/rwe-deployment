@@ -8,13 +8,17 @@ import pytz
 import json
 from sqlalchemy import text, create_engine
 import pandas as pd
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Add the parent directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
 sys.path.append(parent_dir)
 
-from app.factory import create_app
+from app import create_app
 from app.database.config import db
 from app.models.demand import DemandData
 from app.functions import get_tgt_token
@@ -51,8 +55,8 @@ def fetch_demand_data(start_date, end_date, session, tgt_token):
     
     return response.json().get('items', [])
 
-def fetch_missing_dates(missing_dates):
-    """Fetch missing demand data for specific dates"""
+def fetch_missing_dates(missing_dates, check_updates=False):
+    """Fetch missing demand data for specific dates and check for updates"""
     print(f"\nFetching {len(missing_dates)} missing data points")
     
     # Group dates by month to minimize API calls
@@ -81,6 +85,7 @@ def fetch_missing_dates(missing_dates):
         success_count = 0
         failure_count = 0
         failed_dates = []
+        updated_count = 0
         
         for month, dates in date_groups.items():
             print(f"\nProcessing {month} with {len(dates)} missing hours")
@@ -99,15 +104,14 @@ def fetch_missing_dates(missing_dates):
             
             try:
                 # Fetch data for the entire month
+                print(f"Fetching data from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
                 items = fetch_demand_data(start_date, end_date, session, tgt_token)
                 
                 if not items:
-                    print(f"No data found for {month}")
+                    print(f"No data returned for {month}")
+                    failed_dates.extend([d.strftime('%Y-%m-%d %H:%M') for d in dates])
                     failure_count += len(dates)
-                    failed_dates.extend([dt.strftime('%Y-%m-%d %H:%M') for dt in dates])
                     continue
-                
-                print(f"Got {len(items)} records for {month}")
                 
                 # Convert to DataFrame for easier processing
                 df = pd.json_normalize(items)
@@ -115,6 +119,7 @@ def fetch_missing_dates(missing_dates):
                 
                 # Process items in batches
                 batch_data = []
+                current_time = datetime.now()  # Get current time once for all records
                 for _, row in df.iterrows():
                     try:
                         dt = row['date'].to_pydatetime()
@@ -123,7 +128,8 @@ def fetch_missing_dates(missing_dates):
                         if any(d.date() == dt.date() and d.hour == dt.hour for d in dates):
                             record_data = {
                                 'datetime': dt,
-                                'consumption': float(row.get('consumption', 0))
+                                'consumption': float(row.get('consumption', 0)),
+                                'created_at': current_time  # Add created_at timestamp
                             }
                             batch_data.append(record_data)
                     except Exception as e:
@@ -135,146 +141,251 @@ def fetch_missing_dates(missing_dates):
                     try:
                         # Use bulk insert with ON CONFLICT DO UPDATE
                         insert_stmt = """
-                        INSERT INTO demand_data (datetime, consumption)
-                        VALUES (:datetime, :consumption)
+                        INSERT INTO demand_data (datetime, consumption, created_at)
+                        VALUES (:datetime, :consumption, :created_at)
                         ON CONFLICT (datetime) DO UPDATE
-                        SET consumption = EXCLUDED.consumption
+                        SET consumption = EXCLUDED.consumption,
+                            created_at = EXCLUDED.created_at
                         """
                         
                         db.session.execute(text(insert_stmt), batch_data)
                         db.session.commit()
                         
-                        print(f"Successfully stored {len(batch_data)} records for {month}")
                         success_count += len(batch_data)
+                        print(f"Successfully inserted/updated {len(batch_data)} records for {month}")
+                        
+                        # If we're checking for updates, count how many were actually updated
+                        if check_updates:
+                            # Get the original values for comparison
+                            dt_list = [record['datetime'] for record in batch_data]
+                            original_records = DemandData.query.filter(DemandData.datetime.in_(dt_list)).all()
+                            original_dict = {record.datetime.strftime('%Y-%m-%d %H:%M'): record.consumption for record in original_records}
+                            
+                            # Count updated records
+                            for record in batch_data:
+                                dt_key = record['datetime'].strftime('%Y-%m-%d %H:%M')
+                                if dt_key in original_dict and abs(original_dict[dt_key] - record['consumption']) > 0.01:
+                                    updated_count += 1
+                            
+                            print(f"Updated {updated_count} records with new values")
+                        
                     except Exception as e:
-                        db.session.rollback()
-                        print(f"Error committing data: {e}")
+                        print(f"Error inserting batch data: {e}")
+                        failed_dates.extend([d.strftime('%Y-%m-%d %H:%M') for d in dates])
                         failure_count += len(dates)
-                        failed_dates.extend([dt.strftime('%Y-%m-%d %H:%M') for dt in dates])
                 else:
                     print(f"No matching data found for {month}")
+                    failed_dates.extend([d.strftime('%Y-%m-%d %H:%M') for d in dates])
                     failure_count += len(dates)
-                    failed_dates.extend([dt.strftime('%Y-%m-%d %H:%M') for dt in dates])
             
             except Exception as e:
                 print(f"Error processing {month}: {e}")
+                failed_dates.extend([d.strftime('%Y-%m-%d %H:%M') for d in dates])
                 failure_count += len(dates)
-                failed_dates.extend([dt.strftime('%Y-%m-%d %H:%M') for dt in dates])
-            
-            time.sleep(1)  # Wait between requests
         
         print(f"\nSummary:")
-        print(f"Successfully fetched {success_count} records")
-        print(f"Failed to fetch {failure_count} records")
+        print(f"Successfully processed {success_count} data points")
+        if check_updates:
+            print(f"Updated {updated_count} records with new values")
+        print(f"Failed to process {failure_count} data points")
+        
         if failed_dates:
-            print("\nFailed dates:")
-            for date in failed_dates:
-                print(date)
-            
-            # Save failed dates to file
-            with open('failed_demand_dates.json', 'w') as f:
+            # Save failed dates to file for later retry
+            output_file = f"failed_demand_dates_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            with open(output_file, 'w') as f:
                 json.dump({'failed_dates': failed_dates}, f)
-            print("\nFailed dates have been saved to failed_demand_dates.json")
+            print(f"Saved {len(failed_dates)} failed dates to {output_file}")
 
 def sync_to_production():
-    """Sync local demand data to production database"""
+    """Sync demand data to production database"""
     print("Syncing demand data to production database...")
     
-    # Get production database connection string from environment variable
-    prod_db_url = os.environ.get('PRODUCTION_DATABASE_URL')
+    # Get production database URL from environment variable
+    production_db_url = os.environ.get('PRODUCTION_DATABASE_URL')
     
-    # Create app context
-    app = create_app()
+    if not production_db_url:
+        print("Production database URL not configured")
+        return
     
-    with app.app_context():
-        # Create engine for production database
-        local_engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
-        prod_engine = create_engine(prod_db_url)
+    # Create connections to both databases
+    local_engine = create_engine(os.environ.get('DATABASE_URL'))
+    prod_engine = create_engine(production_db_url)
+    
+    # First, check if the demand_data table exists in production
+    prod_conn = prod_engine.connect()
+    try:
+        # Check if table exists
+        result = prod_conn.execute(text("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'demand_data'
+            )
+        """)).scalar()
         
-        # Create demand_data table if it doesn't exist
-        with prod_engine.connect() as prod_conn:
-            # Check if table exists
-            table_exists = prod_conn.execute(text(
-                "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'demand_data')"
-            )).scalar()
+        if not result:
+            print("demand_data table does not exist in production, creating it...")
+            prod_conn.execute(text("""
+            CREATE TABLE demand_data (
+                id SERIAL PRIMARY KEY,
+                datetime TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+                consumption FLOAT NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                CONSTRAINT demand_data_datetime_key UNIQUE (datetime)
+            )
+            """))
+            prod_conn.commit()
+            print("Table created successfully!")
+        
+        # Check if created_at column exists
+        has_created_at = False
+        try:
+            result = prod_conn.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'demand_data' AND column_name = 'created_at'
+            """)).fetchone()
             
-            if not table_exists:
-                print("Creating demand_data table in production database...")
+            has_created_at = result is not None
+            
+            if has_created_at:
+                print("Production database has created_at column")
+            else:
+                print("Production database does not have created_at column, adding it...")
                 prod_conn.execute(text("""
-                    CREATE TABLE demand_data (
-                        id SERIAL PRIMARY KEY,
-                        datetime TIMESTAMP NOT NULL,
-                        consumption FLOAT NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE(datetime)
-                    )
+                ALTER TABLE demand_data 
+                ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 """))
                 prod_conn.commit()
-                print("Table created successfully")
+                has_created_at = True
+                print("created_at column added successfully!")
+        except Exception as e:
+            print(f"Error checking/adding created_at column: {e}")
+            print("Will proceed assuming column does not exist")
+            has_created_at = False
         
-        # Get all records from local that don't exist in production
-        with local_engine.connect() as local_conn:
-            with prod_engine.connect() as prod_conn:
-                # Get all datetimes from production
-                prod_datetimes = prod_conn.execute(text("SELECT datetime FROM demand_data")).fetchall()
-                prod_dt_set = set(dt[0].strftime('%Y-%m-%d %H:%M:%S') for dt in prod_datetimes)
-                
-                # Get records from local that don't exist in production
-                local_records = local_conn.execute(text("""
-                    SELECT datetime, consumption
-                    FROM demand_data
-                """)).fetchall()
-                
-                # Filter for records not in production
-                missing_records = [r for r in local_records if r[0].strftime('%Y-%m-%d %H:%M:%S') not in prod_dt_set]
-                
-                print(f"Found {len(missing_records)} records to sync to production")
-                
-                if not missing_records:
-                    print("No records to sync.")
-                    return
-                
-                # Insert missing records in batches
-                batch_size = 500
-                total_batches = (len(missing_records) + batch_size - 1) // batch_size
-                records_added = 0
-                
-                for batch_num in range(total_batches):
-                    start_idx = batch_num * batch_size
-                    end_idx = min((batch_num + 1) * batch_size, len(missing_records))
-                    batch = missing_records[start_idx:end_idx]
-                    
-                    # Create batch insert statement
-                    values_str = ",".join([
-                        f"('{r[0]}', {r[1]})" for r in batch
-                    ])
-                    
-                    insert_stmt = f"""
-                    INSERT INTO demand_data (datetime, consumption)
-                    VALUES {values_str}
-                    ON CONFLICT (datetime) DO NOTHING
-                    """
-                    
+        # Get all records from local database
+        local_conn = local_engine.connect()
+        local_records = local_conn.execute(text("SELECT id, datetime, consumption, created_at FROM demand_data")).fetchall()
+        
+        # Get all records from production database
+        try:
+            prod_records = prod_conn.execute(text("SELECT datetime, consumption FROM demand_data")).fetchall()
+            # Create a dictionary of production records for quick lookup
+            prod_dict = {record[0].strftime('%Y-%m-%d %H:%M'): float(record[1]) for record in prod_records}
+        except Exception as e:
+            print(f"Error getting production records: {e}")
+            print("Assuming no records exist in production")
+            prod_dict = {}
+        
+        # Find records to add or update
+        records_to_sync = []
+        for record in local_records:
+            dt_key = record[1].strftime('%Y-%m-%d %H:%M')
+            consumption = float(record[2])
+            created_at = record[3] if record[3] else datetime.now()
+            
+            # If record doesn't exist in production or has a different value
+            if dt_key not in prod_dict or abs(prod_dict[dt_key] - consumption) > 0.01:
+                records_to_sync.append({
+                    'datetime': record[1],
+                    'consumption': consumption,
+                    'created_at': created_at
+                })
+        
+        print(f"Found {len(records_to_sync)} records to sync to production")
+        
+        if not records_to_sync:
+            print("No records to sync.")
+            return
+        
+        # Sync records in batches
+        batch_size = 1000
+        records_added = 0
+        records_updated = 0
+        
+        for i in range(0, len(records_to_sync), batch_size):
+            batch = records_to_sync[i:i+batch_size]
+            
+            # Use upsert (INSERT ... ON CONFLICT DO UPDATE)
+            for record in batch:
+                try:
+                    # Check if record exists
+                    exists = False
                     try:
-                        prod_conn.execute(text(insert_stmt))
-                        records_added += len(batch)
-                        print(f"Processed batch {batch_num + 1}/{total_batches} ({records_added}/{len(missing_records)} records)")
-                    except Exception as e:
-                        print(f"Error adding batch {batch_num + 1}: {str(e)}")
-                
-                # Commit all changes
+                        exists = prod_conn.execute(
+                            text("SELECT id FROM demand_data WHERE datetime = :datetime"),
+                            {'datetime': record['datetime']}
+                        ).fetchone() is not None
+                    except Exception:
+                        # If error, assume record doesn't exist
+                        exists = False
+                    
+                    if exists:
+                        # Update existing record
+                        if has_created_at:
+                            update_stmt = text("""
+                            UPDATE demand_data 
+                            SET consumption = :consumption, created_at = :created_at
+                            WHERE datetime = :datetime
+                            """)
+                        else:
+                            update_stmt = text("""
+                            UPDATE demand_data 
+                            SET consumption = :consumption
+                            WHERE datetime = :datetime
+                            """)
+                        
+                        prod_conn.execute(update_stmt, record)
+                        records_updated += 1
+                    else:
+                        # Insert new record
+                        if has_created_at:
+                            insert_stmt = text("""
+                            INSERT INTO demand_data (datetime, consumption, created_at)
+                            VALUES (:datetime, :consumption, :created_at)
+                            """)
+                        else:
+                            insert_stmt = text("""
+                            INSERT INTO demand_data (datetime, consumption)
+                            VALUES (:datetime, :consumption)
+                            """)
+                        
+                        prod_conn.execute(insert_stmt, record)
+                        records_added += 1
+                except Exception as e:
+                    print(f"Error syncing record {record['datetime']}: {e}")
+                    continue
+            
+            # Commit after each batch
+            try:
                 prod_conn.commit()
-                
-                print(f"Successfully synced {records_added} records to production")
-                
-                # Verify final counts
-                local_count = local_conn.execute(text("SELECT COUNT(*) FROM demand_data")).scalar()
-                prod_count = prod_conn.execute(text("SELECT COUNT(*) FROM demand_data")).scalar()
-                
-                print(f"Local database has {local_count} records")
-                print(f"Production database now has {prod_count} records")
+                print(f"Synced batch {i//batch_size + 1}/{(len(records_to_sync)-1)//batch_size + 1}")
+            except Exception as e:
+                print(f"Error committing batch: {e}")
+                prod_conn.rollback()
+        
+        print(f"Sync complete. Added {records_added} new records, updated {records_updated} existing records.")
+        
+        # Verify final counts
+        try:
+            local_count = local_conn.execute(text("SELECT COUNT(*) FROM demand_data")).scalar()
+            prod_count = prod_conn.execute(text("SELECT COUNT(*) FROM demand_data")).scalar()
+            
+            print(f"Local database has {local_count} records")
+            print(f"Production database now has {prod_count} records")
+        except Exception as e:
+            print(f"Error getting record counts: {e}")
+        
+        local_conn.close()
+    except Exception as e:
+        print(f"Error in sync_to_production: {e}")
+    finally:
+        prod_conn.close()
 
 def main():
+    # Load environment variables
+    load_dotenv()
+    
     parser = argparse.ArgumentParser(description='Fetch missing demand data')
     parser.add_argument('--input-file', type=str, default=None,
                       help='JSON file containing missing dates')
@@ -282,6 +393,10 @@ def main():
                       help='Check for missing dates before fetching')
     parser.add_argument('--sync-to-production', action='store_true',
                       help='Sync the local database to production after fetching')
+    parser.add_argument('--check-updates', action='store_true',
+                      help='Check for updated values in existing records')
+    parser.add_argument('--days', type=int, default=15,
+                      help='Number of days to check for updates (default: 15)')
     
     args = parser.parse_args()
     
@@ -323,8 +438,36 @@ def main():
             print(f"Error reading input file: {e}")
             sys.exit(1)
     
+    # If checking for updates, add recent dates to the list
+    if args.check_updates:
+        app = create_app()
+        with app.app_context():
+            # Get dates from the last N days
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=args.days)
+            
+            query = text("""
+                SELECT DISTINCT date_trunc('day', datetime)::date
+                FROM demand_data
+                WHERE datetime >= :start_date AND datetime <= :end_date
+                ORDER BY date_trunc('day', datetime)::date
+            """)
+            
+            result = db.session.execute(query, {
+                'start_date': start_date,
+                'end_date': end_date
+            }).fetchall()
+            
+            # Add all hours for these days
+            for day in result:
+                for hour in range(24):
+                    dt = datetime.combine(day[0], datetime.min.time()) + timedelta(hours=hour)
+                    missing_dates.append(dt.strftime('%Y-%m-%d %H:%M'))
+            
+            print(f"Added {len(missing_dates)} recent dates to check for updates")
+    
     if missing_dates:
-        fetch_missing_dates(missing_dates)
+        fetch_missing_dates(missing_dates, check_updates=args.check_updates)
     else:
         print("No missing dates to fetch")
 

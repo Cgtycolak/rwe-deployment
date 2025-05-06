@@ -1565,6 +1565,107 @@
   // Initialize app with endpoints
   window.app = app;
   window.app.endpoints = endpointsData;
+  
+  // Add event listener for the update database button
+  document.getElementById('update-rolling-database').addEventListener('click', function() {
+    // Toggle button state
+    const button = document.getElementById('update-rolling-database');
+    const spinner = button.querySelector('.spinner-border');
+    const content = button.querySelector('.button-content');
+    
+    // Disable button and show spinner
+    button.disabled = true;
+    spinner.classList.remove('d-none');
+    content.textContent = 'Updating...';
+    
+    // Create status message div if it doesn't exist
+    let statusDiv = document.getElementById('status-message');
+    if (!statusDiv) {
+      statusDiv = document.createElement('div');
+      statusDiv.id = 'status-message';
+      statusDiv.className = 'alert mt-3';
+      statusDiv.style.transition = 'opacity 0.5s ease';
+      button.parentNode.insertAdjacentElement('afterend', statusDiv);
+    }
+    
+    // Show initial status
+    statusDiv.className = 'alert alert-info mt-3';
+    statusDiv.textContent = 'Updating database with latest production and demand data...';
+    statusDiv.style.display = 'block';
+    statusDiv.style.opacity = '1';
+    
+    // First update production data
+    fetch('{{ url_for("main.update_rolling_data") }}')
+      .then(response => response.json())
+      .then(data => {
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        
+        // Show intermediate message
+        statusDiv.textContent = `Production data updated successfully. Added ${data.records_added} new records. Updating demand data...`;
+        
+        // Now update demand data
+        return fetch('{{ url_for("main.update_demand_data_api") }}');
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        
+        // Show success message with detailed information
+        const message = `Database updated successfully. Added ${data.records_added} new demand records.`;
+        const dateRange = data.date_range ? ` (${data.date_range.start} to ${data.date_range.end})` : '';
+        
+        statusDiv.className = 'alert alert-success mt-3';
+        statusDiv.textContent = message + dateRange;
+        
+        // Check for retroactive updates (last 7 days)
+        statusDiv.textContent += ' Checking for retroactive updates...';
+        
+        // Call the check-updates endpoint
+        return fetch('{{ url_for("main.check_demand_updates") }}');
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        
+        // Add update info to status message
+        const currentText = statusDiv.textContent.replace(' Checking for retroactive updates...', '');
+        statusDiv.textContent = currentText + ` Found and updated ${data.updated_records} retroactively changed records.`;
+        
+        // Auto-hide success message after 5 seconds
+        setTimeout(() => {
+          statusDiv.style.opacity = '0';
+          setTimeout(() => {
+            statusDiv.style.display = 'none';
+          }, 500);
+        }, 5000);
+        
+        // Reset button state
+        button.disabled = false;
+        spinner.classList.add('d-none');
+        content.textContent = 'Update Database';
+        
+        // If charts are loaded, reload them to show new data
+        if (window.chartsLoaded) {
+          window.loadRollingCharts();
+        }
+      })
+      .catch(error => {
+        console.error('Error updating database:', error);
+        statusDiv.className = 'alert alert-danger mt-3';
+        statusDiv.textContent = 'Error updating database: ' + error.message;
+        
+        // Reset button state
+        button.disabled = false;
+        spinner.classList.add('d-none');
+        content.textContent = 'Update Database';
+      });
+  });
 </script>
 
 <script>
@@ -1858,7 +1959,7 @@ function updateRollingDatabase() {
             // Show intermediate message
             showStatusMessage(`Production data updated successfully. Added ${data.records_added} new records. Updating demand data...`, 'info');
             
-            // Now update demand data - updated URL to match the new endpoint
+            // Now update demand data
             return fetch('{{ url_for("main.update_demand_data_api") }}');
         })
         .then(response => response.json())
@@ -1867,8 +1968,11 @@ function updateRollingDatabase() {
                 throw new Error(data.error);
             }
             
-            // Show success message
-            showStatusMessage(`Database updated successfully. Added ${data.records_added} new demand records.`, 'success');
+            // Show success message with detailed information
+            const message = `Database updated successfully. Added ${data.records_added} new demand records.`;
+            const dateRange = data.date_range ? ` (${data.date_range.start} to ${data.date_range.end})` : '';
+            
+            showStatusMessage(message + dateRange, 'success');
             
             // Update last update info
             debouncedFetchLastUpdateInfo();
