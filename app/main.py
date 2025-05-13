@@ -2122,8 +2122,17 @@ def update_demand_data_api():
 def check_demand_updates():
     try:
         # Get the last 15 days of data
-        end_date = datetime.now()
+        end_date = datetime.now().replace(tzinfo=None)  # Ensure timezone-naive
         start_date = end_date - timedelta(days=15)
+        
+        # Set up a requests session with retry logic
+        session = requests.Session()
+        retries = requests.adapters.Retry(
+            total=5,
+            backoff_factor=0.5,
+            status_forcelist=[500, 502, 503, 504, 429],
+        )
+        session.mount('https://', requests.adapters.HTTPAdapter(max_retries=retries))
         
         # Get TGT token
         tgt_token = get_tgt_token(
@@ -2131,92 +2140,121 @@ def check_demand_updates():
             current_app.config.get('PASSWORD')
         )
         
-        # Prepare API request
-        url = "https://seffaflik.epias.com.tr/electricity-service/v1/consumption/data/realtime-consumption"
+        # Group dates by month to minimize API calls
+        date_groups = {}
+        current_date = start_date
+        while current_date <= end_date:
+            month_key = current_date.strftime('%Y-%m')
+            if month_key not in date_groups:
+                date_groups[month_key] = []
+            date_groups[month_key].append(current_date)
+            current_date += timedelta(hours=1)
         
-        payload = {
-            "startDate": f"{start_date.strftime('%Y-%m-%d')}T00:00:00+03:00",
-            "endDate": f"{end_date.strftime('%Y-%m-%d')}T23:59:59+03:00",
-            "region": "TR1",
-        }
+        # Process each month
+        success_count = 0
+        updated_count = 0
         
-        headers = {
-            'Content-Type': 'application/json',
-            'Accept': "application/json",
-            'TGT': tgt_token
-        }
-        
-        # Make API request
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        
-        # Process the data
-        items = response.json().get('items', [])
-        if not items:
-            return jsonify({
-                'message': 'No data found for the specified date range.',
-                'updated_records': 0
-            })
+        for month, dates in date_groups.items():
+            # Get first and last day of the month
+            first_date = min(dates)
+            last_date = max(dates)
             
-        # Convert to DataFrame for easier processing
-        df = pd.json_normalize(items)
-        df['date'] = pd.to_datetime(df['date'])
-        
-        # Get existing records for this date range
-        existing_records = {}
-        query = text("""
-            SELECT datetime, consumption 
-            FROM demand_data 
-            WHERE datetime >= :start_date AND datetime <= :end_date
-        """)
-        result = db.session.execute(query, {
-            'start_date': start_date,
-            'end_date': end_date
-        }).fetchall()
-        
-        for record in result:
-            existing_records[record[0].strftime('%Y-%m-%d %H:%M')] = float(record[1])
-        
-        # Check for updated values
-        updated_records = []
-        current_time = datetime.now()
-        
-        for _, row in df.iterrows():
-            dt = row['date'].to_pydatetime()
-            dt_key = dt.strftime('%Y-%m-%d %H:%M')
-            consumption = float(row.get('consumption', 0))
+            # Prepare API request
+            url = "https://seffaflik.epias.com.tr/electricity-service/v1/consumption/data/realtime-consumption"
             
-            if dt_key in existing_records:
-                # Compare with existing value with a small tolerance for floating point differences
-                if abs(existing_records[dt_key] - consumption) > 0.01:
-                    updated_records.append({
-                        'datetime': dt,
-                        'old_value': existing_records[dt_key],
-                        'new_value': consumption,
-                        'created_at': current_time
-                    })
-        
-        # Update records with different values
-        if updated_records:
-            for record in updated_records:
-                # Update the record
-                update_stmt = text("""
-                UPDATE demand_data 
-                SET consumption = :consumption, created_at = :created_at
-                WHERE datetime = :datetime
-                """)
+            payload = {
+                "startDate": f"{first_date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+                "endDate": f"{last_date.strftime('%Y-%m-%d')}T23:59:59+03:00",
+                "region": "TR1",
+            }
+            
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': "application/json",
+                'TGT': tgt_token
+            }
+            
+            # Make API request
+            response = session.post(url, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()
+            
+            # Process the data
+            items = response.json().get('items', [])
+            if not items:
+                continue
                 
-                db.session.execute(update_stmt, {
-                    'consumption': record['new_value'],
-                    'created_at': record['created_at'],
-                    'datetime': record['datetime']
-                })
+            # Convert to DataFrame for easier processing
+            df = pd.json_normalize(items)
+            df['date'] = pd.to_datetime(df['date'])
             
-            db.session.commit()
+            # Get existing records for this date range
+            existing_records = {}
+            query = text("""
+                SELECT datetime, consumption 
+                FROM demand_data 
+                WHERE datetime >= :start_date AND datetime <= :end_date
+            """)
+            result = db.session.execute(query, {
+                'start_date': first_date,
+                'end_date': last_date
+            }).fetchall()
+            
+            for record in result:
+                existing_records[record[0].strftime('%Y-%m-%d %H:%M')] = float(record[1])
+            
+            # Process items in batches
+            batch_data = []
+            current_time = datetime.now()  # Get current time once for all records
+            
+            for _, row in df.iterrows():
+                try:
+                    # Convert to timezone-naive datetime for comparison
+                    dt = row['date'].to_pydatetime()
+                    if dt.tzinfo is not None:
+                        dt = dt.replace(tzinfo=None)
+                    
+                    dt_key = dt.strftime('%Y-%m-%d %H:%M')
+                    consumption = float(row.get('consumption', 0))
+                    
+                    # Check if this datetime is in our date range and has a different value
+                    if dt >= first_date and dt <= last_date:
+                        success_count += 1
+                        
+                        if dt_key in existing_records:
+                            # Compare with existing value with a small tolerance for floating point differences
+                            if abs(existing_records[dt_key] - consumption) > 0.01:
+                                batch_data.append({
+                                    'datetime': dt,
+                                    'consumption': consumption,
+                                    'created_at': current_time
+                                })
+                                updated_count += 1
+                except Exception as e:
+                    print(f"Error processing item: {e}")
+                    continue
+            
+            # Update records with different values
+            if batch_data:
+                try:
+                    # Use bulk insert with ON CONFLICT DO UPDATE
+                    insert_stmt = """
+                    INSERT INTO demand_data (datetime, consumption, created_at)
+                    VALUES (:datetime, :consumption, :created_at)
+                    ON CONFLICT (datetime) DO UPDATE
+                    SET consumption = EXCLUDED.consumption,
+                        created_at = EXCLUDED.created_at
+                    """
+                    
+                    db.session.execute(text(insert_stmt), batch_data)
+                    db.session.commit()
+                    
+                except Exception as e:
+                    db.session.rollback()
+                    print(f"Error updating batch data: {e}")
         
         return jsonify({
-            'message': f'Successfully checked for updates. Found {len(updated_records)} records with changed values.',
-            'updated_records': len(updated_records),
+            'message': f'Successfully checked for updates. Found {updated_count} records with changed values.',
+            'updated_records': updated_count,
             'date_range': {
                 'start': start_date.strftime('%Y-%m-%d %H:%M'),
                 'end': end_date.strftime('%Y-%m-%d %H:%M')
