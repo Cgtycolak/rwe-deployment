@@ -2346,7 +2346,7 @@ function renderDemandChart() {
     
     // Check if Demand title already exists
     const existingDemandTitle = Array.from(document.querySelectorAll('.section-title'))
-        .find(el => el.textContent.trim() === 'Demand');
+        .find(el => el.textContent.trim() === 'Average Demand');
     
     if (!existingDemandTitle) {
         const sectionDivider = document.createElement('div');
@@ -2382,7 +2382,7 @@ function renderDemandChart() {
             
             // Get current date to limit the data range
             const now = new Date();
-            const currentWeek = Math.ceil((now - new Date(now.getFullYear(), 0, 1)) / (1000 * 60 * 60 * 24 * 7));
+            const currentWeek = Math.ceil((now - new Date(now.getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24 * 7));
             
             // Create date array for x-axis with weekly points
             const dateArray = [];
@@ -2403,13 +2403,21 @@ function renderDemandChart() {
                     currentMonth = d.getMonth();
                     const firstOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
                     tickVals.push(firstOfMonth.toISOString().split('T')[0]);
-                    tickText.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+                    tickText.push(firstOfMonth.toLocaleString('en-US', { month: 'short' }));
                 }
             });
             
             // Add previous year data (2024) - solid blue line
             if (data.consumption && data.consumption[previousYear]) {
                 const y = data.consumption[previousYear].slice(0, currentWeek);
+                
+                // Create an array of formatted dates with week information
+                const hoverTexts = dateArray.map(dateStr => {
+                    const date = new Date(dateStr);
+                    const month = date.toLocaleString('en-US', { month: 'short' });
+                    const weekOfMonth = Math.ceil(date.getDate() / 7);
+                    return `${month} Week ${weekOfMonth}`;
+                });
                 
                 traces.push({
                     name: previousYear.toString(),
@@ -2420,13 +2428,23 @@ function renderDemandChart() {
                     line: {
                         color: 'blue',
                         width: 2
-                    }
+                    },
+                    text: hoverTexts,
+                    hovertemplate: '<b>%{data.name}</b><br>%{text}: %{y:,.0f} MWh<extra></extra>'
                 });
             }
             
             // Add current year data (2025) - solid red line
             if (data.consumption && data.consumption[currentYear]) {
                 const y = data.consumption[currentYear].slice(0, currentWeek);
+                
+                // Create an array of formatted dates with week information
+                const hoverTexts = dateArray.map(dateStr => {
+                    const date = new Date(dateStr);
+                    const month = date.toLocaleString('en-US', { month: 'short' });
+                    const weekOfMonth = Math.ceil(date.getDate() / 7);
+                    return `${month} Week ${weekOfMonth}`;
+                });
                 
                 traces.push({
                     name: currentYear.toString(),
@@ -2437,7 +2455,9 @@ function renderDemandChart() {
                     line: {
                         color: 'red',
                         width: 2
-                    }
+                    },
+                    text: hoverTexts,
+                    hovertemplate: '<b>%{data.name}</b><br>%{text}: %{y:,.0f} MWh<extra></extra>'
                 });
             }
             
@@ -2448,7 +2468,7 @@ function renderDemandChart() {
                         family: 'RWE Sans Web',
                         size: 20
                     },
-                    x: 0.125,  // Moved title slightly to the right
+                    x: 0.125,
                     y: 0.97,
                     xanchor: 'left',
                     yanchor: 'top'
@@ -2462,12 +2482,15 @@ function renderDemandChart() {
                     linewidth: 1,
                     mirror: true,
                     type: 'date',
-                    tickformat: '%Y-%m-%d',
-                    tickangle: 325,
+                    tickformat: '%b',
+                    tickangle: 0,
                     tickmode: 'array',
                     ticktext: tickText,
                     tickvals: tickVals,
-                    nticks: tickVals.length
+                    nticks: tickVals.length,
+                    tickfont: {
+                        size: 14
+                    }
                 },
                 yaxis: {
                     title: 'MWh',
@@ -2493,18 +2516,25 @@ function renderDemandChart() {
                 plot_bgcolor: 'white',
                 paper_bgcolor: 'white',
                 hovermode: 'x unified',
+                hoverlabel: {
+                    bgcolor: 'white',
+                    bordercolor: '#ccc',
+                    font: {
+                        family: 'RWE Sans Web',
+                        size: 12
+                    },
+                    namelength: -1  // Show full trace name
+                },
                 margin: {
                     l: 80,
                     r: 20,
-                    t: 40,  // Reduced top margin
-                    b: 80   // Increased bottom margin for date labels
+                    t: 40,
+                    b: 60
                 },
                 height: 500,
                 width: 800,
                 autosize: false
             };
-            
-            // Container style remains the same...
             
             Plotly.newPlot(chartDiv, traces, layout, {
                 displayModeBar: true,
@@ -2513,7 +2543,8 @@ function renderDemandChart() {
             });
         })
         .catch(error => {
-            // Error handling remains the same...
+            console.error('Error fetching demand data:', error);
+            chartDiv.innerHTML = `<div class="alert alert-danger">Error loading demand data: ${error.message}</div>`;
         });
 }
 
