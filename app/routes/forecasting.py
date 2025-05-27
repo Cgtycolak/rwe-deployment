@@ -9,6 +9,7 @@ from ..forecasting.model_forecast import make_forecast, to_excel_bytes
 from ..forecasting.models import get_models
 import uuid
 from datetime import datetime
+from app.utils.ml_config import log_memory_usage, cleanup_memory
 
 forecasting_bp = Blueprint('forecasting', __name__, url_prefix='/api/forecasting')
 
@@ -17,6 +18,9 @@ forecast_cache = {}
 
 @forecasting_bp.route('/recent-data', methods=['POST'])
 def get_recent_data():
+    # Log memory at the beginning of heavy operations
+    log_memory_usage()
+    
     try:
         # Get uploaded Excel file
         if 'file' not in request.files:
@@ -54,6 +58,9 @@ def get_recent_data():
                 'solar': row.get('solar', 0)
             })
         
+        # Clean up after heavy processing
+        cleanup_memory()
+        
         return jsonify({
             'success': True,
             'data': data_list
@@ -66,6 +73,9 @@ def get_recent_data():
 
 @forecasting_bp.route('/evaluate', methods=['POST'])
 def evaluate():
+    # Log memory at the beginning of heavy operations
+    log_memory_usage()
+    
     try:
         # Get uploaded Excel file
         if 'file' not in request.files:
@@ -122,6 +132,9 @@ def evaluate():
         if model_name == 'Best Model' and 'all_metrics' in locals():
             result['all_metrics'] = all_metrics
         
+        # Clean up after heavy processing
+        cleanup_memory()
+        
         return jsonify({
             'success': True,
             'result': result
@@ -134,6 +147,9 @@ def evaluate():
 
 @forecasting_bp.route('/predict', methods=['POST'])
 def predict():
+    # Log memory at the beginning of heavy operations
+    log_memory_usage()
+    
     try:
         # Get uploaded Excel file
         if 'file' not in request.files:
@@ -203,6 +219,9 @@ def predict():
         for key in keys_to_remove:
             del forecast_cache[key]
         
+        # Clean up after heavy processing
+        cleanup_memory()
+        
         return jsonify({
             'success': True,
             'model_name': model_name,
@@ -217,6 +236,9 @@ def predict():
 
 @forecasting_bp.route('/download-forecast', methods=['POST'])
 def download_forecast():
+    # Log memory at the beginning of heavy operations
+    log_memory_usage()
+    
     try:
         # This endpoint will generate an Excel file for download
         
@@ -248,6 +270,9 @@ def download_forecast():
             # Return base64 encoded Excel data
             import base64
             encoded_excel = base64.b64encode(excel_bytes).decode('utf-8')
+            
+            # Clean up after heavy processing
+            cleanup_memory()
             
             return jsonify({
                 'success': True,
@@ -306,6 +331,9 @@ def download_forecast():
         # Return base64 encoded Excel data
         import base64
         encoded_excel = base64.b64encode(excel_bytes).decode('utf-8')
+        
+        # Clean up after heavy processing
+        cleanup_memory()
         
         return jsonify({
             'success': True,

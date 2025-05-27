@@ -9,7 +9,7 @@ from .database.config import init_db, db
 from .routes.realtime_generation import realtime_generation_bp
 from .routes.forecasting import forecasting_bp
 
-def create_app():
+def create_app(config=None, skip_ml_preload=True):
     # Load environment variables
     load_dotenv()
 
@@ -73,5 +73,19 @@ def create_app():
     app.register_blueprint(main)
     app.register_blueprint(realtime_generation_bp)
     app.register_blueprint(forecasting_bp)
+
+    if not skip_ml_preload:
+        # Only preload ML models when explicitly asked
+        with app.app_context():
+            from app.utils.ml_config import log_memory_usage
+            from app.forecasting.ml_imports import get_darts_models
+            
+            log_memory_usage()  # Log memory before preloading
+            
+            # Preload model classes but don't instantiate them
+            model_classes = get_darts_models()
+            app.config['MODEL_CLASSES'] = model_classes
+            
+            log_memory_usage()  # Log memory after preloading
 
     return app 
