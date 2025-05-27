@@ -110,7 +110,7 @@ def evaluate():
         train, val = train_val.split_after(train_val.end_time() - pd.Timedelta(weeks=1))
         
         log_memory_with_label("Before model load")
-        models = get_models()
+        models = get_model()
         log_memory_with_label("After model load")
         
         # Handle "Best Model" selection
@@ -209,7 +209,7 @@ def predict():
         train_val, test = ts_df[:-ts_df.pd_dataframe()['system_direction'].isnull().sum()], ts_df[-ts_df.pd_dataframe()['system_direction'].isnull().sum():]
         
         # Get models
-        models = get_models()
+        models = get_model()
         
         # Handle "Best Model" selection
         if model_name == 'Best Model':
@@ -339,7 +339,7 @@ def download_forecast():
         train_val, test = ts_df[:-ts_df.pd_dataframe()['system_direction'].isnull().sum()], ts_df[-ts_df.pd_dataframe()['system_direction'].isnull().sum():]
         
         # Get models
-        models = get_models()
+        models = get_model()
         
         # Handle "Best Model" selection
         if model_name == 'Best Model':
