@@ -159,6 +159,11 @@ def predict():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
         
+        # Add Excel file size limit check
+        max_file_size = 5 * 1024 * 1024  # 5MB limit
+        if file.content_length > max_file_size:
+            return jsonify({'error': 'File too large (max 5MB)'}), 400
+        
         # Read Excel file
         excel_data = pd.read_excel(file, header=2)
         
@@ -232,6 +237,10 @@ def predict():
     except Exception as e:
         current_app.logger.error(f"Error in predict: {str(e)}")
         current_app.logger.error(traceback.format_exc())
+        
+        # Clean up even after errors
+        cleanup_memory()
+        
         return jsonify({'error': str(e)}), 500
 
 @forecasting_bp.route('/download-forecast', methods=['POST'])
