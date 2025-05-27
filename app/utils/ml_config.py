@@ -1,19 +1,44 @@
 import os
 import gc
-import resource
+import psutil
+import torch
 
-# Force CPU-only mode for PyTorch to reduce memory footprint
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:32"
+# Set environment variables for PyTorch to reduce memory usage
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['VECLIB_MAXIMUM_THREADS'] = '1'
+
+# Force PyTorch to use CPU mode only
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
+
+def get_memory_usage():
+    """Get current memory usage in MB"""
+    process = psutil.Process(os.getpid())
+    memory_info = process.memory_info()
+    memory_mb = memory_info.rss / 1024 / 1024
+    return memory_mb
 
 def log_memory_usage():
     """Log current memory usage"""
-    gc.collect()  # Force garbage collection
-    usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    print(f"Memory usage: {usage / 1024:.2f} MB")
-    return usage / 1024
+    memory_mb = get_memory_usage()
+    print(f"Memory usage: {memory_mb:.2f} MB")
+    return memory_mb
 
 def cleanup_memory():
-    """Perform aggressive memory cleanup"""
-    gc.collect()
-    return True 
+    """Aggressive memory cleanup for ML operations"""
+    # Run garbage collection multiple times
+    for _ in range(3):
+        gc.collect()
+    
+    # Clear PyTorch cache if available
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    
+    # Also clear CPU cache in PyTorch
+    if hasattr(torch, 'empty_cache'):
+        torch.empty_cache()
+    
+    # Log memory after cleanup
+    log_memory_usage() 

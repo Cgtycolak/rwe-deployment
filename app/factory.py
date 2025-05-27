@@ -19,13 +19,22 @@ def create_app(config=None, skip_ml_preload=True):
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
+    # Configure app before creating it
+    from app.utils.ml_config import log_memory_usage
+    log_memory_usage()  # Log memory before app creation
+    
+    # Create Flask app
     app = Flask(__name__, template_folder='templates', static_folder='static')
     
     # Enable CORS
     CORS(app)
 
+    # Add memory saving configuration
+    app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024  # 8MB limit
+    app.config['PROPAGATE_EXCEPTIONS'] = True
+    app.config['JSON_SORT_KEYS'] = False  # Save some CPU
+
     # Configure app
-    app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
     app.config['SESSION_PERMANENT'] = False
     app.config["SESSION_TYPE"] = "filesystem"
     app.config['SESSION_FILE_DIR'] = os.path.join(app.root_path, '../flask_session')

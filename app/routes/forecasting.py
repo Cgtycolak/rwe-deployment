@@ -159,16 +159,36 @@ def predict():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
         
-        # Add Excel file size limit check
+        # Check file size (safely without using content_length)
+        file_content = file.read()
+        file_size = len(file_content)
         max_file_size = 5 * 1024 * 1024  # 5MB limit
-        if file.content_length > max_file_size:
-            return jsonify({'error': 'File too large (max 5MB)'}), 400
         
-        # Read Excel file
-        excel_data = pd.read_excel(file, header=2)
+        if file_size > max_file_size:
+            cleanup_memory()
+            return jsonify({'error': f'File too large ({file_size/1024/1024:.2f}MB). Max size is 5MB'}), 400
         
-        # Get model name and forecast period
-        model_name = request.form.get('model')
+        # Reset file pointer after reading for size check
+        file.seek(0)
+        
+        # Use BytesIO to avoid file IO issues
+        from io import BytesIO
+        file_buffer = BytesIO(file_content)
+        
+        # Read Excel with optimized memory settings
+        excel_data = pd.read_excel(
+            file_buffer, 
+            header=2,
+            engine='openpyxl'
+        )
+        
+        # Free memory
+        file_content = None
+        file_buffer = None
+        file = None
+        
+        # Continue with your existing code...
+        model_name = request.form.get('model', 'Prophet')
         forecast_period = int(request.form.get('forecast_period', 24))
         
         # Get database connection
@@ -238,7 +258,7 @@ def predict():
         current_app.logger.error(f"Error in predict: {str(e)}")
         current_app.logger.error(traceback.format_exc())
         
-        # Clean up even after errors
+        # Always clean up memory, even after errors
         cleanup_memory()
         
         return jsonify({'error': str(e)}), 500
