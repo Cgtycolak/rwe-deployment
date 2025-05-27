@@ -6,10 +6,10 @@ import traceback
 from ..forecasting.utils import get_database_connection, fetch_generation_data, fetch_dgp_data, prepare_data_for_modeling
 from ..forecasting.model_testing import evaluate_model, evaluate_and_find_best
 from ..forecasting.model_forecast import make_forecast, to_excel_bytes
-from ..forecasting.models import get_models
+from ..forecasting.models import get_model
 import uuid
 from datetime import datetime
-from app.utils.ml_config import log_memory_usage, cleanup_memory
+from app.utils.ml_config import log_memory_usage, cleanup_memory, log_memory_with_label
 
 forecasting_bp = Blueprint('forecasting', __name__, url_prefix='/api/forecasting')
 
@@ -109,8 +109,9 @@ def evaluate():
         # Create train/validation split for evaluation (last week of training data)
         train, val = train_val.split_after(train_val.end_time() - pd.Timedelta(weeks=1))
         
-        # Get models
+        log_memory_with_label("Before model load")
         models = get_models()
+        log_memory_with_label("After model load")
         
         # Handle "Best Model" selection
         if model_name == 'Best Model':
@@ -147,7 +148,7 @@ def evaluate():
 
 @forecasting_bp.route('/predict', methods=['POST'])
 def predict():
-    # Log memory at the beginning of heavy operations
+    # Log memory at the beginning
     log_memory_usage()
     
     try:
@@ -187,9 +188,11 @@ def predict():
         file_buffer = None
         file = None
         
-        # Continue with your existing code...
         model_name = request.form.get('model', 'Prophet')
         forecast_period = int(request.form.get('forecast_period', 24))
+        
+        # Get a single model instead of all models
+        model = get_model(model_name)
         
         # Get database connection
         engine = get_database_connection()
@@ -220,9 +223,13 @@ def predict():
         if model_name not in models:
             return jsonify({'error': f'Model {model_name} not found'}), 400
         
-        # Fit model and make forecast
-        model = models[model_name].fit(train_val['system_direction'], future_covariates=covariates)
+        log_memory_with_label("Before model fit")
+        model.fit(train_val['system_direction'], future_covariates=covariates)
+        log_memory_with_label("After model fit")
+        
+        log_memory_with_label("Before predict")
         forecast_result = make_forecast(model, forecast_period, covariates_data=covariates)
+        log_memory_with_label("After predict")
         
         # Generate a unique ID for this forecast and store in cache
         forecast_id = str(uuid.uuid4())
