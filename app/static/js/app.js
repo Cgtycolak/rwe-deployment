@@ -8,6 +8,7 @@ import { heatmap } from './modules/heatmap.js';
 import { importCoalHeatmap } from './modules/importCoalHeatmap.js';
 import { miniTables } from './modules/mini-tables.js';
 import { hydroHeatmap } from './modules/hydro-heatmap.js';
+import { forecasting } from './modules/forecasting.js';
 
 // Main app object
 const app = {
@@ -23,6 +24,7 @@ const app = {
     importCoalHeatmap,
     miniTables,
     hydroHeatmap,
+    forecasting,
     helpers: {
         toggleLoading: function (show) {
             const loader = document.getElementById('aic_loading');
@@ -100,6 +102,14 @@ const app = {
             this.importCoalHeatmap.setup(this.helpers);
             this.hydroHeatmap.setup(this.helpers);
             this.miniTables.setup(this.helpers);
+            
+            // Initialize forecasting module
+            this.forecasting.setup({
+                toggleLoading: this.helpers.toggleLoading,
+                displayMessage: this.helpers.displayMessage,
+                toggleButtonLoading: this.helpers.toggleButtonLoading
+            });
+            this.forecasting.init();
             
             // Initialize mini-tables when showing home section
             this.miniTables.init();
