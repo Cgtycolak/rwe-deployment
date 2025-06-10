@@ -100,7 +100,7 @@ def process_excel_data(excel_data):
     
     return updated_yal_yat
 
-def prepare_data_for_modeling(generation_df, dgp_df, excel_data=None):
+def prepare_data_for_modeling(generation_df, dgp_df, excel_data):
     """Prepare data for modeling by combining database and Excel data."""
     if excel_data is not None:
         updated_yal_yat = process_excel_data(excel_data)
@@ -108,9 +108,14 @@ def prepare_data_for_modeling(generation_df, dgp_df, excel_data=None):
     
     df = pd.merge(generation_df, dgp_df, on='date', how='left')
     df.set_index('date', inplace=True)
+    
+    # Create time series without holidays first
     ts_df = TimeSeries.from_dataframe(df)
-    ts_df = ts_df.add_holidays('TR')
-    df = ts_df.pd_dataframe().rename(columns={'holidays': 'is_holiday'})
+    
+    # Add holidays with a different name to avoid conflict with Prophet
+    ts_df_with_holidays = ts_df.add_holidays('TR')
+    df = ts_df_with_holidays.pd_dataframe().rename(columns={'holidays': 'is_holiday'})
+    
     df['hour'] = df.index.hour.astype(float)
     hour_map = {hour: 'off-peak1' if hour < 10 else 'peak' if hour >= 18 else 'off-peak2' for hour in range(24)}
     df['is_peak'] = df.index.hour.map(hour_map)
@@ -120,6 +125,8 @@ def prepare_data_for_modeling(generation_df, dgp_df, excel_data=None):
     df = pd.get_dummies(df, dtype='float')
     df['system_direction_lag1'] = df['system_direction'].shift(1)
     df = df.iloc[1:]
+    
+    # Convert back to TimeSeries
     ts_df = TimeSeries.from_dataframe(df)
     
     return ts_df 

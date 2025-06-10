@@ -6,10 +6,10 @@ import traceback
 from ..forecasting.utils import get_database_connection, fetch_generation_data, fetch_dgp_data, prepare_data_for_modeling
 from ..forecasting.model_testing import evaluate_model, evaluate_and_find_best
 from ..forecasting.model_forecast import make_forecast, to_excel_bytes
-from ..forecasting.models import get_model
+from ..forecasting.models import get_models
 import uuid
 from datetime import datetime
-from app.utils.ml_config import log_memory_usage, cleanup_memory, log_memory_with_label
+from darts import TimeSeries
 
 forecasting_bp = Blueprint('forecasting', __name__, url_prefix='/api/forecasting')
 
@@ -18,9 +18,6 @@ forecast_cache = {}
 
 @forecasting_bp.route('/recent-data', methods=['POST'])
 def get_recent_data():
-    # Log memory at the beginning of heavy operations
-    log_memory_usage()
-    
     try:
         # Get uploaded Excel file
         if 'file' not in request.files:
@@ -58,9 +55,6 @@ def get_recent_data():
                 'solar': row.get('solar', 0)
             })
         
-        # Clean up after heavy processing
-        cleanup_memory()
-        
         return jsonify({
             'success': True,
             'data': data_list
@@ -73,9 +67,6 @@ def get_recent_data():
 
 @forecasting_bp.route('/evaluate', methods=['POST'])
 def evaluate():
-    # Log memory at the beginning of heavy operations
-    log_memory_usage()
-    
     try:
         # Get uploaded Excel file
         if 'file' not in request.files:
@@ -106,12 +97,21 @@ def evaluate():
         covariates = ts_df.drop_columns(['system_direction'])
         train_val, test = ts_df[:-ts_df.pd_dataframe()['system_direction'].isnull().sum()], ts_df[-ts_df.pd_dataframe()['system_direction'].isnull().sum():]
         
+        # Handle NaNs in covariates
+        covariates_df = covariates.pd_dataframe().copy()
+        covariates_df = covariates_df.fillna(0)  # Fill all NaNs in covariates with 0
+        covariates = TimeSeries.from_dataframe(covariates_df)
+        
+        # Handle NaNs in training data
+        train_val_df = train_val.pd_dataframe().copy()
+        train_val_df = train_val_df.fillna(0)  # Fill NaNs in training data
+        train_val = TimeSeries.from_dataframe(train_val_df)
+        
         # Create train/validation split for evaluation (last week of training data)
         train, val = train_val.split_after(train_val.end_time() - pd.Timedelta(weeks=1))
         
-        log_memory_with_label("Before model load")
-        models = get_model()
-        log_memory_with_label("After model load")
+        # Get models
+        models = get_models()
         
         # Handle "Best Model" selection
         if model_name == 'Best Model':
@@ -133,9 +133,6 @@ def evaluate():
         if model_name == 'Best Model' and 'all_metrics' in locals():
             result['all_metrics'] = all_metrics
         
-        # Clean up after heavy processing
-        cleanup_memory()
-        
         return jsonify({
             'success': True,
             'result': result
@@ -148,9 +145,6 @@ def evaluate():
 
 @forecasting_bp.route('/predict', methods=['POST'])
 def predict():
-    # Log memory at the beginning
-    log_memory_usage()
-    
     try:
         # Get uploaded Excel file
         if 'file' not in request.files:
@@ -160,39 +154,12 @@ def predict():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
         
-        # Check file size (safely without using content_length)
-        file_content = file.read()
-        file_size = len(file_content)
-        max_file_size = 5 * 1024 * 1024  # 5MB limit
+        # Read Excel file
+        excel_data = pd.read_excel(file, header=2)
         
-        if file_size > max_file_size:
-            cleanup_memory()
-            return jsonify({'error': f'File too large ({file_size/1024/1024:.2f}MB). Max size is 5MB'}), 400
-        
-        # Reset file pointer after reading for size check
-        file.seek(0)
-        
-        # Use BytesIO to avoid file IO issues
-        from io import BytesIO
-        file_buffer = BytesIO(file_content)
-        
-        # Read Excel with optimized memory settings
-        excel_data = pd.read_excel(
-            file_buffer, 
-            header=2,
-            engine='openpyxl'
-        )
-        
-        # Free memory
-        file_content = None
-        file_buffer = None
-        file = None
-        
-        model_name = request.form.get('model', 'Prophet')
+        # Get model name and forecast period
+        model_name = request.form.get('model')
         forecast_period = int(request.form.get('forecast_period', 24))
-        
-        # Get a single model instead of all models
-        model = get_model(model_name)
         
         # Get database connection
         engine = get_database_connection()
@@ -209,7 +176,17 @@ def predict():
         train_val, test = ts_df[:-ts_df.pd_dataframe()['system_direction'].isnull().sum()], ts_df[-ts_df.pd_dataframe()['system_direction'].isnull().sum():]
         
         # Get models
-        models = get_model()
+        models = get_models()
+        
+        # Handle NaNs in covariates and training data
+        covariates_df = covariates.pd_dataframe().copy()
+        covariates_df = covariates_df.fillna(0)  # Fill all NaNs in covariates with 0
+        covariates = TimeSeries.from_dataframe(covariates_df)
+        
+        # Handle NaNs in training data
+        train_val_df = train_val.pd_dataframe().copy()
+        train_val_df = train_val_df.fillna(0)  # Fill NaNs in training data
+        train_val = TimeSeries.from_dataframe(train_val_df)
         
         # Handle "Best Model" selection
         if model_name == 'Best Model':
@@ -223,13 +200,9 @@ def predict():
         if model_name not in models:
             return jsonify({'error': f'Model {model_name} not found'}), 400
         
-        log_memory_with_label("Before model fit")
-        model.fit(train_val['system_direction'], future_covariates=covariates)
-        log_memory_with_label("After model fit")
-        
-        log_memory_with_label("Before predict")
+        # Fit model and make forecast with fixed covariates
+        model = models[model_name].fit(train_val['system_direction'], future_covariates=covariates)
         forecast_result = make_forecast(model, forecast_period, covariates_data=covariates)
-        log_memory_with_label("After predict")
         
         # Generate a unique ID for this forecast and store in cache
         forecast_id = str(uuid.uuid4())
@@ -251,9 +224,6 @@ def predict():
         for key in keys_to_remove:
             del forecast_cache[key]
         
-        # Clean up after heavy processing
-        cleanup_memory()
-        
         return jsonify({
             'success': True,
             'model_name': model_name,
@@ -264,17 +234,10 @@ def predict():
     except Exception as e:
         current_app.logger.error(f"Error in predict: {str(e)}")
         current_app.logger.error(traceback.format_exc())
-        
-        # Always clean up memory, even after errors
-        cleanup_memory()
-        
         return jsonify({'error': str(e)}), 500
 
 @forecasting_bp.route('/download-forecast', methods=['POST'])
 def download_forecast():
-    # Log memory at the beginning of heavy operations
-    log_memory_usage()
-    
     try:
         # This endpoint will generate an Excel file for download
         
@@ -307,9 +270,6 @@ def download_forecast():
             import base64
             encoded_excel = base64.b64encode(excel_bytes).decode('utf-8')
             
-            # Clean up after heavy processing
-            cleanup_memory()
-            
             return jsonify({
                 'success': True,
                 'excel_data': encoded_excel,
@@ -338,8 +298,18 @@ def download_forecast():
         covariates = ts_df.drop_columns(['system_direction'])
         train_val, test = ts_df[:-ts_df.pd_dataframe()['system_direction'].isnull().sum()], ts_df[-ts_df.pd_dataframe()['system_direction'].isnull().sum():]
         
+        # Handle NaNs in covariates
+        covariates_df = covariates.pd_dataframe().copy()
+        covariates_df = covariates_df.fillna(0)  # Fill all NaNs in covariates with 0
+        covariates = TimeSeries.from_dataframe(covariates_df)
+        
+        # Handle NaNs in training data
+        train_val_df = train_val.pd_dataframe().copy()
+        train_val_df = train_val_df.fillna(0)  # Fill NaNs in training data
+        train_val = TimeSeries.from_dataframe(train_val_df)
+        
         # Get models
-        models = get_model()
+        models = get_models()
         
         # Handle "Best Model" selection
         if model_name == 'Best Model':
@@ -367,9 +337,6 @@ def download_forecast():
         # Return base64 encoded Excel data
         import base64
         encoded_excel = base64.b64encode(excel_bytes).decode('utf-8')
-        
-        # Clean up after heavy processing
-        cleanup_memory()
         
         return jsonify({
             'success': True,

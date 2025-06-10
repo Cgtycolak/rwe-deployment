@@ -11,6 +11,24 @@ def evaluate_model(model, forecast_period, train_val, train, val, covariates_dat
     if covariates_data is None:
         raise ValueError('covariates_data variable must not be None!')
     
+    # Handle NaNs in train and val data
+    train_df = train.pd_dataframe().copy()
+    train_df = train_df.fillna(0)
+    train = TimeSeries.from_dataframe(train_df)
+    
+    val_df = val.pd_dataframe().copy()
+    val_df = val_df.fillna(0)
+    val = TimeSeries.from_dataframe(val_df)
+    
+    train_val_df = train_val.pd_dataframe().copy()
+    train_val_df = train_val_df.fillna(0)
+    train_val = TimeSeries.from_dataframe(train_val_df)
+    
+    # Handle NaNs in covariates
+    covariates_df = covariates_data.pd_dataframe().copy()
+    covariates_df = covariates_df.fillna(0)
+    covariates_data = TimeSeries.from_dataframe(covariates_df)
+    
     model.fit(train['system_direction'], future_covariates=covariates_data)
     forecast = model.predict(forecast_period, future_covariates=covariates_data)
     adjusted_forecast = TimeSeries.from_dataframe(forecast.pd_dataframe())
@@ -43,6 +61,20 @@ def evaluate_and_find_best(models, forecast_period, train, val, covariates_data=
     """Evaluate multiple models and find the best one."""
     if covariates_data is None:
         raise ValueError('covariates_data variable must not be None!')
+    
+    # Handle NaNs in train and val data
+    train_df = train.pd_dataframe().copy()
+    train_df = train_df.fillna(0)
+    train = TimeSeries.from_dataframe(train_df)
+    
+    val_df = val.pd_dataframe().copy()
+    val_df = val_df.fillna(0)
+    val = TimeSeries.from_dataframe(val_df)
+    
+    # Handle NaNs in covariates
+    covariates_df = covariates_data.pd_dataframe().copy()
+    covariates_df = covariates_df.fillna(0)
+    covariates_data = TimeSeries.from_dataframe(covariates_df)
     
     evaluation_results = {}
     model_metrics = []

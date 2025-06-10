@@ -1784,8 +1784,8 @@
 <!-- Then load our application script -->
 <script type="module">
   // Pass endpoints data directly as a JavaScript object
-  const endpointsData = JSON.parse('{{urls|tojson|safe}}');
-  
+  const endpointsData = {{urls|tojson|safe}};
+
   import app from '{{url_for("static", filename="js/app.js")}}';
 
   // Initialize app with endpoints
