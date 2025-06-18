@@ -72,8 +72,17 @@ def make_forecast(model, forecast_period, covariates_data=None, num_simulations=
 
 def to_excel_bytes(df):
     """Convert a DataFrame to Excel bytes for download."""
+    # Create a copy to avoid modifying the original dataframe
+    df_copy = df.copy()
+    
+    # Check if 'date' column exists and has timezone info
+    if 'date' in df_copy.columns and hasattr(df_copy['date'].dtype, 'tz'):
+        # Convert timezone-aware datetimes to timezone-naive
+        df_copy['date'] = df_copy['date'].dt.tz_localize(None)
+    
+    # Write to Excel
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Veri')
+        df_copy.to_excel(writer, index=False, sheet_name='Veri')
     
     return output.getvalue() 
