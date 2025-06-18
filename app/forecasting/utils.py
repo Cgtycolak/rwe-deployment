@@ -82,21 +82,41 @@ def fetch_dgp_data(engine):
 
 def process_excel_data(excel_data):
     """Process uploaded Excel data."""
-    turkey_timezone = datetime.utcnow().replace(tzinfo=pytz.utc).astimezone(pytz.timezone("Europe/Istanbul"))
-    start_time = turkey_timezone.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_time = turkey_timezone - timedelta(hours=1)
-    time_range = pd.date_range(start=start_time, end=end_time, freq='h')
+    # Get current time in Turkey
+    turkey_tz = pytz.timezone("Europe/Istanbul")
+    now_tr = datetime.now(tz=turkey_tz)
     
-    updated_yal_yat = excel_data[excel_data['Saat'] < turkey_timezone.hour].copy()
+    # Get the current hour in Turkey time (0-23)
+    current_hour = now_tr.hour
+    
+    # Set start time to midnight today
+    start_time = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Create time range from midnight to the current hour (inclusive)
+    # This ensures we have data up to the current hour
+    time_range = pd.date_range(start=start_time, periods=current_hour+1, freq='h')
+    
+    # Only use rows in the Excel file up to and including the current hour
+    updated_yal_yat = excel_data[excel_data['Saat'] <= current_hour].copy()
+    
+    # Process the data
     updated_yal_yat['YAT TeslimEdilemeyenMiktar(MWh)'] = updated_yal_yat['YAT TeslimEdilemeyenMiktar(MWh)'].fillna(0)
     updated_yal_yat['YAL TeslimEdilemeyenMiktar(MWh)'] = updated_yal_yat['YAL TeslimEdilemeyenMiktar(MWh)'].fillna(0)
     updated_yal_yat['yal'] = updated_yal_yat['YAL0(MWh)'] + updated_yal_yat['YAL1(MWh)'] - updated_yal_yat['YAL TeslimEdilemeyenMiktar(MWh)']
     updated_yal_yat['yat'] = updated_yal_yat['YAT0(MWh)'] + updated_yal_yat['YAT1(MWh)'] - updated_yal_yat['YAT TeslimEdilemeyenMiktar(MWh)']
     updated_yal_yat['system_direction'] = updated_yal_yat['yal'] - updated_yal_yat['yat']
-    updated_yal_yat['date'] = time_range
+    
+    # Make sure we have exactly the right number of rows
+    if len(updated_yal_yat) > len(time_range):
+        updated_yal_yat = updated_yal_yat.iloc[:len(time_range)]
+    
+    # Assign dates to the rows
+    updated_yal_yat['date'] = time_range[:len(updated_yal_yat)]
     updated_yal_yat['date'] = pd.to_datetime(updated_yal_yat['date']).dt.tz_localize(None)
     updated_yal_yat = updated_yal_yat[['date','system_direction']]
     updated_yal_yat['system_direction'] = updated_yal_yat['system_direction'].fillna(0)
+    
+    print(f"Processed Excel data with {len(updated_yal_yat)} rows, last timestamp: {updated_yal_yat['date'].max()}")
     
     return updated_yal_yat
 

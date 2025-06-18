@@ -23,6 +23,7 @@ export const forecasting = {
         
         // Set up event listeners
         this.setupEventListeners();
+        // 
     },
     
     setupEventListeners() {
@@ -31,61 +32,69 @@ export const forecasting = {
         const fileInput = document.getElementById('forecast_file_input');
         const removeFileBtn = document.getElementById('forecast_remove_file');
         
-        // Flag to prevent multiple file dialogs
-        let fileDialogOpen = false;
-        
-        if (uploadArea) {
-            uploadArea.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
+        // Create a dedicated button for file selection
+        if (uploadArea && fileInput) {
+            // First, remove any existing click event listeners
+            const newUploadArea = uploadArea.cloneNode(true);
+            uploadArea.parentNode.replaceChild(newUploadArea, uploadArea);
+            
+            // Function to handle file selection without duplicate dialogs
+            const selectFile = (e) => {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
                 
-                // Prevent multiple file dialogs from opening
-                if (fileDialogOpen) return;
+                // Create a new file input each time to avoid browser caching issues
+                const oldInput = document.getElementById('forecast_file_input');
+                const newInput = document.createElement('input');
+                newInput.type = 'file';
+                newInput.id = 'forecast_file_input';
+                newInput.className = 'd-none';
+                newInput.accept = '.xls,.xlsx';
                 
-                fileDialogOpen = true;
-                fileInput.click();
+                // Set up the change event before adding to DOM
+                newInput.addEventListener('change', (event) => {
+                    if (event.target.files.length) {
+                        this.handleFileUpload(event.target.files[0]);
+                    }
+                });
                 
-                // Reset the flag after a short delay
+                // Replace the old input with the new one
+                if (oldInput && oldInput.parentNode) {
+                    oldInput.parentNode.replaceChild(newInput, oldInput);
+                } else {
+                    // If for some reason the old input doesn't exist, append to upload area
+                    document.body.appendChild(newInput);
+                }
+                
+                // Trigger click on the new input
                 setTimeout(() => {
-                    fileDialogOpen = false;
-                }, 1000);
-            });
+                    newInput.click();
+                }, 0);
+            };
             
-            uploadArea.addEventListener('dragover', (e) => {
+            // Set up drag and drop
+            newUploadArea.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                uploadArea.classList.add('drag-over');
+                newUploadArea.classList.add('drag-over');
             });
             
-            uploadArea.addEventListener('dragleave', () => {
-                uploadArea.classList.remove('drag-over');
+            newUploadArea.addEventListener('dragleave', () => {
+                newUploadArea.classList.remove('drag-over');
             });
             
-            uploadArea.addEventListener('drop', (e) => {
+            newUploadArea.addEventListener('drop', (e) => {
                 e.preventDefault();
-                uploadArea.classList.remove('drag-over');
+                newUploadArea.classList.remove('drag-over');
                 
                 if (e.dataTransfer.files.length) {
                     this.handleFileUpload(e.dataTransfer.files[0]);
                 }
             });
-        }
-        
-        if (fileInput) {
-            fileInput.addEventListener('click', (e) => {
-                // Stop propagation to prevent the click from bubbling up
-                e.stopPropagation();
-            });
             
-            fileInput.addEventListener('change', (e) => {
-                if (e.target.files.length) {
-                    this.handleFileUpload(e.target.files[0]);
-                    // Reset the file input value to allow selecting the same file again if needed
-                    // after the user removes the current file
-                    setTimeout(() => {
-                        e.target.value = '';
-                    }, 100);
-                }
-            });
+            // Use a single click handler for the upload area
+            newUploadArea.addEventListener('click', selectFile);
         }
         
         if (removeFileBtn) {

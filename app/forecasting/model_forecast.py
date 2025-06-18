@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 from darts import TimeSeries
 import io
+import pytz
+from datetime import datetime
 
 def make_forecast(model, forecast_period, covariates_data=None, num_simulations=100):
     """Make a forecast using the specified model."""
@@ -9,6 +11,11 @@ def make_forecast(model, forecast_period, covariates_data=None, num_simulations=
         raise ValueError('covariates_data variable must not be None!')
     
     model_name = model.__class__.__name__
+    
+    # Get current time in Turkey
+    turkey_tz = pytz.timezone("Europe/Istanbul")
+    now_tr = datetime.now(tz=turkey_tz)
+    next_hour = now_tr.replace(minute=0, second=0, microsecond=0) + pd.Timedelta(hours=1)
     
     new_covariates = covariates_data.pd_dataframe().copy()
     new_covariates = TimeSeries.from_dataframe(new_covariates)
@@ -26,23 +33,37 @@ def make_forecast(model, forecast_period, covariates_data=None, num_simulations=
         
         probabilistic_forecast = model.predict(forecast_period, num_samples=num_simulations, future_covariates=new_covariates)
         probabilistic_forecast = probabilistic_forecast.quantiles_df([0.05,0.5,0.95])
-    
     else:
         probabilistic_forecast = model.predict(forecast_period, num_samples=num_simulations, future_covariates=new_covariates)
         probabilistic_forecast = probabilistic_forecast.quantiles_df([0.05,0.5,0.95])
     
+    # Adjust forecast times to start from the next hour
+    # This is the key change - we're explicitly setting the index to start from the next hour
+    forecast_start = next_hour
+    forecast_index = pd.date_range(start=forecast_start, periods=forecast_period, freq='h')
+    
+    # Create a new DataFrame with the adjusted index
+    adjusted_forecast = pd.DataFrame({
+        'system_direction_0.05': probabilistic_forecast['system_direction_0.05'].values,
+        'system_direction_0.5': probabilistic_forecast['system_direction_0.5'].values,
+        'system_direction_0.95': probabilistic_forecast['system_direction_0.95'].values
+    }, index=forecast_index)
+    
+    # Format timestamps as strings with explicit timezone info
+    formatted_timestamps = [dt.strftime('%Y-%m-%d %H:%M:%S') for dt in adjusted_forecast.index]
+    
     # Prepare plot data
     forecast_data = {
-        'x': probabilistic_forecast.index.tolist(),
-        'upper': probabilistic_forecast['system_direction_0.95'].tolist(),
-        'lower': probabilistic_forecast['system_direction_0.05'].tolist(),
-        'median': probabilistic_forecast['system_direction_0.5'].tolist(),
+        'x': formatted_timestamps,
+        'upper': adjusted_forecast['system_direction_0.95'].tolist(),
+        'lower': adjusted_forecast['system_direction_0.05'].tolist(),
+        'median': adjusted_forecast['system_direction_0.5'].tolist(),
         'model_name': model_name,
         'forecast_period': forecast_period
     }
     
     # Reset index and rename the index column to 'index'
-    forecast_df = probabilistic_forecast.reset_index().rename(columns={'index': 'date'})
+    forecast_df = adjusted_forecast.reset_index().rename(columns={'index': 'date'})
     
     return {
         'forecast_data': forecast_data,
