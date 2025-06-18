@@ -301,7 +301,52 @@
         .mini-table td {
             font-family: monospace;
         }
+
+        /* Font loading states */
+        html:not(.fonts-loaded) {
+            /* Styles when fonts are not yet loaded */
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        html.fonts-loaded {
+            /* Styles when fonts are loaded */
+            font-family: 'RWE Sans Web', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        /* Prevent layout shifts during font loading */
+        .fonts-loaded .content-section {
+            transition: opacity 0.3s ease;
+        }
     </style>
+    
+    <!-- Use system fonts as fallbacks -->
+    <style>
+        @font-face {
+            font-family: 'RWE Sans Web';
+            src: url("{{ url_for('static', filename='fonts/rwe-sans-web/RWE Sans Web.otf') }}") format('opentype');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+        
+        /* Add bold variant if you have it */
+        @font-face {
+            font-family: 'RWE Sans Web';
+            src: url("{{ url_for('static', filename='fonts/rwe-sans-web/RWE Sans Web Bold.otf') }}") format('opentype');
+            font-weight: bold;
+            font-style: normal;
+            font-display: swap;
+        }
+        
+        /* Ensure the font is applied to all elements */
+        body, button, input, select, textarea, .plotly-graph-div text {
+            font-family: 'RWE Sans Web', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+        }
+    </style>
+    
+    <!-- Preload the font to avoid FOUT (Flash of Unstyled Text) -->
+    <link rel="preload" href="{{ url_for('static', filename='fonts/rwe-sans-web/RWE Sans Web.otf') }}" as="font" type="font/otf" crossorigin>
+    
     {% block page_styles %}{% endblock %}
 </head>
 <body>
@@ -345,6 +390,12 @@
                 <span>Generation Comparison</span>
             </a>
         </div>
+        <div class="nav-item">
+            <a href="#" class="nav-link" data-section="rolling-averages">
+                <i class="fas fa-chart-line"></i>
+                <span>CAO Charts</span>
+            </a>
+        </div>
 
         <!-- Reports & Heatmaps -->
         <div class="nav-category">Reports & Heatmaps</div>
@@ -366,6 +417,15 @@
                 <span>Hydro DPP Heatmap</span>
             </a>
         </div>
+        
+        <!-- Forecasting -->
+        <div class="nav-category">Forecasting</div>
+        <div class="nav-item">
+            <a href="#" class="nav-link" data-section="forecasting">
+                <i class="fas fa-chart-line"></i>
+                <span>System Direction Forecast</span>
+            </a>
+        </div>
     </nav>
 
     <!-- Main Content -->
@@ -376,7 +436,7 @@
     <!-- Scripts -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.29.1.min.js"></script>
     
     <!-- Navigation Script -->
     <script>
@@ -392,10 +452,16 @@
                 mainContent.classList.toggle('expanded');
             });
 
-            // Add click handler for home link
-            document.querySelector('.home-link').addEventListener('click', (e) => {
-                e.preventDefault();
-                showSection('home');
+            // Add click handler for navigation links
+            navLinks.forEach(link => {
+                if (link.dataset.section) {
+                    link.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        showSection(link.dataset.section);
+                        // Update URL fragment
+                        history.pushState(null, null, '#' + link.dataset.section);
+                    });
+                }
             });
 
             // Update navigation functionality
@@ -458,19 +524,26 @@
                         }
                     }
                 }
+                
+                // Dispatch section activated event
+                document.dispatchEvent(new CustomEvent('section:activated', {
+                    detail: { section: sectionId }
+                }));
             }
 
-            // Set up navigation click handlers
-            navLinks.forEach(link => {
-                link.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const sectionId = e.currentTarget.dataset.section;
+            // Check for fragment identifier in URL
+            if (window.location.hash) {
+                const sectionId = window.location.hash.substring(1);
+                const targetSection = document.querySelector(`.content-section[data-section="${sectionId}"]`);
+                if (targetSection) {
                     showSection(sectionId);
-                });
-            });
-
-            // Show home section initially
-            showSection('home');
+                } else {
+                    showSection('home');
+                }
+            } else {
+                // Show home section initially
+                showSection('home');
+            }
 
             // Add click handlers for quick link cards
             document.querySelectorAll('.quick-link-card').forEach(card => {
@@ -478,9 +551,64 @@
                     e.preventDefault();
                     const sectionId = e.currentTarget.dataset.section;
                     showSection(sectionId);
+                    // Update URL fragment
+                    history.pushState(null, null, '#' + sectionId);
                 });
             });
+            
+            // Listen for popstate events (browser back/forward)
+            window.addEventListener('popstate', function() {
+                if (window.location.hash) {
+                    const sectionId = window.location.hash.substring(1);
+                    const targetSection = document.querySelector(`.content-section[data-section="${sectionId}"]`);
+                    if (targetSection) {
+                        showSection(sectionId);
+                    }
+                } else {
+                    showSection('home');
+                }
+            });
         });
+    </script>
+    
+    <!-- Font loading detection -->
+    <script>
+        // Font loading detection
+        document.addEventListener('DOMContentLoaded', function() {
+            // Create a font loader
+            const fontLoader = new FontFaceObserver('RWE Sans Web');
+            
+            // Add a class to body when font is loaded
+            fontLoader.load().then(function() {
+                document.documentElement.classList.add('fonts-loaded');
+                console.log('RWE Sans Web font has loaded.');
+            }).catch(function(e) {
+                console.log('RWE Sans Web font failed to load:', e);
+                // Add the class anyway to ensure fallback fonts are used
+                document.documentElement.classList.add('fonts-loaded');
+            });
+            
+            // Fallback: add the class after 2 seconds regardless
+            setTimeout(function() {
+                if (!document.documentElement.classList.contains('fonts-loaded')) {
+                    document.documentElement.classList.add('fonts-loaded');
+                    console.log('Adding fonts-loaded class via timeout');
+                }
+            }, 2000);
+        });
+    </script>
+    
+    <!-- Add FontFaceObserver for better font loading -->
+    <script>
+        /* FontFaceObserver v2.1.0 - © Bram Stein - MIT License */
+        (function(){function l(a,b){document.addEventListener?a.addEventListener("scroll",b,!1):a.attachEvent("scroll",b)}function m(a){document.body?a():document.addEventListener?document.addEventListener("DOMContentLoaded",a):document.attachEvent("onreadystatechange",function(){"interactive"!=document.readyState&&"complete"!=document.readyState||a()})};function t(a){this.a=document.createElement("div");this.a.setAttribute("aria-hidden","true");this.a.appendChild(document.createTextNode(a));this.b=document.createElement("span");this.c=document.createElement("span");this.h=document.createElement("span");this.f=document.createElement("span");this.g=-1;this.b.style.cssText="max-width:none;display:inline-block;position:absolute;height:100%;width:100%;overflow:scroll;font-size:16px;";this.c.style.cssText="max-width:none;display:inline-block;position:absolute;height:100%;width:100%;overflow:scroll;font-size:16px;";
+        this.f.style.cssText="max-width:none;display:inline-block;position:absolute;height:100%;width:100%;overflow:scroll;font-size:16px;";this.h.style.cssText="display:inline-block;width:200%;height:200%;font-size:16px;max-width:none;";this.b.appendChild(this.h);this.c.appendChild(this.f);this.a.appendChild(this.b);this.a.appendChild(this.c)}
+        function u(a,b){a.a.style.cssText="max-width:none;min-width:20px;min-height:20px;display:inline-block;overflow:hidden;position:absolute;width:auto;margin:0;padding:0;top:-999px;white-space:nowrap;font-synthesis:none;font:"+b+";"}function z(a){var b=a.a.offsetWidth,c=b+100;a.f.style.width=c+"px";a.c.scrollLeft=c;a.b.scrollLeft=a.b.scrollWidth+100;return a.g!==b?(a.g=b,!0):!1}function A(a,b){function c(){var a=k;z(a)&&a.a.parentNode&&b(a.g)}var k=a;l(a.b,c);l(a.c,c);z(a)};function B(a,b){var c=b||{};this.family=a;this.style=c.style||"normal";this.weight=c.weight||"normal";this.stretch=c.stretch||"normal"}var C=null,D=null,E=null,F=null;function G(){if(null===D)if(J()&&/Apple/.test(window.navigator.vendor)){var a=/AppleWebKit\/([0-9]+)(?:\.([0-9]+))(?:\.([0-9]+))/.exec(window.navigator.userAgent);D=!!a&&603>parseInt(a[1],10)}else D=!1;return D}function J(){null===F&&(F=!!document.fonts);return F}
+        function K(){if(null===E){var a=document.createElement("div");try{a.style.font="condensed 100px sans-serif"}catch(b){}E=""!==a.style.font}return E}function L(a,b){return[a.style,a.weight,K()?a.stretch:"","100px",b].join(" ")}
+        B.prototype.load=function(a,b){var c=this,k=a||"BESbswy",r=0,n=b||3E3,H=(new Date).getTime();return new Promise(function(a,b){if(J()&&!G()){var M=new Promise(function(a,b){function e(){(new Date).getTime()-H>=n?b(Error(""+n+"ms timeout exceeded")):document.fonts.load(L(c,'"'+c.family+'"'),k).then(function(c){1<=c.length?a():setTimeout(e,25)},b)}e()}),N=new Promise(function(a,c){r=setTimeout(function(){c(Error(""+n+"ms timeout exceeded"))},n)});Promise.race([N,M]).then(function(){clearTimeout(r);a(c)},
+        b)}else m(function(){function v(){var b;if(b=-1!=f&&-1!=g||-1!=f&&-1!=h||-1!=g&&-1!=h)(b=f!=g&&f!=h&&g!=h)||(null===C&&(b=/AppleWebKit\/([0-9]+)(?:\.([0-9]+))/.exec(window.navigator.userAgent),C=!!b&&(536>parseInt(b[1],10)||536===parseInt(b[1],10)&&11>=parseInt(b[2],10))),b=C&&(f==w&&g==w&&h==w||f==x&&g==x&&h==x||f==y&&g==y&&h==y)),b=!b;b&&(d.parentNode&&d.parentNode.removeChild(d),clearTimeout(r),a(c))}function I(){if((new Date).getTime()-H>=n)d.parentNode&&d.parentNode.removeChild(d),b(Error(""+
+        n+"ms timeout exceeded"));else{var a=document.hidden;if(!0===a||void 0===a)f=e.a.offsetWidth,g=p.a.offsetWidth,h=q.a.offsetWidth,v();r=setTimeout(I,50)}}var e=new t(k),p=new t(k),q=new t(k),f=-1,g=-1,h=-1,w=-1,x=-1,y=-1,d=document.createElement("div");d.dir="ltr";u(e,L(c,"sans-serif"));u(p,L(c,"serif"));u(q,L(c,"monospace"));d.appendChild(e.a);d.appendChild(p.a);d.appendChild(q.a);document.body.appendChild(d);w=e.a.offsetWidth;x=p.a.offsetWidth;y=q.a.offsetWidth;I();A(e,function(a){f=a;v()});u(e,
+        L(c,'"'+c.family+'",sans-serif'));A(p,function(a){g=a;v()});u(p,L(c,'"'+c.family+'",serif'));A(q,function(a){h=a;v()});u(q,L(c,'"'+c.family+'",monospace'))})})};"object"===typeof module?module.exports=B:(window.FontFaceObserver=B,window.FontFaceObserver.prototype.load=B.prototype.load)})();
     </script>
     
     {% block page_scripts %}{% endblock %}

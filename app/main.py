@@ -3,100 +3,28 @@ import time
 from datetime import datetime, timedelta
 from flask import abort, app, Blueprint, session, render_template, redirect, url_for, Response, request, jsonify, Request, Response, current_app
 from requests import post, Session
-from .functions import get_tgt_token, asutc, invalidates_or_none
+from .functions import get_tgt_token, asutc, invalidates_or_none, fetch_plant_data
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 import pandas as pd
 import numpy as np
 import pytz
+from .mappings import hydro_mapping, plant_mapping, import_coal_mapping
+from .models.heatmap import HydroHeatmapData, NaturalGasHeatmapData, ImportedCoalHeatmapData
+from .models.realtime import HydroRealtimeData, NaturalGasRealtimeData
+from .database.config import db
+import requests
+import json
+from .models.production import ProductionData
+import plotly.graph_objects as go
+from sqlalchemy import text
+import os
+from app.models.demand import DemandData
+from sqlalchemy import extract
+
+pd.set_option('future.no_silent_downcasting', True)
 
 main = Blueprint('main', __name__)
-
-# Define the mapping of plants to their IDs at module level
-plant_mapping = {
-    'plant_names': [
-        "ACWA", "AKENRJ ERZIN", "AKSA ANT", "BAN1", "BAN2", "BAYMINA", 
-        "BILGIN1", "BILGIN2", "BURSA BLOK1", "BURSA BLOK2", "CENGIZ",
-        "ENKA ADP", "ENKA GBZ1", "ENKA GBZ2", "ENKA IZM1", "ENKA IZM2",
-        "GAMA ICAN", "HABAS", "HAM-10", "HAM-20", "RWE", "TEKİRA",
-        "TEKİRB", "YENI", "İST A-(A)", "İST A-(B)", "İST A-(C)",
-        "İST B (Blok40+ Blok50)"
-    ],
-    'o_ids': [
-        10372, 166, 396, 282, 282, 11816, 294, 294, 195, 195, 1964,
-        11810, 11811, 11811, 11997, 11997, 9488, 181, 378, 378, 3625,
-        195, 195, 6839, 195, 195, 195, 195
-    ],
-    'uevcb_ids': [
-        3197267, 3205710, 134405, 24604, 3194367, 3205527, 3204758, 3204759,
-        924, 928, 1740316, 3205381, 3205524, 3205525, 3206732, 3206733,
-        3195727, 2543, 945, 983, 301420, 3204400, 3204399, 472111, 923,
-        979, 980, 937
-    ],
-    'p_ids': [
-        2170, 1673, 754, 1426, 2045, 893, 869, 869, 687, 687, 2334, 2800, 
-        661, 661, 962, 962, 2048, 2411, 1113, 1113, 966, 1112, 1224, 1424, 
-        1230, 1230, 1230, 638 
-    ],
-    'capacities': [
-        "927", "904", "900", "935", "607", "770", "443", "443", "680",
-        "680", "610", "820", "815", "815", "760", "760", "853", "1043",
-        "600", "600", "797", "480", "480", "480", "450", "450", "450", "816"
-    ],
-}
-
-import_coal_mapping = {
-    'plant_names': [
-            "ZETES 1", "ZETES 2-A", "ZETES 2-B", "ZETES 3-A", "ZETES 3-B", "HUNUTLU TES_TR1", 
-            "HUNUTLU TES_TR2", "CENAL TES(TR1+TRA)", "CENAL TES(TR2)", "İSKENDERUN İTHAL KÖMÜR SANTRALI-2", 
-            "İSKENDERUN İTHAL KÖMÜR SANTRALI-1", "ATLAS TES", "İÇDAŞ BEKİRLİ 1", "İÇDAŞ BEKİRLİ 2", "İÇDAŞ BİGA TERMİK SANTRALİ_1",
-            "İÇDAŞ BİGA TERMİK SANTRALİ_2", "İÇDAŞ BİGA TERMİK SANTRALİ_3", "İZDEMİR ENERJİ", "ÇOLAKOĞLU OP-2 SANTRALİ"
-    ],
-    'o_ids': [
-        603, 603, 603, 603, 603, 18921, 18921, 11033, 11033, 13257, 13257, 7639,
-        4831, 4831, 369, 369, 369, 6999, 149
-    ],
-    'uevcb_ids': [
-        18588, 25501, 28365, 3196007, 3196567, 3220150, 3221490, 3200210, 
-        3217890, 3208212, 3208213, 1478766, 61976, 1542318, 2728, 4054, 4136, 952237, 3718
-    ],
-    'capacities': ["2790", "2790", "2790", "2790", "2790", "1320", "1320 ", "1320", "1320", "1308", "1308",
-                   "1260", "1260", "1200", " 1200", "1200", "405", "370", "190"],
-    'p_ids': []
-}
-
-hydro_mapping = {
-    'plant_names': [
-        "ATATÜRK HES DB", "KARAKAYAHES1-6", "KEBAN HES 1-8", "ILISU BARAJI ve HES", "ALTINKAYA 1-4", 
-        "BİRECİK-NİZİP BARAJI ve HES", "DERİNER HES", "YEDİSU HES", "BEYHAN-1", "YUSUFELI BARAJI VE HES", 
-        "OYMAPINAR HES", "BOYABAT HES", "BERKE HES DB", "AŞAĞI KALEKÖY BARAJI ve HES", "H.UĞURLU 1-4",
-        "ÇETİN BARAJI ve HES", "ARTVİN BARAJI ve HES", "YEDİGÖZE HES", "ERMENEK HES1", "BORÇKA HES DB"
-    ],
-    'o_ids': [
-        195, 195, 195, 195, 195, 
-        195, 195, 4872, 8243, 195, 
-        134, 5634, 195, 12897, 195,
-        3834, 9422, 5650, 195, 195
-    ],
-    'uevcb_ids': [
-        733, 736, 744, 3211210, 801,
-        3196807, 335652, 83087, 2454986, 5000860, 
-        2415, 111617, 777, 3208350, 807,
-        3209498, 3194434, 26648, 111619, 3692
-    ],
-    'p_ids': [
-        641, 986, 979, 2543, 650,
-        978, 1570, 2302, 1849, 3056,
-        878, 864, 1074, 2531, 863,
-        2537, 1974, 1185, 947, 1278
-    ],
-    'capacities': [
-        "2.405", "1.800", "1.330", "1.208", "702", 
-        "672", "670", "627", "582", "548", 
-        "540", "513", "510",  "500", "500", 
-        "420", "332", "311", "302", "301"
-    ]
-}
 
 @main.route('/', methods=['GET'])
 def index():
@@ -126,7 +54,7 @@ def get_orgs():
                     "endDate":  asutc(valid_dates['end_date'])
                 }, headers={'TGT': tgt_token})
             res.raise_for_status()
-            data = res.json().get('items')
+            data = res.json().get('items', [])
             return jsonify({'code': 200, 'data': data})
         else:
             # return the invalid date valdation res to client with message related
@@ -171,7 +99,7 @@ def get_orgs_uevcbids():
                             "organizationId": org_id
                         }, headers={"TGT": tgt_token}, timeout=30)
             res.raise_for_status()
-            system_orgs[org_id] = res.json().get('items')
+            system_orgs[org_id] = res.json().get('items', [])
             time.sleep(0.2)
             
         return jsonify({'code': 200, 'data': system_orgs})
@@ -226,7 +154,7 @@ def get_dpp_data():
                 res = session.post(dpp_url, json=data3, headers=headers, timeout=30)
                 res.raise_for_status()
                 data = res.json()
-                items = data.get('items')
+                items = data.get('items', [])
                 df3 = pd.DataFrame.from_records(items)
 
                 # df3['date'] = pd.to_datetime(df3['date']) db
@@ -503,156 +431,124 @@ def get_aic_data():
 def heatmap_data():
     try:
         data = request.json
-        selected_date = data.get('date')
+        date = datetime.strptime(data['date'], '%Y-%m-%d').date()
         version = data.get('version', 'first')
         
-        if not selected_date:
-            return jsonify({"code": 400, "error": "Missing 'date' parameter"})
-
-        # Use different URLs based on version
-        dpp_url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
+        # First try to get data from database
+        heatmap_data = NaturalGasHeatmapData.query.filter_by(
+            date=date,
+            version=version
+        ).all()
         
-        # Define hours
-        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
-
-        # Create an empty DataFrame
-        df = pd.DataFrame(index=hours, columns=plant_mapping['plant_names'])
+        if not heatmap_data:
+            current_app.logger.info(f"No natural gas data in DB for {date}, fetching from API...")
+            
+            # Get authentication token and URL
+            dpp_url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
+            tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+            
+            # Initialize DataFrame with hours and fill with 0
+            hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+            df = pd.DataFrame(0, index=hours, columns=plant_mapping['plant_names'])
+            
+            # Create session with retry strategy
+            session = requests.Session()
+            retries = Retry(
+                total=5,
+                backoff_factor=1,
+                status_forcelist=[500, 502, 503, 504, 406],
+                allowed_methods=["POST"]
+            )
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            
+            # Iterate through all plants with their IDs
+            for plant_name, o_id, pl_id in zip(
+                plant_mapping['plant_names'],
+                plant_mapping['o_ids'],
+                plant_mapping['uevcb_ids']
+            ):
+                try:
+                    response_data = fetch_plant_data(
+                        start_date=date,
+                        end_date=date,
+                        org_id=o_id,
+                        plant_id=pl_id,
+                        url=dpp_url,
+                        token=tgt_token
+                    )
+                    
+                    if response_data and isinstance(response_data, dict):
+                        current_app.logger.info(f"Got response for {plant_name}: {str(response_data)[:200]}...")
+                        
+                        if 'items' in response_data:
+                            for item in response_data['items']:
+                                try:
+                                    hour = item.get('time', '00:00').split(':')[0]
+                                    toplam = item.get('toplam')
+                                    
+                                    # Skip if toplam is None or not convertible to float
+                                    if toplam is not None:
+                                        try:
+                                            value = float(toplam)
+                                            df.at[f"{hour.zfill(2)}:00", plant_name] = value
+                                        except (ValueError, TypeError):
+                                            current_app.logger.warning(f"Invalid value for {plant_name} at hour {hour}: {toplam}")
+                                            continue
+                                except (KeyError, AttributeError) as e:
+                                    current_app.logger.error(f"Error processing data point for {plant_name}: {str(e)}")
+                                    continue
+                        else:
+                            current_app.logger.warning(f"No items in response for {plant_name}")
+                    else:
+                        current_app.logger.error(f"Invalid response for {plant_name}: {response_data}")
+                    
+                    time.sleep(0.5)  # Small delay between API calls
+                    
+                except Exception as e:
+                    current_app.logger.error(f"Error fetching data for {plant_name}: {str(e)}")
+                    continue
+            
+            # Process the dataframe
+            result = {
+                "code": 200,
+                "data": {
+                    "hours": df.index.tolist(),
+                    "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                        plant_mapping['plant_names'],
+                        plant_mapping['capacities']
+                    )],
+                    "values": df.values.tolist()
+                }
+            }
+            
+            return jsonify(result)
         
-        # Fetch real data for each plant
-        total_plants = len(plant_mapping['plant_names'])
-        for idx, (o_id, pl_id, plant_name) in enumerate(zip(
-            plant_mapping['o_ids'], 
-            plant_mapping['uevcb_ids'], 
-            plant_mapping['plant_names']
-        )):
-            try:
-                print(f"Fetching data for plant {idx + 1}/{total_plants}: {plant_name}")
-                plant_data = fetch_plant_data(selected_date, o_id, pl_id, dpp_url)
-                if plant_data is not None:
-                    df[plant_name] = plant_data
-                else:
-                    df[plant_name] = 0
-            except Exception as e:
-                print(f"Error fetching data for plant {plant_name}: {str(e)}")
-                df[plant_name] = 0
-
-        # Create plant labels with capacities
-        plant_labels = [
-            f"{name}--{capacity} Mw" 
-            for name, capacity in zip(plant_mapping['plant_names'], plant_mapping['capacities'])
-        ]
-
-        # Convert DataFrame to JSON response
-        response_data = {
+        # If we have data in DB, process it as before
+        df = process_heatmap_data(heatmap_data, plant_mapping)
+        
+        if df.empty:
+            return jsonify({
+                "code": 404,
+                "error": f"No data available for date {date}"
+            })
+        
+        return jsonify({
             "code": 200,
             "data": {
                 "hours": df.index.tolist(),
-                "plants": plant_labels,
+                "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                    plant_mapping['plant_names'],
+                    plant_mapping['capacities']
+                )],
                 "values": df.values.tolist()
             }
-        }
+        })
 
-        return jsonify(response_data)
-    
+    except ValueError as ve:
+        return jsonify({"code": 400, "error": f"Invalid date format: {str(ve)}"})
     except Exception as e:
-        print(f"Error in heatmap_data: {str(e)}")
-        return jsonify({"code": 500, "error": str(e)})
-
-def get_plant_generation_data(date, o_id, pl_id, dpp_url):
-    """
-    Fetch generation data for a specific plant and date using DPP endpoint.
-    """
-    try:
-        # Setup session with optimized retries and timeouts
-        session = Session()
-        retries = Retry(
-            total=2,  # Reduced from 3 to 2
-            backoff_factor=0.3,  # Reduced from 0.5 to 0.3
-            status_forcelist=[500, 502, 503, 504],  # Removed 429 as it's rare
-            allowed_methods=["POST"]  # Only allow POST retries
-        )
-        adapter = HTTPAdapter(max_retries=retries)
-        session.mount('https://', adapter)
-
-        # Get authentication token (consider caching this)
-        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
-
-        # Format date for API request
-        start_date = f"{date}T00:00:00+03:00"
-        end_date = f"{date}T23:59:59+03:00"
-
-        # Prepare request data
-        request_data = {
-            "startDate": start_date,
-            "endDate": end_date,
-            "region": "TR1",
-            "organizationId": str(o_id),
-            "uevcbId": str(pl_id)
-        }
-
-        # Make API request with reduced timeout
-        response = session.post(
-            dpp_url,
-            json=request_data,
-            headers={'TGT': tgt_token},
-            timeout=(3, 7)  # Reduced from (5, 15) to (3, 7)
-        )
-        response.raise_for_status()
-        
-        # Process response data
-        items = response.json().get('items', [])
-        
-        # Create a dictionary with hour as key and generation value as value
-        hourly_data = {}
-        for item in items:
-            hour = item.get('time', '00:00').split(':')[0]
-            total = item.get('toplam', 0)
-            hourly_data[f"{hour.zfill(2)}:00"] = total
-
-        # Reduced delay between requests
-        time.sleep(0.05)  # Reduced from 0.1 to 0.05
-        
-        return hourly_data
-
-    except Exception as e:
-        print(f"Error in get_plant_generation_data for plant {pl_id}: {str(e)}")
-        return None
-
-def fetch_plant_data(date, o_id, pl_id, dpp_url):
-    """
-    Fetch hourly generation data for a specific plant.
-    Optimized retry logic.
-    """
-    max_retries = 2  # Reduced from 3 to 2
-    retry_delay = 0.5  # Reduced from 1 to 0.5
-    
-    for attempt in range(max_retries):
-        try:
-            # Get the data from API
-            data = get_plant_generation_data(date, o_id, pl_id, dpp_url)
-            
-            if data is None:
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay * (attempt + 1))
-                    continue
-                return [0] * 24
-            
-            # Process the data to get hourly values
-            hourly_values = []
-            for hour in range(24):
-                hour_str = f"{str(hour).zfill(2)}:00"
-                value = data.get(hour_str, 0)
-                hourly_values.append(value)
-                
-            return hourly_values
-            
-        except Exception as e:
-            print(f"Attempt {attempt + 1} failed for plant {pl_id}: {str(e)}")
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay * (attempt + 1))
-            else:
-                print(f"All retries failed for plant {pl_id}")
-                return [0] * 24
+        current_app.logger.error(f"Error in heatmap_data: {str(e)}")
+        return jsonify({"code": 500, "error": str(e)}), 500
 
 @main.route('/realtime_heatmap_data', methods=['POST'])
 def realtime_heatmap_data():
@@ -663,11 +559,44 @@ def realtime_heatmap_data():
         if not selected_date:
             return jsonify({"code": 400, "error": "Missing 'date' parameter"})
 
-        # Define hours
-        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+        # Convert date string to date object
+        date = datetime.strptime(selected_date, '%Y-%m-%d').date()
 
-        # Create an empty DataFrame
+        # First try to get data from database
+        heatmap_data = NaturalGasRealtimeData.query.filter_by(
+            date=date
+        ).all()
+
+        # If we have data in database, process and return it
+        if heatmap_data:
+            df = pd.DataFrame(index=[f"{str(i).zfill(2)}:00" for i in range(24)], 
+                            columns=plant_mapping['plant_names'])
+            
+            for record in heatmap_data:
+                hour = f"{str(record.hour).zfill(2)}:00"
+                df.at[hour, record.plant_name] = record.value
+
+            # Replace NaN values with 0
+            df = df.fillna(0)
+
+            return jsonify({
+                "code": 200,
+                "data": {
+                    "hours": df.index.tolist(),
+                    "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                        plant_mapping['plant_names'],
+                        plant_mapping['capacities']
+                    )],
+                    "values": df.values.tolist()
+                }
+            })
+
+        # If no data in database, fetch from API
+        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
         df = pd.DataFrame(index=hours, columns=plant_mapping['plant_names'])
+        
+        # Get authentication token
+        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
         
         # Create a dictionary to track how many times each powerplant ID is used
         p_id_count = {}
@@ -682,6 +611,7 @@ def realtime_heatmap_data():
             p_id_indices[p_id].append(idx)
 
         # Fetch realtime data for each unique powerplant
+        batch_data = []  # For storing database records
         unique_p_ids = set(plant_mapping['p_ids'])
         for p_id in unique_p_ids:
             try:
@@ -693,20 +623,11 @@ def realtime_heatmap_data():
                     "powerPlantId": str(p_id)
                 }
 
-                # Setup session
-                session = Session()
-                retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
-                session.mount('https://', HTTPAdapter(max_retries=retries))
-                
-                # Get authentication token
-                tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
-
                 # Make API request
-                response = session.post(
+                response = requests.post(
                     current_app.config['REALTIME_URL'],
                     json=request_data,
-                    headers={'TGT': tgt_token},
-                    timeout=(5, 15)
+                    headers={'TGT': tgt_token}
                 )
                 response.raise_for_status()
                 
@@ -716,8 +637,7 @@ def realtime_heatmap_data():
                 # Extract hourly values
                 hourly_values = [0] * 24
                 for item in items:
-                    hour_str = item.get('hour', '00:00')
-                    hour = int(hour_str.split(':')[0])
+                    hour = int(item.get('hour', '00:00').split(':')[0])
                     total = item.get('total', 0)
                     hourly_values[hour] = total
 
@@ -725,10 +645,21 @@ def realtime_heatmap_data():
                 count = p_id_count[p_id]
                 distributed_values = [val / count for val in hourly_values]
                 
-                # Assign the distributed values to all instances of this powerplant
+                # Store data in DataFrame and prepare database records
                 for idx in p_id_indices[p_id]:
                     plant_name = plant_mapping['plant_names'][idx]
                     df[plant_name] = distributed_values
+                    
+                    # Prepare database records
+                    for hour, value in enumerate(distributed_values):
+                        batch_data.append({
+                            'date': date,
+                            'hour': hour,
+                            'plant_name': plant_name,
+                            'value': value
+                        })
+                
+                time.sleep(0.5)  # Small delay between requests
                 
             except Exception as e:
                 print(f"Error fetching realtime data for powerplant {p_id}: {str(e)}")
@@ -737,23 +668,26 @@ def realtime_heatmap_data():
                     plant_name = plant_mapping['plant_names'][idx]
                     df[plant_name] = [0] * 24
 
-        # Create plant labels with capacities
-        plant_labels = [
-            f"{name}--{capacity} Mw" 
-            for name, capacity in zip(plant_mapping['plant_names'], plant_mapping['capacities'])
-        ]
+        # Store the fetched data in database
+        try:
+            if batch_data:
+                db.session.bulk_insert_mappings(NaturalGasRealtimeData, batch_data)
+                db.session.commit()
+        except Exception as e:
+            print(f"Error storing realtime data: {str(e)}")
+            db.session.rollback()
 
-        # Convert DataFrame to JSON response
-        response_data = {
+        return jsonify({
             "code": 200,
             "data": {
                 "hours": df.index.tolist(),
-                "plants": plant_labels,
+                "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                    plant_mapping['plant_names'],
+                    plant_mapping['capacities']
+                )],
                 "values": df.values.tolist()
             }
-        }
-
-        return jsonify(response_data)
+        })
     
     except Exception as e:
         print(f"Error in realtime_heatmap_data: {str(e)}")
@@ -763,60 +697,140 @@ def realtime_heatmap_data():
 def import_coal_heatmap_data():
     try:
         data = request.json
-        selected_date = data.get('date')
+        date = datetime.strptime(data['date'], '%Y-%m-%d').date()
         version = data.get('version', 'first')
         
-        if not selected_date:
-            return jsonify({"code": 400, "error": "Missing 'date' parameter"})
-
-        # Use different URLs based on version
-        dpp_url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
+        # First try to get data from database
+        heatmap_data = ImportedCoalHeatmapData.query.filter_by(
+            date=date,
+            version=version
+        ).all()
         
-        # Define hours
-        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
-
-        # Create an empty DataFrame for import coal plants only
-        df = pd.DataFrame(index=hours, columns=import_coal_mapping['plant_names'])
+        if not heatmap_data:
+            current_app.logger.info(f"No imported coal data in DB for {date}, fetching from API...")
+            
+            # Get authentication token and URL
+            dpp_url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
+            tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+            
+            # Initialize DataFrame with hours and fill with 0
+            hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+            df = pd.DataFrame(0, index=hours, columns=import_coal_mapping['plant_names'])
+            
+            # Iterate through all plants with their IDs
+            for plant_name, o_id, pl_id in zip(
+                import_coal_mapping['plant_names'],
+                import_coal_mapping['o_ids'],
+                import_coal_mapping['uevcb_ids']
+            ):
+                try:
+                    # Format request data exactly as shown in working example
+                    request_data = {
+                        'startDate': f"{date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+                        'endDate': f"{date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+                        'region': 'TR1',
+                        'organizationId': int(o_id),
+                        'uevcbId': int(pl_id)
+                    }
+                    
+                    current_app.logger.info(f"Fetching data for {plant_name} with data: {request_data}")
+                    
+                    response = requests.post(
+                        dpp_url,
+                        headers={
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'TGT': tgt_token
+                        },
+                        json=request_data,
+                        timeout=30
+                    )
+                    
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        current_app.logger.info(f"Raw response for {plant_name}: {str(response_data)[:200]}...")
+                        
+                        if response_data and 'items' in response_data:
+                            for item in response_data['items']:
+                                try:
+                                    hour = item.get('time', '00:00').split(':')[0]
+                                    # Try both toplam and ithalKomur fields
+                                    value = None
+                                    if item.get('ithalKomur') is not None:
+                                        value = float(item['ithalKomur'])
+                                    elif item.get('toplam') is not None:
+                                        value = float(item['toplam'])
+                                        
+                                    if value is not None:
+                                        df.at[f"{hour.zfill(2)}:00", plant_name] = value
+                                        current_app.logger.info(f"Added value {value} for {plant_name} at hour {hour}")
+                                except (ValueError, TypeError) as e:
+                                    current_app.logger.warning(f"Invalid value for {plant_name} at hour {hour}")
+                                    continue
+                        else:
+                            current_app.logger.warning(f"No items in response for {plant_name}")
+                    else:
+                        current_app.logger.error(f"Bad response status {response.status_code} for {plant_name}")
+                    
+                    time.sleep(0.5)  # Small delay between API calls
+                    
+                except Exception as e:
+                    current_app.logger.error(f"Error fetching data for {plant_name}: {str(e)}")
+                    continue
+            
+            # Process the dataframe
+            result = {
+                "code": 200,
+                "data": {
+                    "hours": df.index.tolist(),
+                    "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                        import_coal_mapping['plant_names'],
+                        import_coal_mapping['capacities']
+                    )],
+                    "values": df.values.tolist()
+                }
+            }
+            
+            return jsonify(result)
         
-        # Fetch data for each import coal plant
-        total_plants = len(import_coal_mapping['plant_names'])
-        for idx, (o_id, pl_id, plant_name) in enumerate(zip(
-            import_coal_mapping['o_ids'], 
-            import_coal_mapping['uevcb_ids'], 
-            import_coal_mapping['plant_names']
-        )):
-            try:
-                print(f"Fetching data for import coal plant {idx + 1}/{total_plants}: {plant_name}")
-                plant_data = fetch_plant_data(selected_date, o_id, pl_id, dpp_url)
-                if plant_data is not None:
-                    df[plant_name] = plant_data
-                else:
-                    df[plant_name] = 0
-            except Exception as e:
-                print(f"Error fetching data for plant {plant_name}: {str(e)}")
-                df[plant_name] = 0
-
-        # Create plant labels with capacities
-        plant_labels = [
-            f"{name}--{capacity} Mw" 
-            for name, capacity in zip(import_coal_mapping['plant_names'], import_coal_mapping['capacities'])
-        ]
-
-        # Convert DataFrame to JSON response
-        response_data = {
+        # If we have data in DB, process it as before
+        df = process_heatmap_data(heatmap_data, import_coal_mapping)
+        
+        if df.empty:
+            return jsonify({
+                "code": 404,
+                "error": f"No data available for date {date}"
+            })
+        
+        return jsonify({
             "code": 200,
             "data": {
                 "hours": df.index.tolist(),
-                "plants": plant_labels,
+                "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                    import_coal_mapping['plant_names'],
+                    import_coal_mapping['capacities']
+                )],
                 "values": df.values.tolist()
             }
-        }
+        })
 
-        return jsonify(response_data)
-    
+    except ValueError as ve:
+        return jsonify({"code": 400, "error": f"Invalid date format: {str(ve)}"})
     except Exception as e:
-        print(f"Error in import_coal_heatmap_data: {str(e)}")
-        return jsonify({"code": 500, "error": str(e)})
+        current_app.logger.error(f"Error in import_coal_heatmap_data: {str(e)}")
+        return jsonify({"code": 500, "error": "Internal server error"})
+
+def process_heatmap_data(heatmap_data, mapping):
+    """Process heatmap data from database into a pandas DataFrame."""
+    hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+    df = pd.DataFrame(index=hours, columns=mapping['plant_names'])
+    
+    for record in heatmap_data:
+        hour = f"{str(record.hour).zfill(2)}:00"
+        df.at[hour, record.plant_name] = record.value
+    
+    # Fix the pandas warning by explicitly converting to numeric
+    return df.fillna(0).astype(float)
 
 @main.route('/get_order_summary', methods=['GET'])
 def get_order_summary():
@@ -1171,60 +1185,128 @@ def get_all_table_data():
 def hydro_heatmap_data():
     try:
         data = request.json
-        selected_date = data.get('date')
+        date = datetime.strptime(data['date'], '%Y-%m-%d').date()
         version = data.get('version', 'first')
         
-        if not selected_date:
-            return jsonify({"code": 400, "error": "Missing 'date' parameter"})
-
-        # Use different URLs based on version
-        dpp_url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
+        # First try to get data from database
+        heatmap_data = HydroHeatmapData.query.filter_by(
+            date=date,
+            version=version
+        ).all()
         
-        # Define hours
-        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
-
-        # Create an empty DataFrame for hydro plants
-        df = pd.DataFrame(index=hours, columns=hydro_mapping['plant_names'])
+        if not heatmap_data:
+            current_app.logger.info(f"No hydro data in DB for {date}, fetching from API...")
+            
+            # Get authentication token and URL
+            dpp_url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
+            tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+            
+            # Initialize DataFrame with hours and fill with 0
+            hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+            df = pd.DataFrame(0, index=hours, columns=hydro_mapping['plant_names'])
+            
+            # Iterate through all plants with their IDs
+            for plant_name, o_id, pl_id in zip(
+                hydro_mapping['plant_names'],
+                hydro_mapping['o_ids'],
+                hydro_mapping['uevcb_ids']
+            ):
+                try:
+                    # Format request data exactly as shown in working example
+                    request_data = {
+                        'startDate': f"{date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+                        'endDate': f"{date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+                        'region': 'TR1',
+                        'organizationId': int(o_id),
+                        'uevcbId': int(pl_id)
+                    }
+                    
+                    current_app.logger.info(f"Fetching data for {plant_name} with data: {request_data}")
+                    
+                    response = requests.post(
+                        dpp_url,
+                        headers={
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'TGT': tgt_token
+                        },
+                        json=request_data,
+                        timeout=30
+                    )
+                    
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        current_app.logger.info(f"Raw response for {plant_name}: {str(response_data)[:200]}...")
+                        
+                        if response_data and 'items' in response_data:
+                            for item in response_data['items']:
+                                try:
+                                    hour = item.get('time', '00:00').split(':')[0]
+                                    # Try both toplam and barajli fields
+                                    value = None
+                                    if item.get('barajli') is not None:
+                                        value = float(item['barajli'])
+                                    elif item.get('toplam') is not None:
+                                        value = float(item['toplam'])
+                                        
+                                    if value is not None:
+                                        df.at[f"{hour.zfill(2)}:00", plant_name] = value
+                                        current_app.logger.info(f"Added value {value} for {plant_name} at hour {hour}")
+                                except (ValueError, TypeError) as e:
+                                    current_app.logger.warning(f"Invalid value for {plant_name} at hour {hour}")
+                                    continue
+                        else:
+                            current_app.logger.warning(f"No items in response for {plant_name}")
+                    else:
+                        current_app.logger.error(f"Bad response status {response.status_code} for {plant_name}")
+                    
+                    time.sleep(0.5)  # Small delay between API calls
+                    
+                except Exception as e:
+                    current_app.logger.error(f"Error fetching data for {plant_name}: {str(e)}")
+                    continue
+            
+            # Process the dataframe
+            result = {
+                "code": 200,
+                "data": {
+                    "hours": df.index.tolist(),
+                    "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                        hydro_mapping['plant_names'],
+                        hydro_mapping['capacities']
+                    )],
+                    "values": df.values.tolist()
+                }
+            }
+            
+            return jsonify(result)
         
-        # Fetch data for each hydro plant
-        total_plants = len(hydro_mapping['plant_names'])
-        for idx, (o_id, pl_id, plant_name) in enumerate(zip(
-            hydro_mapping['o_ids'], 
-            hydro_mapping['uevcb_ids'], 
-            hydro_mapping['plant_names']
-        )):
-            try:
-                print(f"Fetching data for hydro plant {idx + 1}/{total_plants}: {plant_name}")
-                plant_data = fetch_plant_data(selected_date, o_id, pl_id, dpp_url)
-                if plant_data is not None:
-                    df[plant_name] = plant_data
-                else:
-                    df[plant_name] = 0
-            except Exception as e:
-                print(f"Error fetching data for plant {plant_name}: {str(e)}")
-                df[plant_name] = 0
-
-        # Create plant labels with capacities
-        plant_labels = [
-            f"{name}--{capacity} Mw" 
-            for name, capacity in zip(hydro_mapping['plant_names'], hydro_mapping['capacities'])
-        ]
-
-        # Convert DataFrame to JSON response
-        response_data = {
+        # If we have data in DB, process it as before
+        df = process_heatmap_data(heatmap_data, hydro_mapping)
+        
+        if df.empty:
+            return jsonify({
+                "code": 404,
+                "error": f"No data available for date {date}"
+            })
+        
+        return jsonify({
             "code": 200,
             "data": {
                 "hours": df.index.tolist(),
-                "plants": plant_labels,
+                "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                    hydro_mapping['plant_names'],
+                    hydro_mapping['capacities']
+                )],
                 "values": df.values.tolist()
             }
-        }
+        })
 
-        return jsonify(response_data)
-    
+    except ValueError as ve:
+        return jsonify({"code": 400, "error": f"Invalid date format: {str(ve)}"})
     except Exception as e:
-        print(f"Error in hydro_heatmap_data: {str(e)}")
-        return jsonify({"code": 500, "error": str(e)})
+        current_app.logger.error(f"Error in hydro_heatmap_data: {str(e)}")
+        return jsonify({"code": 500, "error": "Internal server error"})
 
 @main.route('/hydro_realtime_heatmap_data', methods=['POST'])
 def hydro_realtime_heatmap_data():
@@ -1235,18 +1317,50 @@ def hydro_realtime_heatmap_data():
         if not selected_date:
             return jsonify({"code": 400, "error": "Missing 'date' parameter"})
 
-        # Define hours
-        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+        # Convert date string to date object
+        date = datetime.strptime(selected_date, '%Y-%m-%d').date()
 
-        # Create an empty DataFrame for hydro plants
+        # First try to get data from database
+        heatmap_data = HydroRealtimeData.query.filter_by(
+            date=date
+        ).all()
+
+        # If we have data in database, process and return it
+        if heatmap_data:
+            df = pd.DataFrame(index=[f"{str(i).zfill(2)}:00" for i in range(24)], 
+                                    columns=hydro_mapping['plant_names'])
+            
+            for record in heatmap_data:
+                hour = f"{str(record.hour).zfill(2)}:00"
+                df.at[hour, record.plant_name] = record.value
+
+            # Replace NaN values with 0
+            df = df.fillna(0)
+
+            return jsonify({
+                "code": 200,
+                "data": {
+                    "hours": df.index.tolist(),
+                    "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                        hydro_mapping['plant_names'],
+                        hydro_mapping['capacities']
+                    )],
+                    "values": df.values.tolist()
+                }
+            })
+
+        # If no data in database, fetch from API
+        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
         df = pd.DataFrame(index=hours, columns=hydro_mapping['plant_names'])
         
-        # Create a dictionary to track how many times each powerplant ID is used
+        # Get authentication token
+        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+        
+        # Create mappings for plant IDs
         p_id_count = {}
         for p_id in hydro_mapping['p_ids']:
             p_id_count[p_id] = hydro_mapping['p_ids'].count(p_id)
 
-        # Create a mapping of powerplant ID to its indices in the plant list
         p_id_indices = {}
         for idx, p_id in enumerate(hydro_mapping['p_ids']):
             if p_id not in p_id_indices:
@@ -1254,6 +1368,7 @@ def hydro_realtime_heatmap_data():
             p_id_indices[p_id].append(idx)
 
         # Fetch realtime data for each unique powerplant
+        batch_data = []
         unique_p_ids = set(hydro_mapping['p_ids'])
         for p_id in unique_p_ids:
             try:
@@ -1265,68 +1380,890 @@ def hydro_realtime_heatmap_data():
                     "powerPlantId": str(p_id)
                 }
 
-                # Setup session with retries
-                session = Session()
-                retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
-                session.mount('https://', HTTPAdapter(max_retries=retries))
-                
-                # Get authentication token
-                tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
-
                 # Make API request
-                response = session.post(
+                response = requests.post(
                     current_app.config['REALTIME_URL'],
                     json=request_data,
-                    headers={'TGT': tgt_token},
-                    timeout=(5, 15)
+                    headers={'TGT': tgt_token}
                 )
                 response.raise_for_status()
                 
-                # Process response data
                 items = response.json().get('items', [])
                 
-                # Extract hourly values
                 hourly_values = [0] * 24
                 for item in items:
-                    hour_str = item.get('hour', '00:00')
-                    hour = int(hour_str.split(':')[0])
+                    hour = int(item.get('hour', '00:00').split(':')[0])
                     total = item.get('total', 0)
                     hourly_values[hour] = total
 
-                # Distribute the values among all instances of this powerplant
+                # Distribute values among plant instances
                 count = p_id_count[p_id]
                 distributed_values = [val / count for val in hourly_values]
                 
-                # Assign the distributed values to all instances of this powerplant
                 for idx in p_id_indices[p_id]:
                     plant_name = hydro_mapping['plant_names'][idx]
                     df[plant_name] = distributed_values
+                    
+                    # Prepare database records
+                    for hour, value in enumerate(distributed_values):
+                        batch_data.append({
+                            'date': date,
+                            'hour': hour,
+                            'plant_name': plant_name,
+                            'value': value
+                        })
+                
+                time.sleep(0.5)  # Small delay between requests
                 
             except Exception as e:
                 print(f"Error fetching realtime data for hydro plant {p_id}: {str(e)}")
-                # Set zero values for all instances of this powerplant
                 for idx in p_id_indices[p_id]:
                     plant_name = hydro_mapping['plant_names'][idx]
                     df[plant_name] = [0] * 24
 
-        # Create plant labels with capacities
-        plant_labels = [
-            f"{name}--{capacity} Mw" 
-            for name, capacity in zip(hydro_mapping['plant_names'], hydro_mapping['capacities'])
-        ]
+        # Store the fetched data in database
+        try:
+            if batch_data:
+                db.session.bulk_insert_mappings(HydroRealtimeData, batch_data)
+                db.session.commit()
+        except Exception as e:
+            print(f"Error storing realtime data: {str(e)}")
+            db.session.rollback()
 
-        # Convert DataFrame to JSON response
-        response_data = {
+        return jsonify({
             "code": 200,
             "data": {
                 "hours": df.index.tolist(),
-                "plants": plant_labels,
+                "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
+                    hydro_mapping['plant_names'],
+                    hydro_mapping['capacities']
+                )],
                 "values": df.values.tolist()
             }
-        }
+        })
 
-        return jsonify(response_data)
-    
     except Exception as e:
         print(f"Error in hydro_realtime_heatmap_data: {str(e)}")
         return jsonify({"code": 500, "error": str(e)})
+
+@main.route('/production_data', methods=['POST'])
+def get_production_data():
+    try:
+        data = request.get_json()
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        
+        if not start_date or not end_date:
+            return jsonify({
+                'code': 400,
+                'message': 'Start date and end date are required'
+            }), 400
+            
+        # Check if data exists in database
+        existing_data = ProductionData.query.filter(
+            ProductionData.datetime.between(
+                datetime.strptime(start_date, '%Y-%m-%d'),
+                datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+            )
+        ).all()
+        
+        if existing_data:
+            return jsonify({
+                'code': 200,
+                'data': [record.to_dict() for record in existing_data]
+            })
+        
+        # If no data in database, fetch from API
+        tgt_token = get_tgt_token(
+            current_app.config.get('USERNAME'),
+            current_app.config.get('PASSWORD')
+        )
+        
+        url = "https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/realtime-generation"
+        
+        payload = {
+            "startDate": f"{start_date}T00:00:00+03:00",
+            "endDate": f"{end_date}T23:59:59+03:00",
+            "region": "TR1",
+        }
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': "application/json",
+            'TGT': tgt_token
+        }
+        
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        
+        # Process the data
+        items = response.json().get('items', [])
+        if not items:
+            return jsonify({
+                'code': 404,
+                'message': 'No data found for the specified date range'
+            }), 404
+            
+        # Convert to DataFrame for easier processing
+        df = pd.json_normalize(items)
+        df['date'] = pd.to_datetime(df['date'])
+        
+        # Create DateTime column
+        if 'hour' in df.columns:
+            df['DateTime'] = pd.to_datetime(
+                df['date'].dt.date.astype(str) + ' ' + df['hour']
+            )
+            df['DateTime'] = df['DateTime'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Store in database
+        for _, row in df.iterrows():
+            record = ProductionData(
+                datetime=datetime.strptime(row['DateTime'], '%Y-%m-%d %H:%M:%S'),
+                fueloil=row.get('fueloil', 0),
+                gasoil=0,  # Setting default as 0 as per crawler
+                blackcoal=row.get('blackCoal', 0),
+                lignite=row.get('lignite', 0),
+                geothermal=row.get('geothermal', 0),
+                naturalgas=row.get('naturalGas', 0),
+                river=row.get('river', 0),
+                dammedhydro=row.get('dammedHydro', 0),
+                lng=row.get('lng', 0),
+                biomass=row.get('biomass', 0),
+                naphta=row.get('naphta', 0),
+                importcoal=row.get('importCoal', 0),
+                asphaltitecoal=row.get('asphaltiteCoal', 0),
+                wind=row.get('wind', 0),
+                nuclear=0,  # Setting default as 0 as per crawler
+                sun=row.get('sun', 0),
+                importexport=row.get('importExport', 0),
+                total=row.get('total', 0),
+                wasteheat=row.get('wasteheat', 0)
+            )
+            db.session.add(record)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'data': [record.to_dict() for record in ProductionData.query.filter(
+                ProductionData.datetime.between(
+                    datetime.strptime(start_date, '%Y-%m-%d'),
+                    datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+                )
+            ).all()]
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in get_production_data: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'Error fetching production data: {str(e)}'
+        }), 500
+
+@main.route('/check-data-completeness')
+def check_data_completeness():
+    try:
+        # Get min and max dates
+        min_date = db.session.query(db.func.min(ProductionData.datetime)).scalar()
+        max_date = db.session.query(db.func.max(ProductionData.datetime)).scalar()
+        
+        # Get count of records
+        total_records = db.session.query(ProductionData).count()
+        
+        # Calculate expected records (assuming 24 records per day)
+        days = (max_date - min_date).days + 1
+        expected_records = days * 24
+        
+        # Find gaps in data using SQLAlchemy's text()
+        query = text("""
+            WITH dates AS (
+                SELECT generate_series(
+                    date_trunc('hour', min(datetime)),
+                    date_trunc('hour', max(datetime)),
+                    '1 hour'::interval
+                ) as expected_datetime
+                FROM production_data
+            )
+            SELECT expected_datetime::timestamp
+            FROM dates
+            LEFT JOIN production_data ON dates.expected_datetime = date_trunc('hour', production_data.datetime)
+            WHERE production_data.id IS NULL
+            ORDER BY expected_datetime;
+        """)
+        
+        missing_dates = db.session.execute(query).fetchall()
+        
+        return jsonify({
+            'start_date': min_date.strftime('%Y-%m-%d %H:%M'),
+            'end_date': max_date.strftime('%Y-%m-%d %H:%M'),
+            'total_days': days,
+            'total_records': total_records,
+            'expected_records': expected_records,
+            'missing_records': expected_records - total_records,
+            'coverage_percentage': (total_records / expected_records) * 100,
+            'missing_dates': [d[0].strftime('%Y-%m-%d %H:%M') for d in missing_dates[:100]] if missing_dates else [],
+            'total_missing_dates': len(missing_dates) if missing_dates else 0
+        })
+        
+    except Exception as e:
+        print(f"Error in check_data_completeness: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+@main.route('/get-rolling-data')
+def get_rolling_data():
+    try:
+        # Load pre-calculated historical data
+        historical_file = os.path.join(current_app.static_folder, 'data', 'historical_averages.json')
+        
+        if os.path.exists(historical_file):
+            print("Using pre-calculated historical data")
+            with open(historical_file, 'r') as f:
+                historical_data = json.load(f)
+        else:
+            print("Historical data file not found, calculating from scratch")
+            historical_data = {}
+        
+        # Get current year data only (2025 and beyond)
+        current_year = datetime.now().year
+        cutoff_date = datetime(current_year, 1, 1)
+        
+        current_data = db.session.query(ProductionData).filter(
+            ProductionData.datetime >= cutoff_date
+        ).order_by(ProductionData.datetime).all()
+        
+        if current_data:
+            print(f"Processing {len(current_data)} current year records")
+            
+            # Convert to DataFrame with timezone handling
+            df = pd.DataFrame([{
+                'datetime': d.datetime.astimezone(pytz.UTC),
+                'fueloil': d.fueloil,
+                'gasoil': d.gasoil,
+                'blackcoal': d.blackcoal,
+                'lignite': d.lignite,
+                'geothermal': d.geothermal,
+                'naturalgas': d.naturalgas,
+                'river': d.river,
+                'dammedhydro': d.dammedhydro,
+                'lng': d.lng,
+                'biomass': d.biomass,
+                'naphta': d.naphta,
+                'importcoal': d.importcoal,
+                'asphaltitecoal': d.asphaltitecoal,
+                'wind': d.wind,
+                'nuclear': d.nuclear,
+                'sun': d.sun,
+                'importexport': d.importexport,
+                'total': d.total,
+                'wasteheat': d.wasteheat
+            } for d in current_data])
+            
+            # Convert datetime to pandas datetime with UTC timezone
+            df['datetime'] = pd.to_datetime(df['datetime'], utc=True)
+            df = df.set_index('datetime')
+            
+            # Convert to local time (Istanbul)
+            istanbul_tz = pytz.timezone('Europe/Istanbul')
+            df.index = df.index.tz_convert(istanbul_tz)
+            
+            # Calculate renewables total and ratio
+            df['renewablestotal'] = df['geothermal'] + df['biomass'] + df['wind'] + df['sun']
+            df['renewablesratio'] = df['renewablestotal'] / df['total']
+            
+            # Calculate rolling averages for current year
+            rolling_data = historical_data.copy() if historical_data else {}
+            
+            # Process regular columns with 7-day rolling averages
+            regular_columns = [col for col in df.columns if col != 'renewablesratio']
+            for column in regular_columns:
+                # Resample to daily frequency
+                daily_avg = df[column].resample('D', closed='left', label='left').mean()
+                rolling_avg = daily_avg.rolling(window=7, min_periods=1).mean()
+                
+                # Get current year data
+                year_data = rolling_avg[rolling_avg.index.year == current_year]
+                
+                # Create or update column data
+                if column not in rolling_data:
+                    rolling_data[column] = {}
+                
+                # Add current year data
+                rolling_data[column][str(current_year)] = [
+                    round(float(x), 2) if pd.notnull(x) else None 
+                    for x in year_data.values
+                ]
+            
+            # Special handling for renewables ratio - monthly averages for current year
+            monthly_data = df.groupby([df.index.month, df.index.year])['renewablesratio'].mean()
+            
+            # Convert to DataFrame for easier manipulation
+            monthly_df = pd.DataFrame(monthly_data)
+            monthly_df.index.names = ['month', 'year']
+            monthly_df.reset_index(inplace=True)
+            
+            # Create or update renewablesratio_monthly
+            if 'renewablesratio_monthly' not in rolling_data:
+                rolling_data['renewablesratio_monthly'] = {}
+            
+            # Add current year data
+            year_data = []
+            for month in range(1, 13):
+                value = monthly_df[(monthly_df['month'] == month) & (monthly_df['year'] == current_year)]['renewablesratio'].values
+                if len(value) > 0:
+                    year_data.append(round(float(value[0]), 4))
+                else:
+                    year_data.append(None)
+            
+            rolling_data['renewablesratio_monthly'][str(current_year)] = year_data
+            
+            return jsonify(rolling_data)
+        else:
+            # If no current year data, just return historical data
+            return jsonify(historical_data)
+        
+    except Exception as e:
+        print(f"Error in get_rolling_data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/get-rolling-last-update')
+def get_rolling_last_update():
+    try:
+        # Get the most recent record's datetime
+        latest_record = db.session.query(ProductionData.datetime).order_by(ProductionData.datetime.desc()).first()
+        
+        if latest_record:
+            # Format the datetime for display
+            latest_datetime = latest_record[0]
+            istanbul_tz = pytz.timezone('Europe/Istanbul')
+            localized_datetime = latest_datetime.replace(tzinfo=pytz.UTC).astimezone(istanbul_tz)
+            formatted_datetime = localized_datetime.strftime('%Y-%m-%d %H:%M:%S %Z')
+            
+            return jsonify({
+                'last_update': formatted_datetime,
+                'timestamp': latest_datetime.timestamp()
+            })
+        else:
+            return jsonify({
+                'last_update': None
+            })
+            
+    except Exception as e:
+        print(f"Error in get_rolling_last_update: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/update-rolling-data')
+def update_rolling_data():
+    try:
+        # Get the most recent record's datetime
+        latest_record = db.session.query(ProductionData.datetime).order_by(ProductionData.datetime.desc()).first()
+        
+        if not latest_record:
+            return jsonify({
+                'error': 'No existing records found. Please populate the database first.'
+            }), 400
+            
+        # Find the last complete day (all 24 hours present)
+        latest_date = latest_record[0].date()
+        
+        # Check if the latest day has all 24 hours
+        hours_count = db.session.query(ProductionData).filter(
+            db.func.date(ProductionData.datetime) == latest_date
+        ).count()
+        
+        # If we don't have all 24 hours, start from the beginning of this day
+        if hours_count < 24:
+            start_date = datetime.combine(latest_date, datetime.min.time())
+        else:
+            # Otherwise start from the next day
+            start_date = datetime.combine(latest_date + timedelta(days=1), datetime.min.time())
+        
+        # Get the end date (today)
+        end_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        # Format dates for API
+        start_date_str = start_date.strftime('%Y-%m-%d')
+        end_date_str = end_date.strftime('%Y-%m-%d')
+        
+        # Check if we need to update (start date should be before end date)
+        if start_date.date() > end_date.date():
+            return jsonify({
+                'message': 'Database is already up to date.',
+                'records_added': 0
+            })
+            
+        # Get TGT token for API authentication
+        tgt_token = get_tgt_token(
+            current_app.config.get('USERNAME'),
+            current_app.config.get('PASSWORD')
+        )
+        
+        # Prepare API request
+        url = "https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/realtime-generation"
+        
+        payload = {
+            "startDate": f"{start_date_str}T00:00:00+03:00",
+            "endDate": f"{end_date_str}T23:59:59+03:00",
+            "region": "TR1",
+        }
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': "application/json",
+            'TGT': tgt_token
+        }
+        
+        # Make API request
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        
+        # Process the data
+        items = response.json().get('items', [])
+        if not items:
+            return jsonify({
+                'message': 'No new data found for the specified date range.',
+                'records_added': 0
+            })
+            
+        # Convert to DataFrame for easier processing
+        df = pd.json_normalize(items)
+        df['date'] = pd.to_datetime(df['date'])
+        
+        # Create DateTime column
+        if 'hour' in df.columns:
+            df['DateTime'] = pd.to_datetime(
+                df['date'].dt.date.astype(str) + ' ' + df['hour']
+            )
+            df['DateTime'] = df['DateTime'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Store in database
+        records_added = 0
+        for _, row in df.iterrows():
+            # Check if record already exists
+            existing_record = ProductionData.query.filter_by(
+                datetime=datetime.strptime(row['DateTime'], '%Y-%m-%d %H:%M:%S')
+            ).first()
+            
+            if not existing_record:
+                record = ProductionData(
+                    datetime=datetime.strptime(row['DateTime'], '%Y-%m-%d %H:%M:%S'),
+                    fueloil=row.get('fueloil', 0),
+                    gasoil=0,  # Setting default as 0 as per crawler
+                    blackcoal=row.get('blackCoal', 0),
+                    lignite=row.get('lignite', 0),
+                    geothermal=row.get('geothermal', 0),
+                    naturalgas=row.get('naturalGas', 0),
+                    river=row.get('river', 0),
+                    dammedhydro=row.get('dammedHydro', 0),
+                    lng=row.get('lng', 0),
+                    biomass=row.get('biomass', 0),
+                    naphta=row.get('naphta', 0),
+                    importcoal=row.get('importCoal', 0),
+                    asphaltitecoal=row.get('asphaltiteCoal', 0),
+                    wind=row.get('wind', 0),
+                    nuclear=0,  # Setting default as 0 as per crawler
+                    sun=row.get('sun', 0),
+                    importexport=row.get('importExport', 0),
+                    total=row.get('total', 0),
+                    wasteheat=row.get('wasteheat', 0)
+                )
+                db.session.add(record)
+                records_added += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': f'Successfully added {records_added} new records.',
+            'records_added': records_added,
+            'date_range': {
+                'start': start_date_str,
+                'end': end_date_str
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in update_rolling_data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/check-demand-completeness')
+def check_demand_completeness():
+    try:
+        # Get min and max dates
+        min_date = db.session.query(db.func.min(DemandData.datetime)).scalar()
+        max_date = db.session.query(db.func.max(DemandData.datetime)).scalar()
+        
+        # Get count of records
+        total_records = db.session.query(DemandData).count()
+        
+        # Calculate expected records (assuming 24 records per day)
+        days = (max_date - min_date).days + 1
+        expected_records = days * 24
+        
+        # Find gaps in data using SQLAlchemy's text()
+        query = text("""
+            WITH dates AS (
+                SELECT generate_series(
+                    date_trunc('hour', min(datetime)),
+                    date_trunc('hour', max(datetime)),
+                    '1 hour'::interval
+                ) as expected_datetime
+                FROM demand_data
+            )
+            SELECT expected_datetime::timestamp
+            FROM dates
+            LEFT JOIN demand_data ON dates.expected_datetime = date_trunc('hour', demand_data.datetime)
+            WHERE demand_data.id IS NULL
+            ORDER BY expected_datetime;
+        """)
+        
+        missing_dates = db.session.execute(query).fetchall()
+        
+        return jsonify({
+            'start_date': min_date.strftime('%Y-%m-%d %H:%M'),
+            'end_date': max_date.strftime('%Y-%m-%d %H:%M'),
+            'total_days': days,
+            'total_records': total_records,
+            'expected_records': expected_records,
+            'missing_records': expected_records - total_records,
+            'coverage_percentage': (total_records / expected_records) * 100,
+            'missing_dates': [d[0].strftime('%Y-%m-%d %H:%M') for d in missing_dates[:100]] if missing_dates else [],
+            'total_missing_dates': len(missing_dates)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/get_demand_data')
+def get_demand_data():
+    try:
+        current_year = datetime.now().year
+        previous_year = current_year - 1
+        
+        # Get current date to limit the data range
+        current_date = datetime.now()
+        
+        # Use raw SQL to avoid ORM issues with missing columns
+        query = text("""
+            SELECT id, datetime, consumption 
+            FROM demand_data
+            WHERE (EXTRACT(year FROM datetime) = :current_year AND datetime <= :current_date)
+               OR (EXTRACT(year FROM datetime) = :previous_year)
+            ORDER BY datetime
+        """)
+        
+        # Execute query
+        result = db.session.execute(
+            query, 
+            {
+                "current_year": current_year, 
+                "current_date": current_date,
+                "previous_year": previous_year
+            }
+        ).fetchall()
+        
+        # Process the data for the frontend
+        current_year_data = []
+        previous_year_data = []
+        
+        for row in result:
+            data_point = {
+                "datetime": row.datetime.strftime("%Y-%m-%d %H:%M:%S"),
+                "consumption": float(row.consumption)
+            }
+            
+            if row.datetime.year == current_year:
+                current_year_data.append(data_point)
+            else:
+                previous_year_data.append(data_point)
+        
+        # Convert to pandas DataFrame for resampling
+        if current_year_data:
+            df_current = pd.DataFrame(current_year_data)
+            df_current['datetime'] = pd.to_datetime(df_current['datetime'])
+            df_current.set_index('datetime', inplace=True)
+            weekly_avg_current = df_current.resample('W').mean()
+        else:
+            weekly_avg_current = pd.DataFrame()
+            
+        if previous_year_data:
+            df_previous = pd.DataFrame(previous_year_data)
+            df_previous['datetime'] = pd.to_datetime(df_previous['datetime'])
+            df_previous.set_index('datetime', inplace=True)
+            weekly_avg_previous = df_previous.resample('W').mean()
+        else:
+            weekly_avg_previous = pd.DataFrame()
+        
+        # Format the response as expected by the frontend
+        result = {'consumption': {}}
+        
+        if not weekly_avg_current.empty:
+            result['consumption'][str(current_year)] = weekly_avg_current['consumption'].tolist()
+            
+        if not weekly_avg_previous.empty:
+            result['consumption'][str(previous_year)] = weekly_avg_previous['consumption'].tolist()
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"Error in get_demand_data: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/update_demand_data_api')
+def update_demand_data_api():
+    try:
+        # Get the latest date in the database
+        latest_record = db.session.query(DemandData.datetime).order_by(DemandData.datetime.desc()).first()
+        
+        # If no data, start from a default date
+        if not latest_record:
+            start_date = datetime(2023, 1, 1)
+        else:
+            # Start from the hour after the latest record
+            start_date = latest_record[0] + timedelta(hours=1)
+        
+        # End date is current hour
+        end_date = datetime.now().replace(minute=0, second=0, microsecond=0)
+        
+        # If already up to date
+        if start_date >= end_date:
+            return jsonify({
+                'message': 'Database is already up to date.',
+                'records_added': 0
+            })
+        
+        # Format dates for API
+        start_date_str = start_date.strftime('%Y-%m-%d')
+        end_date_str = end_date.strftime('%Y-%m-%d')
+        
+        # Get TGT token
+        tgt_token = get_tgt_token(
+            current_app.config.get('USERNAME'),
+            current_app.config.get('PASSWORD')
+        )
+        
+        # Prepare API request
+        url = "https://seffaflik.epias.com.tr/electricity-service/v1/consumption/data/realtime-consumption"
+        
+        payload = {
+            "startDate": f"{start_date_str}T00:00:00+03:00",
+            "endDate": f"{end_date_str}T23:59:59+03:00",
+            "region": "TR1",
+        }
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': "application/json",
+            'TGT': tgt_token
+        }
+        
+        # Make API request
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        
+        # Process the data
+        items = response.json().get('items', [])
+        if not items:
+            return jsonify({
+                'message': 'No new data found for the specified date range.',
+                'records_added': 0
+            })
+            
+        # Convert to DataFrame for easier processing
+        df = pd.json_normalize(items)
+        df['date'] = pd.to_datetime(df['date'])
+        
+        # Store in database
+        records_added = 0
+        for _, row in df.iterrows():
+            # Parse datetime from the date field
+            dt = row['date'].to_pydatetime()
+            
+            # Check if record already exists
+            existing_record = DemandData.query.filter_by(
+                datetime=dt
+            ).first()
+            
+            if not existing_record:
+                record = DemandData(
+                    datetime=dt,
+                    consumption=row.get('consumption', 0),
+                    created_at=datetime.now()  # Explicitly set created_at
+                )
+                db.session.add(record)
+                records_added += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': f'Successfully added {records_added} new records.',
+            'records_added': records_added,
+            'date_range': {
+                'start': start_date.strftime('%Y-%m-%d %H:%M'),
+                'end': end_date.strftime('%Y-%m-%d %H:%M')
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in update_demand_data_api: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/check_demand_updates')
+def check_demand_updates():
+    try:
+        # Get the last 15 days of data
+        end_date = datetime.now().replace(tzinfo=None)  # Ensure timezone-naive
+        start_date = end_date - timedelta(days=15)
+        
+        # Set up a requests session with retry logic
+        session = requests.Session()
+        retries = requests.adapters.Retry(
+            total=5,
+            backoff_factor=0.5,
+            status_forcelist=[500, 502, 503, 504, 429],
+        )
+        session.mount('https://', requests.adapters.HTTPAdapter(max_retries=retries))
+        
+        # Get TGT token
+        tgt_token = get_tgt_token(
+            current_app.config.get('USERNAME'),
+            current_app.config.get('PASSWORD')
+        )
+        
+        # Group dates by month to minimize API calls
+        date_groups = {}
+        current_date = start_date
+        while current_date <= end_date:
+            month_key = current_date.strftime('%Y-%m')
+            if month_key not in date_groups:
+                date_groups[month_key] = []
+            date_groups[month_key].append(current_date)
+            current_date += timedelta(hours=1)
+        
+        # Process each month
+        success_count = 0
+        updated_count = 0
+        
+        for month, dates in date_groups.items():
+            # Get first and last day of the month
+            first_date = min(dates)
+            last_date = max(dates)
+            
+            # Prepare API request
+            url = "https://seffaflik.epias.com.tr/electricity-service/v1/consumption/data/realtime-consumption"
+            
+            payload = {
+                "startDate": f"{first_date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+                "endDate": f"{last_date.strftime('%Y-%m-%d')}T23:59:59+03:00",
+                "region": "TR1",
+            }
+            
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': "application/json",
+                'TGT': tgt_token
+            }
+            
+            # Make API request
+            response = session.post(url, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()
+            
+            # Process the data
+            items = response.json().get('items', [])
+            if not items:
+                continue
+                
+            # Convert to DataFrame for easier processing
+            df = pd.json_normalize(items)
+            df['date'] = pd.to_datetime(df['date'])
+            
+            # Get existing records for this date range
+            existing_records = {}
+            query = text("""
+                SELECT datetime, consumption 
+                FROM demand_data 
+                WHERE datetime >= :start_date AND datetime <= :end_date
+            """)
+            result = db.session.execute(query, {
+                'start_date': first_date,
+                'end_date': last_date
+            }).fetchall()
+            
+            for record in result:
+                existing_records[record[0].strftime('%Y-%m-%d %H:%M')] = float(record[1])
+            
+            # Process items in batches
+            batch_data = []
+            current_time = datetime.now()  # Get current time once for all records
+            
+            for _, row in df.iterrows():
+                try:
+                    # Convert to timezone-naive datetime for comparison
+                    dt = row['date'].to_pydatetime()
+                    if dt.tzinfo is not None:
+                        dt = dt.replace(tzinfo=None)
+                    
+                    dt_key = dt.strftime('%Y-%m-%d %H:%M')
+                    consumption = float(row.get('consumption', 0))
+                    
+                    # Check if this datetime is in our date range and has a different value
+                    if dt >= first_date and dt <= last_date:
+                        success_count += 1
+                        
+                        if dt_key in existing_records:
+                            # Compare with existing value with a small tolerance for floating point differences
+                            if abs(existing_records[dt_key] - consumption) > 0.01:
+                                batch_data.append({
+                                    'datetime': dt,
+                                    'consumption': consumption,
+                                    'created_at': current_time
+                                })
+                                updated_count += 1
+                except Exception as e:
+                    print(f"Error processing item: {e}")
+                    continue
+            
+            # Update records with different values
+            if batch_data:
+                try:
+                    # Use bulk insert with ON CONFLICT DO UPDATE
+                    insert_stmt = """
+                    INSERT INTO demand_data (datetime, consumption, created_at)
+                    VALUES (:datetime, :consumption, :created_at)
+                    ON CONFLICT (datetime) DO UPDATE
+                    SET consumption = EXCLUDED.consumption,
+                        created_at = EXCLUDED.created_at
+                    """
+                    
+                    db.session.execute(text(insert_stmt), batch_data)
+                    db.session.commit()
+                    
+                except Exception as e:
+                    db.session.rollback()
+                    print(f"Error updating batch data: {e}")
+        
+        return jsonify({
+            'message': f'Successfully checked for updates. Found {updated_count} records with changed values.',
+            'updated_records': updated_count,
+            'date_range': {
+                'start': start_date.strftime('%Y-%m-%d %H:%M'),
+                'end': end_date.strftime('%Y-%m-%d %H:%M')
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in check_demand_updates: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500

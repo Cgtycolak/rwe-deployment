@@ -5,7 +5,6 @@ export const generationComparison = {
     plotlyConfig: { responsive: true },
 
     setup(helpers) {
-        console.log('Setting up generation comparison module with helpers');
         this.helpers = helpers;
     },
 

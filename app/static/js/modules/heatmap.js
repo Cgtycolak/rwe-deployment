@@ -6,7 +6,6 @@ export const heatmap = {
 
     // Initialize with helper functions
     setup(helpers) {
-        console.log('Setting up Heatmap module with helpers:', helpers);
         if (!helpers) {
             console.error('No helpers provided to Heatmap module');
             return;
@@ -148,6 +147,9 @@ export const heatmap = {
 
         // Function to determine text color based on background value
         const getTextColor = (value) => {
+            if (version === 'difference' || version === 'realtime_difference') {
+                if (value === 0) return 'black';
+            }
             const threshold = 0.3;
             const normalizedValue = (value - minValue) / (maxValue - minValue);
             return normalizedValue > threshold ? 'black' : 'white';

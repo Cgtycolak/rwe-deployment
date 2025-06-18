@@ -1,11 +1,60 @@
 services:
+  # Web service
   - type: web
     name: flask-energy-app
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      pip install -r requirements.txt
+      export FLASK_APP=app
+      flask db upgrade
     startCommand: gunicorn --config gunicorn_config.py app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
-      - key: SECRET_KEY
-        generateValue: true
+      - key: PRODUCTION_DATABASE_URL
+        fromDatabase:
+          name: rwe-postgres
+          property: connectionString
+      - key: DATABASE_URL  # Keep for compatibility
+        fromDatabase:
+          name: rwe-postgres
+          property: connectionString
+      - key: USE_LOCAL_DB
+        value: false
+      - key: USERNAME
+        sync: false
+      - key: PASSWORD
+        sync: false
+      - key: FLASK_APP
+        value: app
+
+  # Scheduler worker service
+  - type: worker
+    name: flask-energy-scheduler
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scheduler_service.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PRODUCTION_DATABASE_URL
+        fromDatabase:
+          name: rwe-postgres
+          property: connectionString
+      - key: DATABASE_URL  # Keep for compatibility
+        fromDatabase:
+          name: rwe-postgres
+          property: connectionString
+      - key: USE_LOCAL_DB
+        value: false
+      - key: USERNAME
+        sync: true
+      - key: PASSWORD
+        sync: true
+
+databases:
+  - name: rwe-postgres
+    databaseName: rwe_data
+    user: rwe_user
+    plan: free  # 1GB storage, sufficient for ~3 years
+    ipAllowList: []  # Allow all IPs
