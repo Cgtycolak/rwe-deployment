@@ -2332,7 +2332,7 @@ def lignite_heatmap_data():
         return jsonify({'code': 200, 'data': response_data})
         
     except Exception as e:
-        app.logger.error(f"Error in lignite_heatmap_data: {str(e)}")
+        current_app.logger.error(f"Error in lignite_heatmap_data: {str(e)}")
         return jsonify({'code': 500, 'message': 'Internal server error'})
 
 @main.route('/lignite_realtime_heatmap_data', methods=['POST'])
@@ -2392,5 +2392,5 @@ def lignite_realtime_heatmap_data():
         return jsonify({'code': 200, 'data': response_data})
         
     except Exception as e:
-        app.logger.error(f"Error in lignite_realtime_heatmap_data: {str(e)}")
+        current_app.logger.error(f"Error in lignite_realtime_heatmap_data: {str(e)}")
         return jsonify({'code': 500, 'message': 'Internal server error'})
