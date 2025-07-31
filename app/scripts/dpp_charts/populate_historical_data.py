@@ -11,9 +11,9 @@ sys.path.append(parent_dir)
 
 from app.factory import create_app
 from app.database.config import db
-from app.models.heatmap import HydroHeatmapData, NaturalGasHeatmapData, ImportedCoalHeatmapData
+from app.models.heatmap import HydroHeatmapData, NaturalGasHeatmapData, ImportedCoalHeatmapData, LigniteHeatmapData
 from app.functions import get_tgt_token, fetch_plant_data
-from app.mappings import hydro_mapping, plant_mapping, import_coal_mapping
+from app.mappings import hydro_mapping, plant_mapping, import_coal_mapping, lignite_mapping
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -23,7 +23,8 @@ CHUNK_SIZE = 90  # Days per chunk
 TYPE_MAPPINGS = {
     'hydro': (HydroHeatmapData, hydro_mapping),
     'natural_gas': (NaturalGasHeatmapData, plant_mapping),
-    'imported_coal': (ImportedCoalHeatmapData, import_coal_mapping)
+    'imported_coal': (ImportedCoalHeatmapData, import_coal_mapping),
+    'lignite': (LigniteHeatmapData, lignite_mapping)
 }
 
 def get_local_session():

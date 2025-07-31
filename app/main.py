@@ -22,7 +22,12 @@ import os
 from app.models.demand import DemandData
 from sqlalchemy import extract
 
-pd.set_option('future.no_silent_downcasting', True)
+# Conditionally set pandas option if it exists (available in pandas 2.1.0+)
+try:
+    pd.set_option('future.no_silent_downcasting', True)
+except pd._config.config.OptionError:
+    # Option doesn't exist in this pandas version, skip it
+    pass
 
 main = Blueprint('main', __name__)
 
@@ -2267,3 +2272,125 @@ def check_demand_updates():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+@main.route('/lignite_heatmap_data', methods=['POST'])
+def lignite_heatmap_data():
+    try:
+        data = request.get_json()
+        date_str = data.get('date')
+        version = data.get('version', 'current')
+        
+        if not date_str:
+            return jsonify({'code': 400, 'message': 'Date is required'})
+        
+        # Parse date
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        
+        # Import the model
+        from app.models.heatmap import LigniteHeatmapData
+        from app.mappings import lignite_mapping
+        
+        # Query lignite heatmap data
+        query = LigniteHeatmapData.query.filter(
+            LigniteHeatmapData.date == date_obj,
+            LigniteHeatmapData.version == version
+        ).all()
+        
+        if not query:
+            return jsonify({
+                'code': 404, 
+                'message': f'No lignite heatmap data found for {date_str} version {version}'
+            })
+        
+        # Get plant names from mapping
+        plant_names = lignite_mapping['plant_names']
+        hours = [f"{i:02d}:00" for i in range(24)]
+        
+        # Initialize values matrix
+        values = [[0 for _ in range(len(plant_names))] for _ in range(24)]
+        
+        # Fill values matrix
+        for record in query:
+            try:
+                plant_index = plant_names.index(record.plant_name)
+                hour_index = record.hour
+                if 0 <= hour_index < 24:
+                    values[hour_index][plant_index] = record.value
+            except ValueError:
+                # Plant not in mapping, skip
+                continue
+        
+        response_data = {
+            'hours': hours,
+            'plants': [f"{name}--{capacity} MW" for name, capacity in zip(
+                lignite_mapping['plant_names'],
+                lignite_mapping['capacities']
+            )],
+            'values': values
+        }
+        
+        return jsonify({'code': 200, 'data': response_data})
+        
+    except Exception as e:
+        app.logger.error(f"Error in lignite_heatmap_data: {str(e)}")
+        return jsonify({'code': 500, 'message': 'Internal server error'})
+
+@main.route('/lignite_realtime_heatmap_data', methods=['POST'])
+def lignite_realtime_heatmap_data():
+    try:
+        data = request.get_json()
+        date_str = data.get('date')
+        
+        if not date_str:
+            return jsonify({'code': 400, 'message': 'Date is required'})
+        
+        # Parse date
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        
+        # Import the model
+        from app.models.realtime import LigniteRealtimeData
+        from app.mappings import lignite_mapping
+        
+        # Query lignite realtime data
+        query = LigniteRealtimeData.query.filter(
+            LigniteRealtimeData.date == date_obj
+        ).all()
+        
+        if not query:
+            return jsonify({
+                'code': 404, 
+                'message': f'No lignite realtime data found for {date_str}'
+            })
+        
+        # Get plant names from mapping
+        plant_names = lignite_mapping['plant_names']
+        hours = [f"{i:02d}:00" for i in range(24)]
+        
+        # Initialize values matrix
+        values = [[0 for _ in range(len(plant_names))] for _ in range(24)]
+        
+        # Fill values matrix
+        for record in query:
+            try:
+                plant_index = plant_names.index(record.plant_name)
+                hour_index = record.hour
+                if 0 <= hour_index < 24:
+                    values[hour_index][plant_index] = record.value or 0
+            except ValueError:
+                # Plant not in mapping, skip
+                continue
+        
+        response_data = {
+            'hours': hours,
+            'plants': [f"{name}--{capacity} MW" for name, capacity in zip(
+                lignite_mapping['plant_names'],
+                lignite_mapping['capacities']
+            )],
+            'values': values
+        }
+        
+        return jsonify({'code': 200, 'data': response_data})
+        
+    except Exception as e:
+        app.logger.error(f"Error in lignite_realtime_heatmap_data: {str(e)}")
+        return jsonify({'code': 500, 'message': 'Internal server error'})

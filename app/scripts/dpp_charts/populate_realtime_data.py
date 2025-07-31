@@ -12,9 +12,9 @@ sys.path.append(parent_dir)
 
 from app.factory import create_app
 from app.database.config import db
-from app.models.realtime import HydroRealtimeData, NaturalGasRealtimeData
+from app.models.realtime import HydroRealtimeData, NaturalGasRealtimeData, LigniteRealtimeData
 from app.functions import get_tgt_token
-from app.mappings import hydro_mapping, plant_mapping
+from app.mappings import hydro_mapping, plant_mapping, lignite_mapping
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import requests
@@ -23,7 +23,8 @@ import requests
 CHUNK_SIZE = 90  # Days per chunk
 TYPE_MAPPINGS = {
     'hydro': (HydroRealtimeData, hydro_mapping),
-    'natural_gas': (NaturalGasRealtimeData, plant_mapping)
+    'natural_gas': (NaturalGasRealtimeData, plant_mapping),
+    'lignite': (LigniteRealtimeData, lignite_mapping)
 }
 
 def get_local_session():

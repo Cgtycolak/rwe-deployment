@@ -1499,7 +1499,59 @@
         </div>
     </div>
 
-    <!-- Add this after the import-coal-heatmap section -->
+    <!-- Lignite Heatmap section -->
+    <div class="content-section" data-section="lignite-heatmap">
+        <div class="container">
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="form-group">
+                        <label for="lignite_date">Select Date:</label>
+                        <input type="date" id="lignite_date" class="form-control">
+                    </div>
+                </div>
+                <div class="col-md-4 d-flex align-items-end gap-2">
+                    <button id="load_lignite_heatmap" class="btn btn-primary position-relative" style="min-width: 120px;">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        <span class="button-content">Load Heatmap</span>
+                    </button>
+                    <button id="toggle_lignite_realtime" class="btn btn-secondary" style="min-width: 120px;" disabled>
+                        Show Realtime
+                    </button>
+                </div>
+            </div>
+            <div class="row">
+                <div id="lignite_heatmap_container" class="col-12" style="display: none;">
+                    <!-- First Version Heatmap -->
+                    <div class="mb-4">
+                        <h5 class="text-center">Lignite DPP First Version</h5>
+                        <div id="lignite_heatmap_first_version"></div>
+                    </div>
+                    <!-- Current Version Heatmap -->
+                    <div class="mb-4">
+                        <h5 class="text-center">Lignite DPP Final Version</h5>
+                        <div id="lignite_heatmap_current"></div>
+                    </div>
+                    <!-- Difference Heatmap -->
+                    <div class="mb-4">
+                        <h5 class="text-center">Lignite DPP Difference (Final - First)</h5>
+                        <div id="lignite_heatmap_difference"></div>
+                    </div>
+                    <!-- Realtime Values -->
+                    <div class="mb-4" style="display: none;">
+                        <h5 class="text-center">Lignite Realtime Generation Values</h5>
+                        <div id="lignite_heatmap_realtime"></div>
+                    </div>
+                    <!-- Difference Heatmap (Realtime - Final) -->
+                    <div style="display: none;">
+                        <h5 class="text-center">Lignite Difference (Realtime - Final)</h5>
+                        <div id="lignite_heatmap_realtime_difference"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hydro Heatmap section -->
     <div class="content-section" data-section="hydro-heatmap">
         <div class="container">
             <div class="row mb-4">
@@ -1551,7 +1603,7 @@
         </div>
     </div>
 
-    <!-- Add this after the hydro-heatmap section -->
+    <!-- Add this after the import-coal-heatmap section -->
     <div class="content-section" data-section="rolling-averages">
         <div class="container-fluid">
             <div class="chart-controls mb-4" style="background-color: white;">

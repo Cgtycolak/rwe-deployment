@@ -1,13 +1,14 @@
 # Database Migration History
 
 ## Current State
-- **Latest Migration**: 20240612000000
+- **Latest Migration**: 20250101000000
 - **Migration Chain**:
   1. Base -> dfdfe7849931 (initial_migration)
   2. dfdfe7849931 -> 20240325152900 (add_production_table)
   3. 20240325152900 -> 20240423000000 (add_demand_table)
   4. 20240423000000 -> 20240501000000 (add_forecasting_tables)
   5. 20240501000000 -> 20240612000000 (update_update_id_to_string)
+  6. 20240612000000 -> 20250101000000 (add_lignite_tables)
 
 ## Tables
 1. **hydro_heatmap_data** (from dfdfe7849931)
@@ -72,11 +73,19 @@
     - Created: 2025-05-01
     - Purpose: Store system direction data from EPIAS
 
+15. **lignite_heatmap_data** (from 20250101000000)
+    - Created: 2025-01-01
+    - Purpose: Store lignite plant heatmap data
+
+16. **lignite_realtime_data** (from 20250101000000)
+    - Created: 2025-01-01
+    - Purpose: Store lignite plant realtime data
+
 ## How to Verify Current State
 ```sql
 -- Check current migration version
 SELECT * FROM alembic_version;
--- Expected output: 20240612000000
+-- Expected output: 20250101000000
 -- List all tables
 \dt
 -- Expected tables:
@@ -85,6 +94,8 @@ SELECT * FROM alembic_version;
 -- - imported_coal_heatmap_data
 -- - natural_gas_heatmap_data
 -- - natural_gas_realtime_data
+-- - lignite_heatmap_data
+-- - lignite_realtime_data
 -- - production_data
 -- - demand_data
 -- - meteologica_unlicensed_solar (schema: meteologica)
@@ -109,7 +120,7 @@ If migration chain is broken:
 1. Check current version
 psql -U rwe_user -d rwe_data -c "SELECT * FROM alembic_version;"
 2. Reset to a known good state if needed
-psql -U rwe_user -d rwe_data -c "UPDATE alembic_version SET version_num = '20240612000000';"
+psql -U rwe_user -d rwe_data -c "UPDATE alembic_version SET version_num = '20250101000000';"
 3. Verify migrations are working
 flask db current
 flask db history
@@ -127,6 +138,8 @@ DROP TABLE IF EXISTS hydro_realtime_data CASCADE;
 DROP TABLE IF EXISTS imported_coal_heatmap_data CASCADE;
 DROP TABLE IF EXISTS natural_gas_heatmap_data CASCADE;
 DROP TABLE IF EXISTS natural_gas_realtime_data CASCADE;
+DROP TABLE IF EXISTS lignite_heatmap_data CASCADE;
+DROP TABLE IF EXISTS lignite_realtime_data CASCADE;
 DROP SCHEMA IF EXISTS meteologica CASCADE;
 DROP SCHEMA IF EXISTS epias CASCADE;
 DROP TABLE IF EXISTS alembic_version CASCADE;

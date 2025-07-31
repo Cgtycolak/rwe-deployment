@@ -96,7 +96,7 @@ def update_realtime_data(app):
             # Import here to avoid circular imports
             from ..scripts.dpp_charts.populate_realtime_data import populate_realtime_data
             
-            for plant_type in ['hydro', 'natural_gas']:
+            for plant_type in ['hydro', 'natural_gas', 'lignite']:
                 try:
                     populate_realtime_data(plant_type, yesterday, yesterday, local_db=False)
                     app.logger.info(f"Successfully updated realtime data for {plant_type}")

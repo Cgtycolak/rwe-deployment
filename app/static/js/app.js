@@ -6,6 +6,7 @@ import { aic } from './modules/aic.js';
 import { generationComparison } from './modules/generation-comparison.js';
 import { heatmap } from './modules/heatmap.js';
 import { importCoalHeatmap } from './modules/importCoalHeatmap.js';
+import { ligniteHeatmap } from './modules/ligniteHeatmap.js';
 import { miniTables } from './modules/mini-tables.js';
 import { hydroHeatmap } from './modules/hydro-heatmap.js';
 import { forecasting } from './modules/forecasting.js';
@@ -22,6 +23,7 @@ const app = {
     generationComparison,
     heatmap,
     importCoalHeatmap,
+    ligniteHeatmap,
     miniTables,
     hydroHeatmap,
     forecasting,
@@ -100,6 +102,7 @@ const app = {
             this.generationComparison.setup({ displayMessage });
             this.heatmap.setup(this.helpers);
             this.importCoalHeatmap.setup(this.helpers);
+            this.ligniteHeatmap.setup(this.helpers);
             this.hydroHeatmap.setup(this.helpers);
             this.miniTables.setup(this.helpers);
             

@@ -417,6 +417,12 @@
                 <span>Hydro DPP Heatmap</span>
             </a>
         </div>
+         <div class="nav-item">
+            <a href="#" class="nav-link" data-section="lignite-heatmap">
+                <i class="fas fa-industry"></i>
+                <span>Lignite DPP Heatmap</span>
+            </a>
+        </div>
         
         <!-- Forecasting -->
         <div class="nav-category">Forecasting</div>
@@ -519,6 +525,11 @@
                             case 'generation-heatmap':
                                 if (window.app.heatmap) {
                                     window.app.heatmap.init();
+                                }
+                                break;
+                            case 'lignite-heatmap':
+                                if (window.app.ligniteHeatmap) {
+                                    window.app.ligniteHeatmap.init();
                                 }
                                 break;
                         }
