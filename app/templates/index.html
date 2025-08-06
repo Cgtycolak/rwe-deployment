@@ -1451,9 +1451,33 @@
                         <div id="generation_heatmap_realtime"></div>
                     </div>
                     <!-- Difference Heatmap (Realtime - Final) -->
-                    <div style="display: none;">
+                    <div class="mb-4" style="display: none;">
                         <h5 class="text-center">Difference (Realtime - Final)</h5>
                         <div id="generation_heatmap_realtime_difference"></div>
+                    </div>
+                    
+                    <!-- NEW: Date Comparison Section -->
+                    <div class="mb-4">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="comparison_date">Compare with Date:</label>
+                                    <input type="date" id="comparison_date" class="form-control">
+                                </div>
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <button id="load_comparison" class="btn btn-primary position-relative" style="min-width: 140px;">
+                                    <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                    <span class="button-content">Compare Dates</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Date Comparison Results (initially hidden) -->
+                        <div id="comparison_container" style="display: none;">
+                            <h5 class="text-center">Date Comparison (First Version Only)</h5>
+                            <div id="generation_heatmap_date_comparison"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1493,6 +1517,30 @@
                     <div class="mb-4">
                         <h5 class="text-center">Import Coal DPP Difference (Final - First)</h5>
                         <div id="import_coal_heatmap_difference"></div>
+                    </div>
+                    
+                    <!-- NEW: Date Comparison Section -->
+                    <div class="mb-4">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="import_coal_comparison_date">Compare with Date:</label>
+                                    <input type="date" id="import_coal_comparison_date" class="form-control">
+                                </div>
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <button id="load_import_coal_comparison" class="btn btn-primary position-relative" style="min-width: 140px;">
+                                    <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                    <span class="button-content">Compare Dates</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Date Comparison Results (initially hidden) -->
+                        <div id="import_coal_comparison_container" style="display: none;">
+                            <h5 class="text-center">Import Coal Date Comparison (First Version Only)</h5>
+                            <div id="import_coal_heatmap_date_comparison"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1542,9 +1590,33 @@
                         <div id="lignite_heatmap_realtime"></div>
                     </div>
                     <!-- Difference Heatmap (Realtime - Final) -->
-                    <div style="display: none;">
+                    <div class="mb-4" style="display: none;">
                         <h5 class="text-center">Lignite Difference (Realtime - Final)</h5>
                         <div id="lignite_heatmap_realtime_difference"></div>
+                    </div>
+                    
+                    <!-- NEW: Date Comparison Section -->
+                    <div class="mb-4">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="lignite_comparison_date">Compare with Date:</label>
+                                    <input type="date" id="lignite_comparison_date" class="form-control">
+                                </div>
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <button id="load_lignite_comparison" class="btn btn-primary position-relative" style="min-width: 140px;">
+                                    <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                    <span class="button-content">Compare Dates</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Date Comparison Results (initially hidden) -->
+                        <div id="lignite_comparison_container" style="display: none;">
+                            <h5 class="text-center">Lignite Date Comparison (First Version Only)</h5>
+                            <div id="lignite_heatmap_date_comparison"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1594,9 +1666,33 @@
                         <div id="hydro_heatmap_realtime"></div>
                     </div>
                     <!-- Difference Heatmap (Realtime - Final) -->
-                    <div style="display: none;">
+                    <div class="mb-4" style="display: none;">
                         <h5 class="text-center">Hydro Difference (Realtime - Final)</h5>
                         <div id="hydro_heatmap_realtime_difference"></div>
+                    </div>
+                    
+                    <!-- NEW: Date Comparison Section -->
+                    <div class="mb-4">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="hydro_comparison_date">Compare with Date:</label>
+                                    <input type="date" id="hydro_comparison_date" class="form-control">
+                                </div>
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <button id="load_hydro_comparison" class="btn btn-primary position-relative" style="min-width: 140px;">
+                                    <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                    <span class="button-content">Compare Dates</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Date Comparison Results (initially hidden) -->
+                        <div id="hydro_comparison_container" style="display: none;">
+                            <h5 class="text-center">Hydro Date Comparison (First Version Only)</h5>
+                            <div id="hydro_heatmap_date_comparison"></div>
+                        </div>
                     </div>
                 </div>
             </div>

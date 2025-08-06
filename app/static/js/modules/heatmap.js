@@ -39,11 +39,13 @@ export const heatmap = {
             this.realtimeVisible = false;
             this.selectedDate = selectedDate;  // Store date for later use
             
-            // Hide realtime sections
+            // Hide realtime sections and comparison
             const realtimeSection = document.getElementById('generation_heatmap_realtime').parentElement;
             const realtimeDiffSection = document.getElementById('generation_heatmap_realtime_difference').parentElement;
+            const comparisonContainer = document.getElementById('comparison_container');
             realtimeSection.style.display = 'none';
             realtimeDiffSection.style.display = 'none';
+            comparisonContainer.style.display = 'none';
 
             // Fetch KGUP versions only
             const [firstVersionResponse, currentVersionResponse] = await Promise.all([
@@ -73,6 +75,8 @@ export const heatmap = {
                 
                 // Store current version for difference calculation later
                 this.currentVersionData = currentVersionResult.data;
+                // Store first version for date comparison
+                this.firstVersionData = firstVersionResult.data;
                 
                 // Display KGUP versions
                 this.processAndDisplayHeatmap(firstVersionResult.data, selectedDate, 'first');
@@ -106,6 +110,80 @@ export const heatmap = {
         }
     },
 
+    async loadDateComparison() {
+        const button = document.getElementById('load_comparison');
+        const spinner = button.querySelector('.spinner-border');
+        const buttonText = button.querySelector('.button-content');
+        const comparisonContainer = document.getElementById('comparison_container');
+        const comparisonDate = document.getElementById('comparison_date').value;
+        
+        if (!comparisonDate) {
+            this.displayMessage("Please select a comparison date", "warning");
+            return;
+        }
+        
+        if (!this.selectedDate) {
+            this.displayMessage("Please load the main heatmap first", "warning");
+            return;
+        }
+        
+        if (comparisonDate === this.selectedDate) {
+            this.displayMessage("Comparison date must be different from the main date", "warning");
+            return;
+        }
+        
+        try {
+            // Show loading state
+            button.disabled = true;
+            spinner.classList.remove('d-none');
+            buttonText.textContent = 'Loading...';
+            
+            // Fetch first version data for comparison date
+            const comparisonResponse = await fetch("/heatmap_data", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    date: comparisonDate,
+                    version: 'first'
+                })
+            });
+            
+            const comparisonResult = await comparisonResponse.json();
+            
+            if (comparisonResult.code === 200) {
+                // Calculate difference (Selected Date - Comparison Date)
+                const dateComparisonData = {
+                    hours: this.firstVersionData.hours,
+                    plants: this.firstVersionData.plants,
+                    values: this.firstVersionData.values.map((row, i) => 
+                        row.map((val, j) => 
+                            val - comparisonResult.data.values[i][j]
+                        )
+                    )
+                };
+                
+                // Show comparison container and display heatmap
+                comparisonContainer.style.display = 'block';
+                this.processAndDisplayHeatmap(
+                    dateComparisonData, 
+                    `${this.selectedDate} vs ${comparisonDate}`, 
+                    'date_comparison'
+                );
+                
+            } else {
+                this.displayMessage("Failed to load comparison data", "danger");
+            }
+            
+        } catch (error) {
+            console.error('Error loading comparison data:', error);
+            this.displayMessage("Error loading comparison data", "danger");
+        } finally {
+            button.disabled = false;
+            spinner.classList.add('d-none');
+            buttonText.textContent = 'Compare Dates';
+        }
+    },
+
     processAndDisplayHeatmap(data, date, version) {
         try {
             if (!data.values || !data.hours || !data.plants) {
@@ -132,6 +210,7 @@ export const heatmap = {
                          version === 'current' ? 'generation_heatmap_current' :
                          version === 'realtime' ? 'generation_heatmap_realtime' :
                          version === 'realtime_difference' ? 'generation_heatmap_realtime_difference' :
+                         version === 'date_comparison' ? 'generation_heatmap_date_comparison' :
                          'generation_heatmap_difference';
         const element = document.getElementById(elementId);
 
@@ -147,7 +226,7 @@ export const heatmap = {
 
         // Function to determine text color based on background value
         const getTextColor = (value) => {
-            if (version === 'difference' || version === 'realtime_difference') {
+            if (version === 'difference' || version === 'realtime_difference' || version === 'date_comparison') {
                 if (value === 0) return 'black';
             }
             const threshold = 0.3;
@@ -155,8 +234,8 @@ export const heatmap = {
             return normalizedValue > threshold ? 'black' : 'white';
         };
 
-        // Different color scale for difference heatmap
-        const colorscale = version === 'difference' ? [
+        // Different color scale for difference heatmaps
+        const colorscale = (version === 'difference' || version === 'realtime_difference' || version === 'date_comparison') ? [
             [0, 'blue'],      // Negative values
             [0.5, 'white'],   // Zero
             [1, 'red']        // Positive values
@@ -166,6 +245,8 @@ export const heatmap = {
             `Hourly Generation Difference MWh - ${date} (Final - First)` :
             version === 'realtime_difference' ?
             `Hourly Generation Difference MWh - ${date} (Realtime - Final)` :
+            version === 'date_comparison' ?
+            `Hourly Generation Difference MWh - ${date} (First Version)` :
             `Hourly Generation MWh - ${date} (${version === 'first' ? 'First Version' : version === 'current' ? 'Final Version' : 'Realtime'})`;
 
         const layout = {
@@ -224,14 +305,14 @@ export const heatmap = {
                 len: 1.029
             },
             // For difference heatmap, center the color scale at zero
-            zmid: version === 'difference' ? 0 : undefined,
+            zmid: (version === 'difference' || version === 'realtime_difference' || version === 'date_comparison') ? 0 : undefined,
             hoverongaps: false,
             xgap: 1,
             ygap: 1
         };
 
         // Add hover template to show the difference values
-        if (version === 'difference' || version === 'realtime_difference') {
+        if (version === 'difference' || version === 'realtime_difference' || version === 'date_comparison') {
             heatmapTrace.hovertemplate = 
                 'Hour: %{y}<br>' +
                 'Plant: %{x}<br>' +
@@ -323,9 +404,15 @@ export const heatmap = {
             this.toggleRealtime();
         });
 
+        // NEW: Add event listener for date comparison
+        document.getElementById('load_comparison').addEventListener('click', () => {
+            this.loadDateComparison();
+        });
+
         // Initialize state
         this.realtimeVisible = false;
         this.realtimeData = null;
         this.realtimeDifferenceData = null;
+        this.firstVersionData = null;  // Store first version data for comparison
     }
 };
