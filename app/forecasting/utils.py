@@ -92,12 +92,17 @@ def process_excel_data(excel_data):
     # Set start time to midnight today
     start_time = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
     
-    # Create time range from midnight to the current hour (inclusive)
-    # This ensures we have data up to the current hour
-    time_range = pd.date_range(start=start_time, periods=current_hour+1, freq='h')
+    # Create time range from midnight to the hour BEFORE current hour (exclusive of current hour)
+    # This ensures we don't include incomplete data for the current hour
+    if current_hour == 0:
+        # If it's midnight, we don't have any complete hours today yet
+        print("Current hour is 0 (midnight), no complete hours available for today")
+        return pd.DataFrame(columns=['date', 'system_direction'])
     
-    # Only use rows in the Excel file up to and including the current hour
-    updated_yal_yat = excel_data[excel_data['Saat'] <= current_hour].copy()
+    time_range = pd.date_range(start=start_time, periods=current_hour, freq='h')
+    
+    # Only use rows in the Excel file up to but NOT including the current hour
+    updated_yal_yat = excel_data[excel_data['Saat'] < current_hour].copy()
     
     # Process the data
     updated_yal_yat['YAT TeslimEdilemeyenMiktar(MWh)'] = updated_yal_yat['YAT TeslimEdilemeyenMiktar(MWh)'].fillna(0)
