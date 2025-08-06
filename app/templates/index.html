@@ -1711,6 +1711,7 @@
                             <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                         </button>
                         <button id="toggle-modebar-all" class="btn btn-outline-secondary ms-2" style="min-width: 120px;">Hide All Chart Controls</button>
+                        <button id="toggle-legends-all" class="btn btn-outline-secondary ms-2" style="min-width: 120px;">Hide All Legends</button>
                     </div>
                     <div class="col-md-6 text-end">
                         <button id="update-rolling-database" class="btn btn-outline-success" style="min-width: 120px;">
@@ -3005,5 +3006,40 @@ function loadRollingCharts() {
             }
         }
     });
+</script>
+
+<script>
+    // Toggle legends for all charts
+    const toggleLegendsBtn = document.getElementById('toggle-legends-all');
+    if (toggleLegendsBtn) {
+        // Clear any existing listeners by cloning and replacing
+        const newToggleLegendsBtn = toggleLegendsBtn.cloneNode(true);
+        toggleLegendsBtn.parentNode.replaceChild(newToggleLegendsBtn, toggleLegendsBtn);
+        
+        // Add new event listener
+        newToggleLegendsBtn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent event bubbling
+            const charts = document.querySelectorAll('.chart-container');
+            let areLegendsVisible = true;
+            
+            // Check current state by looking at the first chart
+            if (charts.length > 0) {
+                const firstChart = charts[0];
+                if (firstChart._fullLayout && firstChart._fullLayout.showlegend !== undefined) {
+                    areLegendsVisible = firstChart._fullLayout.showlegend;
+                }
+            }
+            
+            // Toggle all chart legends
+            charts.forEach(chart => {
+                if (chart.id && window.Plotly && chart._fullLayout) {
+                    Plotly.relayout(chart, 'showlegend', !areLegendsVisible);
+                }
+            });
+            
+            // Update button text
+            this.textContent = areLegendsVisible ? 'Show All Legends' : 'Hide All Legends';
+        });
+    }
 </script>
 {% endblock page_scripts %}
