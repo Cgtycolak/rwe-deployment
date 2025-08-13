@@ -21,6 +21,11 @@ from sqlalchemy import text
 import os
 from app.models.demand import DemandData
 from sqlalchemy import extract
+from app.models.unlicensed_solar import UnlicensedSolarData
+from app.models.licensed_solar import LicensedSolarData
+import zipfile
+import tempfile
+from dotenv import load_dotenv
 
 # Conditionally set pandas option if it exists (available in pandas 2.1.0+)
 try:
@@ -603,12 +608,11 @@ def realtime_heatmap_data():
         # Get authentication token
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
         
-        # Create a dictionary to track how many times each powerplant ID is used
+        # Create mappings for plant IDs
         p_id_count = {}
         for p_id in plant_mapping['p_ids']:
             p_id_count[p_id] = plant_mapping['p_ids'].count(p_id)
 
-        # Create a mapping of powerplant ID to its indices in the plant list
         p_id_indices = {}
         for idx, p_id in enumerate(plant_mapping['p_ids']):
             if p_id not in p_id_indices:
@@ -616,7 +620,7 @@ def realtime_heatmap_data():
             p_id_indices[p_id].append(idx)
 
         # Fetch realtime data for each unique powerplant
-        batch_data = []  # For storing database records
+        batch_data = []
         unique_p_ids = set(plant_mapping['p_ids'])
         for p_id in unique_p_ids:
             try:
@@ -636,21 +640,18 @@ def realtime_heatmap_data():
                 )
                 response.raise_for_status()
                 
-                # Process response data
                 items = response.json().get('items', [])
                 
-                # Extract hourly values
                 hourly_values = [0] * 24
                 for item in items:
                     hour = int(item.get('hour', '00:00').split(':')[0])
                     total = item.get('total', 0)
                     hourly_values[hour] = total
 
-                # Distribute the values among all instances of this powerplant
+                # Distribute values among plant instances
                 count = p_id_count[p_id]
                 distributed_values = [val / count for val in hourly_values]
                 
-                # Store data in DataFrame and prepare database records
                 for idx in p_id_indices[p_id]:
                     plant_name = plant_mapping['plant_names'][idx]
                     df[plant_name] = distributed_values
@@ -668,7 +669,6 @@ def realtime_heatmap_data():
                 
             except Exception as e:
                 print(f"Error fetching realtime data for powerplant {p_id}: {str(e)}")
-                # Set zero values for all instances of this powerplant
                 for idx in p_id_indices[p_id]:
                     plant_name = plant_mapping['plant_names'][idx]
                     df[plant_name] = [0] * 24
@@ -693,7 +693,6 @@ def realtime_heatmap_data():
                 "values": df.values.tolist()
             }
         })
-    
     except Exception as e:
         print(f"Error in realtime_heatmap_data: {str(e)}")
         return jsonify({"code": 500, "error": str(e)})
@@ -1622,24 +1621,78 @@ def check_data_completeness():
 @main.route('/get-rolling-data')
 def get_rolling_data():
     try:
-        # Load pre-calculated historical data
+        # Load the original historical data (2016-2024) as the base
         historical_file = os.path.join(current_app.static_folder, 'data', 'historical_averages.json')
         
         if os.path.exists(historical_file):
-            print("Using pre-calculated historical data")
+            print("Loading original historical data (2016-2024) as base")
             with open(historical_file, 'r') as f:
                 historical_data = json.load(f)
+            
+            # Set base metadata for 2016-2024 data
+            historical_data['_metadata'] = {
+                'data_source': 'original',
+                'date_range': '2016-2024',
+                'uses_combined_solar': False
+            }
         else:
-            print("Historical data file not found, calculating from scratch")
             historical_data = {}
+            historical_data['_metadata'] = {
+                'data_source': 'none',
+                'date_range': '2016-2024',
+                'uses_combined_solar': False
+            }
+
+        # Now load the combined solar data and override only the solar_combined entry
+        combined_solar_file = os.path.join(current_app.static_folder, 'data', 'historical_averages_combined_solar.json')
         
-        # Get current year data only (2025 and beyond)
+        if os.path.exists(combined_solar_file):
+            print("Loading combined solar historical data (2020-2024) for solar_combined chart")
+            with open(combined_solar_file, 'r') as f:
+                combined_solar_data = json.load(f)
+            
+            # Only override the solar_combined data, keep everything else from original file
+            if 'solar_combined' in combined_solar_data:
+                historical_data['solar_combined'] = combined_solar_data['solar_combined']
+                
+            # Also override renewables ratio since it now uses combined solar data
+            if 'renewablesratio_monthly' in combined_solar_data:
+                historical_data['renewablesratio_monthly'] = combined_solar_data['renewablesratio_monthly']
+                
+            # Add special metadata for solar_combined to indicate it uses 2020-2024 data
+            historical_data['_solar_combined_metadata'] = {
+                'date_range': '2020-2024',
+                'uses_combined_solar': True
+            }
+            
+            print("Successfully merged combined solar data with original historical data")
+        else:
+            print("Combined solar historical data file not found")
+
+        # Get current year data (2025 and beyond)
         current_year = datetime.now().year
         cutoff_date = datetime(current_year, 1, 1)
         
-        current_data = db.session.query(ProductionData).filter(
+        # Query production data (excluding solar since we'll use separate tables)
+        production_query = db.session.query(ProductionData).filter(
             ProductionData.datetime >= cutoff_date
-        ).order_by(ProductionData.datetime).all()
+        ).order_by(ProductionData.datetime)
+        
+        # Query unlicensed solar data
+        unlicensed_query = db.session.query(UnlicensedSolarData).filter(
+            UnlicensedSolarData.datetime >= cutoff_date
+        ).order_by(UnlicensedSolarData.datetime)
+        
+        # Query licensed solar data
+        licensed_query = db.session.query(LicensedSolarData).filter(
+            LicensedSolarData.datetime >= cutoff_date
+        ).order_by(LicensedSolarData.datetime)
+        
+        current_data = production_query.all()
+        unlicensed_data = unlicensed_query.all()
+        licensed_data = licensed_query.all()
+        
+        print(f"Found {len(current_data)} production records, {len(unlicensed_data)} unlicensed solar records, and {len(licensed_data)} licensed solar records")
         
         if current_data:
             print(f"Processing {len(current_data)} current year records")
@@ -1662,7 +1715,7 @@ def get_rolling_data():
                 'asphaltitecoal': d.asphaltitecoal,
                 'wind': d.wind,
                 'nuclear': d.nuclear,
-                'sun': d.sun,
+                'sun': d.sun,  # Keep this for renewables calculation
                 'importexport': d.importexport,
                 'total': d.total,
                 'wasteheat': d.wasteheat
@@ -1676,15 +1729,130 @@ def get_rolling_data():
             istanbul_tz = pytz.timezone('Europe/Istanbul')
             df.index = df.index.tz_convert(istanbul_tz)
             
-            # Calculate renewables total and ratio
-            df['renewablestotal'] = df['geothermal'] + df['biomass'] + df['wind'] + df['sun']
+            # Process solar data from separate tables first
+            if unlicensed_data or licensed_data:
+                print(f"Processing {len(unlicensed_data)} unlicensed and {len(licensed_data)} licensed solar records")
+                
+                # Create unlicensed solar DataFrame
+                if unlicensed_data:
+                    unlicensed_df = pd.DataFrame([{
+                        'datetime': d.datetime.astimezone(pytz.UTC),
+                        'unlicensed_solar': d.unlicensed_solar
+                    } for d in unlicensed_data])
+                    
+                    unlicensed_df['datetime'] = pd.to_datetime(unlicensed_df['datetime'], utc=True)
+                    unlicensed_df = unlicensed_df.set_index('datetime')
+                    unlicensed_df.index = unlicensed_df.index.tz_convert(istanbul_tz)
+                else:
+                    unlicensed_df = pd.DataFrame(columns=['unlicensed_solar'])
+                    unlicensed_df.index = pd.DatetimeIndex([])
+                
+                # Create licensed solar DataFrame
+                if licensed_data:
+                    licensed_df = pd.DataFrame([{
+                        'datetime': d.datetime.astimezone(pytz.UTC),
+                        'licensed_solar': d.licensed_solar
+                    } for d in licensed_data])
+                    
+                    licensed_df['datetime'] = pd.to_datetime(licensed_df['datetime'], utc=True)
+                    licensed_df = licensed_df.set_index('datetime')
+                    licensed_df.index = licensed_df.index.tz_convert(istanbul_tz)
+                else:
+                    licensed_df = pd.DataFrame(columns=['licensed_solar'])
+                    licensed_df.index = pd.DatetimeIndex([])
+                
+                print(f"Unlicensed solar data range: {unlicensed_df.index.min() if not unlicensed_df.empty else 'None'} to {unlicensed_df.index.max() if not unlicensed_df.empty else 'None'}")
+                print(f"Licensed solar data range: {licensed_df.index.min() if not licensed_df.empty else 'None'} to {licensed_df.index.max() if not licensed_df.empty else 'None'}")
+                print(f"Production data range: {df.index.min()} to {df.index.max()}")
+                
+                # Resample all DataFrames to hourly frequency to align timestamps
+                df_hourly = df.resample('H', closed='left', label='left').mean()
+                unlicensed_hourly = unlicensed_df.resample('H', closed='left', label='left').mean() if not unlicensed_df.empty else pd.DataFrame()
+                licensed_hourly = licensed_df.resample('H', closed='left', label='left').mean() if not licensed_df.empty else pd.DataFrame()
+                
+                print(f"After resampling - Production shape: {df_hourly.shape}")
+                if not unlicensed_hourly.empty:
+                    print(f"Unlicensed shape: {unlicensed_hourly.shape}")
+                if not licensed_hourly.empty:
+                    print(f"Licensed shape: {licensed_hourly.shape}")
+                
+                # Merge all DataFrames
+                if not unlicensed_hourly.empty:
+                    df_hourly = df_hourly.join(unlicensed_hourly, how='outer')
+                    df_hourly['unlicensed_solar'] = df_hourly['unlicensed_solar'].fillna(0)
+                else:
+                    df_hourly['unlicensed_solar'] = 0
+                
+                if not licensed_hourly.empty:
+                    df_hourly = df_hourly.join(licensed_hourly, how='outer')
+                    df_hourly['licensed_solar'] = df_hourly['licensed_solar'].fillna(0)
+                else:
+                    df_hourly['licensed_solar'] = 0
+                
+                # Calculate combined solar (unlicensed + licensed)
+                df_hourly['solar_combined'] = df_hourly['unlicensed_solar'] + df_hourly['licensed_solar']
+                
+                # Filter out incomplete days - only keep days with all 24 hours
+                # Also exclude today and yesterday to be extra safe
+                print("Filtering out incomplete days from current year data...")
+                daily_counts = df_hourly.groupby(df_hourly.index.date).size()
+                
+                # Get today and yesterday dates
+                today = datetime.now().date()
+                yesterday = today - timedelta(days=1)
+                
+                # Find complete days (24 hours) but exclude today and yesterday
+                complete_days = daily_counts[daily_counts == 24].index
+                safe_complete_days = [day for day in complete_days if day not in [today, yesterday]]
+                
+                # Debug: Show which days are incomplete or excluded
+                incomplete_days = daily_counts[daily_counts != 24]
+                if len(incomplete_days) > 0:
+                    print("🔍 Incomplete days found:")
+                    for day, count in incomplete_days.items():
+                        missing_hours = 24 - count
+                        available_hours = list(range(count))
+                        missing_hours_list = list(range(count, 24))
+                        print(f"   📅 {day}: {count} hours (missing {missing_hours} hours)")
+                        print(f"   ⏰ Available hours: {available_hours}")
+                        print(f"   ❌ Missing hours: {missing_hours_list}")
+                
+                # Show excluded days
+                excluded_days = [day for day in complete_days if day in [today, yesterday]]
+                if excluded_days:
+                    print("🚫 Complete days excluded for safety:")
+                    for day in excluded_days:
+                        print(f"   📅 {day}: Excluded ({'today' if day == today else 'yesterday'})")
+                
+                # Filter the DataFrame to only include safe complete days
+                safe_complete_days_set = set(safe_complete_days)
+                df_hourly = df_hourly[df_hourly.index.map(lambda x: x.date()).isin(safe_complete_days_set)]
+                
+                print(f"Found {len(safe_complete_days)} safe complete days out of {len(daily_counts)} total days")
+                print(f"After filtering incomplete days and recent days - DataFrame shape: {df_hourly.shape}")
+                print(f"Sample unlicensed solar values: {df_hourly['unlicensed_solar'].head()}")
+                print(f"Sample licensed solar values: {df_hourly['licensed_solar'].head()}")
+                print(f"Sample combined solar values: {df_hourly['solar_combined'].head()}")
+                
+                # Use the hourly DataFrame for further processing
+                df = df_hourly
+            else:
+                # No solar data from separate tables, set to 0
+                df['unlicensed_solar'] = 0
+                df['licensed_solar'] = 0
+                df['solar_combined'] = 0
+                print("No separate solar data found, setting all solar values to 0")
+            
+            # Calculate renewables total and ratio (using combined solar data) - AFTER solar processing
+            df['renewablestotal'] = df['geothermal'] + df['biomass'] + df['wind'] + df['solar_combined']
             df['renewablesratio'] = df['renewablestotal'] / df['total']
             
             # Calculate rolling averages for current year
             rolling_data = historical_data.copy() if historical_data else {}
             
             # Process regular columns with 7-day rolling averages
-            regular_columns = [col for col in df.columns if col != 'renewablesratio']
+            regular_columns = [col for col in df.columns if col not in ['renewablesratio', 'solar_combined']]
+            regular_columns.append('solar_combined')  # Add combined solar data
             for column in regular_columns:
                 # Resample to daily frequency
                 daily_avg = df[column].resample('D', closed='left', label='left').mean()
@@ -1704,7 +1872,8 @@ def get_rolling_data():
                 ]
             
             # Special handling for renewables ratio - monthly averages for current year
-            monthly_data = df.groupby([df.index.month, df.index.year])['renewablesratio'].mean()
+            if 'renewablesratio' in df.columns:
+                monthly_data = df.groupby([df.index.month, df.index.year])['renewablesratio'].mean()
             
             # Convert to DataFrame for easier manipulation
             monthly_df = pd.DataFrame(monthly_data)
@@ -1725,6 +1894,11 @@ def get_rolling_data():
                     year_data.append(None)
             
             rolling_data['renewablesratio_monthly'][str(current_year)] = year_data
+                
+            print(f"Sample renewables data for current year: {df['renewablesratio'].mean():.4f}")
+            
+            # Add this after calculating solar_combined
+            print(f"Sample solar data - Licensed: {df['licensed_solar'].iloc[0] if len(df) > 0 else 'No data'}, Unlicensed: {df['unlicensed_solar'].iloc[0] if len(df) > 0 else 'No data'}, Combined: {df['solar_combined'].iloc[0] if len(df) > 0 else 'No data'}")
             
             return jsonify(rolling_data)
         else:
@@ -1943,7 +2117,7 @@ def check_demand_completeness():
             'missing_records': expected_records - total_records,
             'coverage_percentage': (total_records / expected_records) * 100,
             'missing_dates': [d[0].strftime('%Y-%m-%d %H:%M') for d in missing_dates[:100]] if missing_dates else [],
-            'total_missing_dates': len(missing_dates)
+            'total_missing_dates': len(missing_dates) if missing_dates else 0
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -2394,3 +2568,259 @@ def lignite_realtime_heatmap_data():
     except Exception as e:
         current_app.logger.error(f"Error in lignite_realtime_heatmap_data: {str(e)}")
         return jsonify({'code': 500, 'message': 'Internal server error'})
+
+@main.route('/update-unlicensed-solar-data')
+def update_unlicensed_solar_data():
+    try:
+        # Get the most recent record's datetime
+        latest_record = db.session.query(UnlicensedSolarData.datetime).order_by(UnlicensedSolarData.datetime.desc()).first()
+        
+        if not latest_record:
+            # If no data, start from current year
+            start_date = datetime(datetime.now().year, 1, 1)
+        else:
+            # Start from the hour after the latest record
+            start_date = latest_record[0] + timedelta(hours=1)
+        
+        # End date is current hour
+        end_date = datetime.now().replace(minute=0, second=0, microsecond=0)
+        
+        # If already up to date
+        if start_date >= end_date:
+            return jsonify({
+                'message': 'Unlicensed solar database is already up to date.',
+                'records_added': 0
+            })
+        
+        # Use the same logic as in your populate script
+        import os
+        import sys
+        import requests
+        import zipfile
+        import tempfile
+        import json
+        from dotenv import load_dotenv
+        
+        # Load environment variables
+        load_dotenv()
+        
+        # Get credentials from environment
+        username = os.getenv('XTRADERS_USERNAME')
+        password = os.getenv('XTRADERS_PASSWORD')
+        
+        if not username or not password:
+            return jsonify({'error': 'Missing API credentials'}), 500
+        
+        # Get authentication token
+        auth_response = requests.post(
+            "https://api-markets.meteologica.com/api/v1/login",
+            json={"user": username, "password": password}
+        )
+        auth_response.raise_for_status()
+        token = auth_response.json().get("token")
+        
+        if not token:
+            return jsonify({'error': 'Failed to get authentication token'}), 500
+        
+        # Calculate which months to update
+        current_month = end_date.month
+        start_month = start_date.month
+        current_year = end_date.year
+        
+        records_added = 0
+        
+        for month in range(start_month, current_month + 1):
+            try:
+                # Download data for this month
+                response = requests.get(
+                    url=f"https://api-markets.meteologica.com/api/v1/contents/1429/historical_data/{current_year}/{month}",
+                    params={"token": token}
+                )
+                response.raise_for_status()
+                
+                # Process ZIP file in memory
+                with tempfile.TemporaryFile() as temp_file:
+                    temp_file.write(response.content)
+                    temp_file.seek(0)
+                    
+                    with zipfile.ZipFile(temp_file, 'r') as zip_file:
+                        json_files = [f for f in zip_file.namelist() if f.endswith('.json') and 'post' not in f.lower()]
+                        
+                        for json_filename in json_files:
+                            try:
+                                # Extract datetime from filename
+                                parts = json_filename.replace('.json', '').split('_')
+                                if len(parts) >= 2:
+                                    datetime_str = parts[1]
+                                    if len(datetime_str) >= 10:
+                                        year = int(datetime_str[:4])
+                                        month = int(datetime_str[4:6])
+                                        day = int(datetime_str[6:8])
+                                        hour = int(datetime_str[8:10]) if len(datetime_str) >= 10 else 0
+                                        
+                                        dt = datetime(year, month, day, hour)
+                                        
+                                        # Only process if within our update range
+                                        if start_date <= dt <= end_date:
+                                            # Read and parse JSON file
+                                            with zip_file.open(json_filename) as json_file_handle:
+                                                json_content = json.load(json_file_handle)
+                                                
+                                                # Extract solar value
+                                                solar_value = json_content.get('forecast', 0)
+                                                
+                                                # Check if record already exists
+                                                existing_record = UnlicensedSolarData.query.filter_by(datetime=dt).first()
+                                                
+                                                if not existing_record:
+                                                    # Create new record
+                                                    record = UnlicensedSolarData(
+                                                        datetime=dt,
+                                                        unlicensed_solar=solar_value,
+                                                        created_at=datetime.now()
+                                                    )
+                                                    db.session.add(record)
+                                                    records_added += 1
+                                                    
+                            except Exception as e:
+                                print(f"Error processing {json_filename}: {e}")
+                                continue
+                                
+            except Exception as e:
+                print(f"Error processing month {month}: {e}")
+                continue
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': f'Successfully added {records_added} new unlicensed solar records.',
+            'records_added': records_added,
+            'date_range': {
+                'start': start_date.strftime('%Y-%m-%d %H:%M'),
+                'end': end_date.strftime('%Y-%m-%d %H:%M')
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in update_unlicensed_solar_data: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/update-licensed-solar-data')  
+def update_licensed_solar_data():
+    try:
+        # Similar logic to unlicensed, but for licensed solar (content ID 1430)
+        latest_record = db.session.query(LicensedSolarData.datetime).order_by(LicensedSolarData.datetime.desc()).first()
+        
+        if not latest_record:
+            start_date = datetime(datetime.now().year, 1, 1)
+        else:
+            start_date = latest_record[0] + timedelta(hours=1)
+        
+        end_date = datetime.now().replace(minute=0, second=0, microsecond=0)
+        
+        if start_date >= end_date:
+            return jsonify({
+                'message': 'Licensed solar database is already up to date.',
+                'records_added': 0
+            })
+        
+        # Same authentication and processing logic as unlicensed, but use content ID 1430
+        import os
+        import requests
+        import zipfile
+        import tempfile
+        import json
+        from dotenv import load_dotenv
+        
+        load_dotenv()
+        
+        username = os.getenv('XTRADERS_USERNAME')
+        password = os.getenv('XTRADERS_PASSWORD')
+        
+        if not username or not password:
+            return jsonify({'error': 'Missing API credentials'}), 500
+        
+        # Get authentication token
+        auth_response = requests.post(
+            "https://api-markets.meteologica.com/api/v1/login",
+            json={"user": username, "password": password}
+        )
+        auth_response.raise_for_status()
+        token = auth_response.json().get("token")
+        
+        current_month = end_date.month
+        start_month = start_date.month
+        current_year = end_date.year
+        
+        records_added = 0
+        
+        for month in range(start_month, current_month + 1):
+            try:
+                # Use content ID 1430 for licensed solar
+                response = requests.get(
+                    url=f"https://api-markets.meteologica.com/api/v1/contents/1430/historical_data/{current_year}/{month}",
+                    params={"token": token}
+                )
+                response.raise_for_status()
+                
+                # Same processing logic as unlicensed solar...
+                with tempfile.TemporaryFile() as temp_file:
+                    temp_file.write(response.content)
+                    temp_file.seek(0)
+                    
+                    with zipfile.ZipFile(temp_file, 'r') as zip_file:
+                        json_files = [f for f in zip_file.namelist() if f.endswith('.json') and 'post' not in f.lower()]
+                        
+                        for json_filename in json_files:
+                            try:
+                                parts = json_filename.replace('.json', '').split('_')
+                                if len(parts) >= 2:
+                                    datetime_str = parts[1]
+                                    if len(datetime_str) >= 10:
+                                        year = int(datetime_str[:4])
+                                        month = int(datetime_str[4:6])
+                                        day = int(datetime_str[6:8])
+                                        hour = int(datetime_str[8:10]) if len(datetime_str) >= 10 else 0
+                                        
+                                        dt = datetime(year, month, day, hour)
+                                        
+                                        if start_date <= dt <= end_date:
+                                            with zip_file.open(json_filename) as json_file_handle:
+                                                json_content = json.load(json_file_handle)
+                                                solar_value = json_content.get('forecast', 0)
+                                                
+                                                existing_record = LicensedSolarData.query.filter_by(datetime=dt).first()
+                                                
+                                                if not existing_record:
+                                                    record = LicensedSolarData(
+                                                        datetime=dt,
+                                                        licensed_solar=solar_value,
+                                                        created_at=datetime.now()
+                                                    )
+                                                    db.session.add(record)
+                                                    records_added += 1
+                                                    
+                            except Exception as e:
+                                print(f"Error processing {json_filename}: {e}")
+                                continue
+                                
+            except Exception as e:
+                print(f"Error processing month {month}: {e}")
+                continue
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': f'Successfully added {records_added} new licensed solar records.',
+            'records_added': records_added,
+            'date_range': {
+                'start': start_date.strftime('%Y-%m-%d %H:%M'),
+                'end': end_date.strftime('%Y-%m-%d %H:%M')
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in update_licensed_solar_data: {str(e)}")
+        return jsonify({'error': str(e)}), 500

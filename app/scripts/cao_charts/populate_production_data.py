@@ -7,9 +7,10 @@ import requests
 import pytz
 import math
 
-# Add the parent directory to Python path
+# Fix the path - go up 3 levels to reach the root directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(os.path.dirname(current_dir))
+# Go up 3 levels: cao_charts -> scripts -> app -> rwe-deployment (root)
+parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
 sys.path.append(parent_dir)
 
 from app.factory import create_app

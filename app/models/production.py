@@ -1,5 +1,5 @@
 from ..database.config import db
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ProductionData(db.Model):
     __tablename__ = 'production_data'
@@ -25,8 +25,10 @@ class ProductionData(db.Model):
     importexport = db.Column(db.Float)
     total = db.Column(db.Float)
     wasteheat = db.Column(db.Float)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
+    def __repr__(self):
+        return f'<ProductionData {self.datetime}: {self.total}>'
 
     def to_dict(self):
         return {

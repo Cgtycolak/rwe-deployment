@@ -46,6 +46,7 @@ def precalculate_historical_averages():
             'wind': d.wind,
             'nuclear': d.nuclear,
             'sun': d.sun,
+            'unlicensed_solar': d.unlicensed_solar,  # Add this
             'importexport': d.importexport,
             'total': d.total,
             'wasteheat': d.wasteheat
@@ -59,8 +60,11 @@ def precalculate_historical_averages():
         istanbul_tz = pytz.timezone('Europe/Istanbul')
         df.index = df.index.tz_convert(istanbul_tz)
         
-        # Calculate renewables total and ratio
-        df['renewablestotal'] = df['geothermal'] + df['biomass'] + df['wind'] + df['sun']
+        # Calculate combined solar (existing + unlicensed)
+        df['solar_combined'] = df['sun'].fillna(0) + df['unlicensed_solar'].fillna(0)
+        
+        # Calculate renewables total and ratio (now using combined solar)
+        df['renewablestotal'] = df['geothermal'] + df['biomass'] + df['wind'] + df['solar_combined']
         df['renewablesratio'] = df['renewablestotal'] / df['total']
         
         # Calculate rolling averages for most columns
@@ -68,6 +72,7 @@ def precalculate_historical_averages():
         
         # Process regular columns with 7-day rolling averages
         regular_columns = [col for col in df.columns if col != 'renewablesratio']
+        regular_columns.append('solar_combined')  # Add combined solar data
         for column in regular_columns:
             print(f"Processing {column}...")
             # Resample to daily frequency

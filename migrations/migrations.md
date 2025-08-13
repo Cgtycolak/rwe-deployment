@@ -1,7 +1,7 @@
 # Database Migration History
 
 ## Current State
-- **Latest Migration**: 20250101000000
+- **Latest Migration**: 20250101000004
 - **Migration Chain**:
   1. Base -> dfdfe7849931 (initial_migration)
   2. dfdfe7849931 -> 20240325152900 (add_production_table)
@@ -9,6 +9,10 @@
   4. 20240423000000 -> 20240501000000 (add_forecasting_tables)
   5. 20240501000000 -> 20240612000000 (update_update_id_to_string)
   6. 20240612000000 -> 20250101000000 (add_lignite_tables)
+  7. 20250101000000 -> 20250101000001 (add_unlicensed_solar_column)
+  8. 20250101000001 -> 20250101000002 (create_unlicensed_solar_table)
+  9. 20250101000002 -> 20250101000003 (remove_unlicensed_solar_from_production)
+  10. 20250101000003 -> 20250101000004 (create_licensed_solar_table)
 
 ## Tables
 1. **hydro_heatmap_data** (from dfdfe7849931)
@@ -80,6 +84,14 @@
 16. **lignite_realtime_data** (from 20250101000000)
     - Created: 2025-01-01
     - Purpose: Store lignite plant realtime data
+
+17. **unlicensed_solar_data** (from 20250101000002)
+    - Created: 2025-01-01
+    - Purpose: Store unlicensed solar data from Meteologica
+
+18. **licensed_solar_data** (from 20250101000004)
+    - Created: 2025-01-01
+    - Purpose: Store licensed solar data from Meteologica
 
 ## How to Verify Current State
 ```sql
