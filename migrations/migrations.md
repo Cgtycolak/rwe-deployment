@@ -1,7 +1,7 @@
 # Database Migration History
 
 ## Current State
-- **Latest Migration**: 20250101000004
+- **Latest Migration**: 20250813000001
 - **Migration Chain**:
   1. Base -> dfdfe7849931 (initial_migration)
   2. dfdfe7849931 -> 20240325152900 (add_production_table)
@@ -13,6 +13,7 @@
   8. 20250101000001 -> 20250101000002 (create_unlicensed_solar_table)
   9. 20250101000002 -> 20250101000003 (remove_unlicensed_solar_from_production)
   10. 20250101000003 -> 20250101000004 (create_licensed_solar_table)
+  11. 20250101000004 -> 20250813000001 (remove_installed_capacity)
 
 ## Tables
 1. **hydro_heatmap_data** (from dfdfe7849931)
@@ -89,8 +90,9 @@
     - Created: 2025-01-01
     - Purpose: Store unlicensed solar data from Meteologica
 
-18. **licensed_solar_data** (from 20250101000004)
+18. **licensed_solar_data** (from 20250101000004, modified by 20250813000001)
     - Created: 2025-01-01
+    - Modified: 2025-08-13 (removed installed_capacity column)
     - Purpose: Store licensed solar data from Meteologica
 
 ## How to Verify Current State
