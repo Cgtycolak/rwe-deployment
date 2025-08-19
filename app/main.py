@@ -1,6 +1,6 @@
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import abort, app, Blueprint, session, render_template, redirect, url_for, Response, request, jsonify, Request, Response, current_app
 from requests import post, Session
 from .functions import get_tgt_token, asutc, invalidates_or_none, fetch_plant_data
@@ -2572,34 +2572,20 @@ def lignite_realtime_heatmap_data():
 @main.route('/update-unlicensed-solar-data')
 def update_unlicensed_solar_data():
     try:
-        # Get the most recent record's datetime
-        latest_record = db.session.query(UnlicensedSolarData.datetime).order_by(UnlicensedSolarData.datetime.desc()).first()
+        # Get current date
+        current_date = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
         
-        if not latest_record:
-            # If no data, start from current year
-            start_date = datetime(datetime.now().year, 1, 1)
-        else:
-            # Start from the hour after the latest record
-            start_date = latest_record[0] + timedelta(hours=1)
+        # Look back 30 days for retroactive updates
+        start_date = current_date - timedelta(days=30)
+        end_date = current_date
         
-        # End date is current hour
-        end_date = datetime.now().replace(minute=0, second=0, microsecond=0)
-        
-        # If already up to date
-        if start_date >= end_date:
-            return jsonify({
-                'message': 'Unlicensed solar database is already up to date.',
-                'records_added': 0
-            })
-        
-        # Use the same logic as in your populate script
         import os
-        import sys
         import requests
         import zipfile
         import tempfile
         import json
         from dotenv import load_dotenv
+        from sqlalchemy import text
         
         # Load environment variables
         load_dotenv()
@@ -2622,79 +2608,201 @@ def update_unlicensed_solar_data():
         if not token:
             return jsonify({'error': 'Failed to get authentication token'}), 500
         
-        # Calculate which months to update
-        current_month = end_date.month
-        start_month = start_date.month
-        current_year = end_date.year
-        
         records_added = 0
+        records_updated = 0
         
-        for month in range(start_month, current_month + 1):
+        print(f"🔍 RETROACTIVE UPDATE (Unlicensed Solar):")
+        print(f"   Checking date range: {start_date} to {end_date}")
+        
+        # Calculate which months we need to process
+        months_to_process = set()
+        current_check = start_date
+        while current_check <= end_date:
+            months_to_process.add((current_check.year, current_check.month))
+            # Move to next month
+            if current_check.month == 12:
+                current_check = current_check.replace(year=current_check.year + 1, month=1, day=1)
+            else:
+                current_check = current_check.replace(month=current_check.month + 1, day=1)
+        
+        print(f"   Processing months: {sorted(months_to_process)}")
+        
+        # Collect all data first, then select best for each hour
+        hourly_data = {}  # Key: hour datetime (minute=0), Value: list of forecasts for that hour
+        
+        for year, month in sorted(months_to_process):
             try:
-                # Download data for this month
+                # Use content ID 1430 for unlicensed solar
                 response = requests.get(
-                    url=f"https://api-markets.meteologica.com/api/v1/contents/1429/historical_data/{current_year}/{month}",
+                    url=f"https://api-markets.meteologica.com/api/v1/contents/1430/historical_data/{year}/{month}",
                     params={"token": token}
                 )
-                response.raise_for_status()
                 
-                # Process ZIP file in memory
-                with tempfile.TemporaryFile() as temp_file:
-                    temp_file.write(response.content)
-                    temp_file.seek(0)
-                    
-                    with zipfile.ZipFile(temp_file, 'r') as zip_file:
-                        json_files = [f for f in zip_file.namelist() if f.endswith('.json') and 'post' not in f.lower()]
+                if response.status_code != 200:
+                    print(f"Failed to fetch data for {year}-{month}: {response.status_code}")
+                    continue
+                
+                # Check if response is a zip file
+                if not (response.headers.get('content-type', '').find('zip') != -1 or response.content.startswith(b'PK')):
+                    print(f"Response for {year}-{month} is not a ZIP file")
+                    continue
+                
+                # Process ZIP file
+                with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as temp_zip:
+                    temp_zip.write(response.content)
+                    temp_zip_path = temp_zip.name
+                
+                try:
+                    with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
+                        json_files = [f for f in zip_ref.namelist() if f.endswith('.json')]
                         
+                        print(f"Processing {year}-{month} (Unlicensed): {len(json_files)} files")
+                        
+                        # Process each JSON file (each represents a forecast at some minute)
                         for json_filename in json_files:
                             try:
-                                # Extract datetime from filename
-                                parts = json_filename.replace('.json', '').split('_')
-                                if len(parts) >= 2:
-                                    datetime_str = parts[1]
-                                    if len(datetime_str) >= 10:
-                                        year = int(datetime_str[:4])
-                                        month = int(datetime_str[4:6])
-                                        day = int(datetime_str[6:8])
-                                        hour = int(datetime_str[8:10]) if len(datetime_str) >= 10 else 0
-                                        
-                                        dt = datetime(year, month, day, hour)
-                                        
-                                        # Only process if within our update range
-                                        if start_date <= dt <= end_date:
-                                            # Read and parse JSON file
-                                            with zip_file.open(json_filename) as json_file_handle:
-                                                json_content = json.load(json_file_handle)
-                                                
-                                                # Extract solar value
-                                                solar_value = json_content.get('forecast', 0)
-                                                
-                                                # Check if record already exists
-                                                existing_record = UnlicensedSolarData.query.filter_by(datetime=dt).first()
-                                                
-                                                if not existing_record:
-                                                    # Create new record
-                                                    record = UnlicensedSolarData(
-                                                        datetime=dt,
-                                                        unlicensed_solar=solar_value,
-                                                        created_at=datetime.now()
-                                                    )
-                                                    db.session.add(record)
-                                                    records_added += 1
+                                with zip_ref.open(json_filename) as json_file_handle:
+                                    json_content = json.load(json_file_handle)
+                                    
+                                    # Extract datetime from filename (e.g., 1430_202508141513.json)
+                                    if '_' in json_filename and '.json' in json_filename:
+                                        parts = json_filename.split('_')
+                                        if len(parts) >= 2:
+                                            date_part = parts[1].replace('.json', '')
+                                            if len(date_part) >= 12:
+                                                try:
+                                                    # Parse: 202508141513 -> 2025-08-14 15:13
+                                                    file_year = int(date_part[:4])
+                                                    file_month = int(date_part[4:6])
+                                                    day = int(date_part[6:8])
+                                                    hour = int(date_part[8:10])
+                                                    minute = int(date_part[10:12])
                                                     
+                                                    from_dt = datetime(file_year, file_month, day, hour, minute, tzinfo=timezone.utc)
+                                                    
+                                                    # Check if this record is in our date range
+                                                    if start_date <= from_dt <= end_date:
+                                                        # Extract forecast value from JSON
+                                                        forecast_value = None
+                                                        if 'data' in json_content and isinstance(json_content['data'], list):
+                                                            for data_entry in json_content['data']:
+                                                                if 'forecast' in data_entry:
+                                                                    forecast_value = float(data_entry['forecast'])
+                                                                    break
+                                                        
+                                                        if forecast_value is not None:
+                                                            # Group by hour (set minute to 0 for the key)
+                                                            hour_key = from_dt.replace(minute=0, second=0, microsecond=0)
+                                                            
+                                                            if hour_key not in hourly_data:
+                                                                hourly_data[hour_key] = []
+                                                            
+                                                            hourly_data[hour_key].append({
+                                                                'original_datetime': from_dt,
+                                                                'forecast_value': forecast_value,
+                                                                'minute': minute
+                                                            })
+                                                        
+                                                except (ValueError, TypeError) as e:
+                                                    continue
+                                            
                             except Exception as e:
-                                print(f"Error processing {json_filename}: {e}")
                                 continue
+                finally:
+                    # Clean up temporary file
+                    os.unlink(temp_zip_path)
                                 
             except Exception as e:
-                print(f"Error processing month {month}: {e}")
+                print(f"Error processing {year}-{month}: {e}")
                 continue
         
-        db.session.commit()
+        print(f"   Collected data for {len(hourly_data)} hours")
+        
+        # Now select the best forecast for each hour and prepare for database
+        all_data_to_process = []
+        minute_stats = {}
+        
+        for hour_datetime, forecasts in hourly_data.items():
+            # Strategy 1: Prefer minute=0, then closest to minute=0, then use average if multiple
+            if len(forecasts) == 1:
+                # Only one forecast for this hour, use it
+                selected_forecast = forecasts[0]
+            else:
+                # Multiple forecasts for this hour
+                # First, try to find minute=0
+                minute_0_forecasts = [f for f in forecasts if f['minute'] == 0]
+                if minute_0_forecasts:
+                    selected_forecast = minute_0_forecasts[0]  # Use minute=0 if available
+                else:
+                    # No minute=0, find the one closest to minute=0
+                    forecasts.sort(key=lambda x: abs(x['minute']))
+                    selected_forecast = forecasts[0]
+                
+                # Track minute statistics for analysis
+                minutes_in_hour = [f['minute'] for f in forecasts]
+                minutes_key = ','.join(map(str, sorted(minutes_in_hour)))
+                minute_stats[minutes_key] = minute_stats.get(minutes_key, 0) + 1
+            
+            all_data_to_process.append({
+                'datetime': hour_datetime,  # Always use minute=0 for storage
+                'unlicensed_solar': selected_forecast['forecast_value'],
+                'created_at': datetime.now(timezone.utc)
+            })
+        
+        # Print minute analysis
+        if minute_stats:
+            print("   Minute patterns found:")
+            for pattern, count in sorted(minute_stats.items(), key=lambda x: x[1], reverse=True)[:10]:
+                print(f"     {pattern}: {count} hours")
+        
+        print(f"   Final data points to process: {len(all_data_to_process)}")
+        
+        # Now batch process the data using upsert operations
+        batch_size = 500  # Process in smaller batches
+        total_batches = (len(all_data_to_process) + batch_size - 1) // batch_size
+        
+        for i in range(0, len(all_data_to_process), batch_size):
+            batch = all_data_to_process[i:i + batch_size]
+            batch_num = (i // batch_size) + 1
+            
+            try:
+                # Use PostgreSQL's ON CONFLICT DO UPDATE for upsert
+                upsert_sql = """
+                INSERT INTO unlicensed_solar_data (datetime, unlicensed_solar, created_at)
+                VALUES (:datetime, :unlicensed_solar, :created_at)
+                ON CONFLICT (datetime) DO UPDATE SET
+                    unlicensed_solar = EXCLUDED.unlicensed_solar,
+                    created_at = EXCLUDED.created_at
+                """
+                
+                # Count existing records before upsert
+                datetime_list = [item['datetime'] for item in batch]
+                existing_count = db.session.query(UnlicensedSolarData).filter(
+                    UnlicensedSolarData.datetime.in_(datetime_list)
+                ).count()
+                
+                # Execute upsert
+                result = db.session.execute(text(upsert_sql), batch)
+                db.session.commit()
+                
+                # Calculate stats
+                batch_added = len(batch) - existing_count
+                batch_updated = existing_count
+                
+                records_added += batch_added
+                records_updated += batch_updated
+                
+                print(f"   Batch {batch_num}/{total_batches}: +{batch_added} new, ~{batch_updated} updated")
+                
+            except Exception as e:
+                db.session.rollback()
+                print(f"Error processing batch {batch_num}: {e}")
+                continue
         
         return jsonify({
-            'message': f'Successfully added {records_added} new unlicensed solar records.',
+            'message': f'Successfully processed unlicensed solar data: {records_added} new records added, {records_updated} records updated.',
             'records_added': records_added,
+            'records_updated': records_updated,
             'date_range': {
                 'start': start_date.strftime('%Y-%m-%d %H:%M'),
                 'end': end_date.strftime('%Y-%m-%d %H:%M')
@@ -2709,29 +2817,20 @@ def update_unlicensed_solar_data():
 @main.route('/update-licensed-solar-data')  
 def update_licensed_solar_data():
     try:
-        # Similar logic to unlicensed, but for licensed solar (content ID 1430)
-        latest_record = db.session.query(LicensedSolarData.datetime).order_by(LicensedSolarData.datetime.desc()).first()
+        # Get current date
+        current_date = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
         
-        if not latest_record:
-            start_date = datetime(datetime.now().year, 1, 1)
-        else:
-            start_date = latest_record[0] + timedelta(hours=1)
+        # Look back 30 days for retroactive updates
+        start_date = current_date - timedelta(days=30)
+        end_date = current_date
         
-        end_date = datetime.now().replace(minute=0, second=0, microsecond=0)
-        
-        if start_date >= end_date:
-            return jsonify({
-                'message': 'Licensed solar database is already up to date.',
-                'records_added': 0
-            })
-        
-        # Same authentication and processing logic as unlicensed, but use content ID 1430
         import os
         import requests
         import zipfile
         import tempfile
         import json
         from dotenv import load_dotenv
+        from sqlalchemy import text
         
         load_dotenv()
         
@@ -2749,71 +2848,201 @@ def update_licensed_solar_data():
         auth_response.raise_for_status()
         token = auth_response.json().get("token")
         
-        current_month = end_date.month
-        start_month = start_date.month
-        current_year = end_date.year
-        
         records_added = 0
+        records_updated = 0
         
-        for month in range(start_month, current_month + 1):
+        print(f"🔍 RETROACTIVE UPDATE (Licensed Solar):")
+        print(f"   Checking date range: {start_date} to {end_date}")
+        
+        # Calculate which months we need to process
+        months_to_process = set()
+        current_check = start_date
+        while current_check <= end_date:
+            months_to_process.add((current_check.year, current_check.month))
+            # Move to next month
+            if current_check.month == 12:
+                current_check = current_check.replace(year=current_check.year + 1, month=1, day=1)
+            else:
+                current_check = current_check.replace(month=current_check.month + 1, day=1)
+        
+        print(f"   Processing months: {sorted(months_to_process)}")
+        
+        # Collect all data first, then select best for each hour
+        hourly_data = {}  # Key: hour datetime (minute=0), Value: list of forecasts for that hour
+        
+        for year, month in sorted(months_to_process):
             try:
-                # Use content ID 1430 for licensed solar
+                # Use content ID 1429 for licensed solar
                 response = requests.get(
-                    url=f"https://api-markets.meteologica.com/api/v1/contents/1430/historical_data/{current_year}/{month}",
+                    url=f"https://api-markets.meteologica.com/api/v1/contents/1429/historical_data/{year}/{month}",
                     params={"token": token}
                 )
-                response.raise_for_status()
                 
-                # Same processing logic as unlicensed solar...
-                with tempfile.TemporaryFile() as temp_file:
-                    temp_file.write(response.content)
-                    temp_file.seek(0)
-                    
-                    with zipfile.ZipFile(temp_file, 'r') as zip_file:
-                        json_files = [f for f in zip_file.namelist() if f.endswith('.json') and 'post' not in f.lower()]
+                if response.status_code != 200:
+                    print(f"Failed to fetch data for {year}-{month}: {response.status_code}")
+                    continue
+                
+                # Check if response is a zip file
+                if not (response.headers.get('content-type', '').find('zip') != -1 or response.content.startswith(b'PK')):
+                    print(f"Response for {year}-{month} is not a ZIP file")
+                    continue
+                
+                # Process ZIP file
+                with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as temp_zip:
+                    temp_zip.write(response.content)
+                    temp_zip_path = temp_zip.name
+                
+                try:
+                    with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
+                        json_files = [f for f in zip_ref.namelist() if f.endswith('.json')]
                         
+                        print(f"Processing {year}-{month} (Licensed): {len(json_files)} files")
+                        
+                        # Process each JSON file (each represents a forecast at some minute)
                         for json_filename in json_files:
                             try:
-                                parts = json_filename.replace('.json', '').split('_')
-                                if len(parts) >= 2:
-                                    datetime_str = parts[1]
-                                    if len(datetime_str) >= 10:
-                                        year = int(datetime_str[:4])
-                                        month = int(datetime_str[4:6])
-                                        day = int(datetime_str[6:8])
-                                        hour = int(datetime_str[8:10]) if len(datetime_str) >= 10 else 0
-                                        
-                                        dt = datetime(year, month, day, hour)
-                                        
-                                        if start_date <= dt <= end_date:
-                                            with zip_file.open(json_filename) as json_file_handle:
-                                                json_content = json.load(json_file_handle)
-                                                solar_value = json_content.get('forecast', 0)
-                                                
-                                                existing_record = LicensedSolarData.query.filter_by(datetime=dt).first()
-                                                
-                                                if not existing_record:
-                                                    record = LicensedSolarData(
-                                                        datetime=dt,
-                                                        licensed_solar=solar_value,
-                                                        created_at=datetime.now()
-                                                    )
-                                                    db.session.add(record)
-                                                    records_added += 1
+                                with zip_ref.open(json_filename) as json_file_handle:
+                                    json_content = json.load(json_file_handle)
+                                    
+                                    # Extract datetime from filename (e.g., 1429_202508141513.json)
+                                    if '_' in json_filename and '.json' in json_filename:
+                                        parts = json_filename.split('_')
+                                        if len(parts) >= 2:
+                                            date_part = parts[1].replace('.json', '')
+                                            if len(date_part) >= 12:
+                                                try:
+                                                    # Parse: 202508141513 -> 2025-08-14 15:13
+                                                    file_year = int(date_part[:4])
+                                                    file_month = int(date_part[4:6])
+                                                    day = int(date_part[6:8])
+                                                    hour = int(date_part[8:10])
+                                                    minute = int(date_part[10:12])
                                                     
+                                                    from_dt = datetime(file_year, file_month, day, hour, minute, tzinfo=timezone.utc)
+                                                    
+                                                    # Check if this record is in our date range
+                                                    if start_date <= from_dt <= end_date:
+                                                        # Extract forecast value from JSON
+                                                        forecast_value = None
+                                                        if 'data' in json_content and isinstance(json_content['data'], list):
+                                                            for data_entry in json_content['data']:
+                                                                if 'forecast' in data_entry:
+                                                                    forecast_value = float(data_entry['forecast'])
+                                                                    break
+                                                        
+                                                        if forecast_value is not None:
+                                                            # Group by hour (set minute to 0 for the key)
+                                                            hour_key = from_dt.replace(minute=0, second=0, microsecond=0)
+                                                            
+                                                            if hour_key not in hourly_data:
+                                                                hourly_data[hour_key] = []
+                                                            
+                                                            hourly_data[hour_key].append({
+                                                                'original_datetime': from_dt,
+                                                                'forecast_value': forecast_value,
+                                                                'minute': minute
+                                                            })
+                                                        
+                                                except (ValueError, TypeError) as e:
+                                                    continue
+                                            
                             except Exception as e:
-                                print(f"Error processing {json_filename}: {e}")
                                 continue
+                finally:
+                    # Clean up temporary file
+                    os.unlink(temp_zip_path)
                                 
             except Exception as e:
-                print(f"Error processing month {month}: {e}")
+                print(f"Error processing {year}-{month}: {e}")
                 continue
         
-        db.session.commit()
+        print(f"   Collected data for {len(hourly_data)} hours")
+        
+        # Now select the best forecast for each hour and prepare for database
+        all_data_to_process = []
+        minute_stats = {}
+        
+        for hour_datetime, forecasts in hourly_data.items():
+            # Strategy 1: Prefer minute=0, then closest to minute=0, then use average if multiple
+            if len(forecasts) == 1:
+                # Only one forecast for this hour, use it
+                selected_forecast = forecasts[0]
+            else:
+                # Multiple forecasts for this hour
+                # First, try to find minute=0
+                minute_0_forecasts = [f for f in forecasts if f['minute'] == 0]
+                if minute_0_forecasts:
+                    selected_forecast = minute_0_forecasts[0]  # Use minute=0 if available
+                else:
+                    # No minute=0, find the one closest to minute=0
+                    forecasts.sort(key=lambda x: abs(x['minute']))
+                    selected_forecast = forecasts[0]
+                
+                # Track minute statistics for analysis
+                minutes_in_hour = [f['minute'] for f in forecasts]
+                minutes_key = ','.join(map(str, sorted(minutes_in_hour)))
+                minute_stats[minutes_key] = minute_stats.get(minutes_key, 0) + 1
+            
+            all_data_to_process.append({
+                'datetime': hour_datetime,  # Always use minute=0 for storage
+                'licensed_solar': selected_forecast['forecast_value'],
+                'created_at': datetime.now(timezone.utc)
+            })
+        
+        # Print minute analysis
+        if minute_stats:
+            print("   Minute patterns found:")
+            for pattern, count in sorted(minute_stats.items(), key=lambda x: x[1], reverse=True)[:10]:
+                print(f"     {pattern}: {count} hours")
+        
+        print(f"   Final data points to process: {len(all_data_to_process)}")
+        
+        # Now batch process the data using upsert operations
+        batch_size = 500  # Process in smaller batches
+        total_batches = (len(all_data_to_process) + batch_size - 1) // batch_size
+        
+        for i in range(0, len(all_data_to_process), batch_size):
+            batch = all_data_to_process[i:i + batch_size]
+            batch_num = (i // batch_size) + 1
+            
+            try:
+                # Use PostgreSQL's ON CONFLICT DO UPDATE for upsert
+                upsert_sql = """
+                INSERT INTO licensed_solar_data (datetime, licensed_solar, created_at)
+                VALUES (:datetime, :licensed_solar, :created_at)
+                ON CONFLICT (datetime) DO UPDATE SET
+                    licensed_solar = EXCLUDED.licensed_solar,
+                    created_at = EXCLUDED.created_at
+                """
+                
+                # Count existing records before upsert
+                datetime_list = [item['datetime'] for item in batch]
+                existing_count = db.session.query(LicensedSolarData).filter(
+                    LicensedSolarData.datetime.in_(datetime_list)
+                ).count()
+                
+                # Execute upsert
+                result = db.session.execute(text(upsert_sql), batch)
+                db.session.commit()
+                
+                # Calculate stats
+                batch_added = len(batch) - existing_count
+                batch_updated = existing_count
+                
+                records_added += batch_added
+                records_updated += batch_updated
+                
+                print(f"   Batch {batch_num}/{total_batches}: +{batch_added} new, ~{batch_updated} updated")
+                
+            except Exception as e:
+                db.session.rollback()
+                print(f"Error processing batch {batch_num}: {e}")
+                continue
         
         return jsonify({
-            'message': f'Successfully added {records_added} new licensed solar records.',
+            'message': f'Successfully processed licensed solar data: {records_added} new records added, {records_updated} records updated.',
             'records_added': records_added,
+            'records_updated': records_updated,
             'date_range': {
                 'start': start_date.strftime('%Y-%m-%d %H:%M'),
                 'end': end_date.strftime('%Y-%m-%d %H:%M')
