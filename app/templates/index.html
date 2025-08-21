@@ -563,6 +563,110 @@
       font-size: 0.9rem;
     }
   }
+
+  /* Forecast Performance specific styles */
+  .content-section[data-section="forecast-performance"] {
+    padding: 20px;
+    background: white;
+  }
+
+  .content-section[data-section="forecast-performance"] .metric-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .content-section[data-section="forecast-performance"] .metric-item:last-child {
+    margin-bottom: 0;
+  }
+
+  .content-section[data-section="forecast-performance"] .card-body {
+    padding: 1rem;
+  }
+
+  .content-section[data-section="forecast-performance"] .card-header h6 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  /* Loading spinner for forecast performance */
+  #performance_loading {
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* Forecast Performance Styling */
+  #performance_metrics .card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  }
+  
+  #performance_metrics .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  }
+  
+  .metric-item {
+    padding: 2px 0;
+  }
+  
+  .badge {
+    font-size: 0.85em;
+    padding: 0.5em 0.75em;
+    border-radius: 0.5rem;
+  }
+  
+  /* Smooth gradient backgrounds for metric cards */
+  .bg-gradient {
+    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+  }
+  
+  /* Custom form styling for forecast performance */
+  .content-section[data-section="forecast-performance"] .form-select,
+  .content-section[data-section="forecast-performance"] .form-control {
+    border: 1px solid #e0e0e0;
+    border-radius: 0.5rem;
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  }
+  
+  .content-section[data-section="forecast-performance"] .form-select:focus,
+  .content-section[data-section="forecast-performance"] .form-control:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  }
+  
+  /* Chart container styling */
+  #forecast_performance_chart {
+    border-radius: 0.5rem;
+    background: white;
+  }
+  
+  /* Loading spinner styling */
+  #performance_loading {
+    padding: 3rem 0;
+  }
+  
+  /* Info alert styling */
+  .content-section[data-section="forecast-performance"] .alert-info {
+    background: linear-gradient(135deg, #e3f2fd, #f8f9fa);
+    border: 1px solid #bbdefb;
+    border-radius: 0.5rem;
+  }
+  
+  /* Button styling enhancements */
+  .content-section[data-section="forecast-performance"] .btn {
+    border-radius: 0.5rem;
+    transition: all 0.2s ease-in-out;
+  }
+  
+  .content-section[data-section="forecast-performance"] .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
 </style>
 
 <div class="container-fluid">
@@ -1924,6 +2028,202 @@
         </div>
     </div>
 
+    <!-- Add this after the forecasting section -->
+    <div class="content-section" data-section="forecast-performance">
+        <div class="container-fluid">
+            <h2 class="mb-4">Forecast Performance Analysis</h2>
+            
+            <div class="alert alert-info" role="alert">
+                <i class="fas fa-info-circle"></i> This analysis compares different forecasting models against realized prices.
+            </div>
+            
+            <!-- Controls Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <h5 class="mb-0">Performance Analysis Controls</h5>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <button id="load_forecast_performance" class="btn btn-primary">
+                                <span class="button-content">
+                                    Load Performance Data
+                                </span>
+                                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            </button>
+                            <button id="download_performance_chart" class="btn btn-outline-success" disabled>
+                                <i class="fas fa-download"></i> Download Chart
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <!-- Date Selection Options -->
+                        <div class="col-md-6">
+                            <label class="form-label">Analysis Period</label>
+                            <select id="performance_period" class="form-select">
+                                <option value="7" selected>Last 7 Days</option>
+                                <option value="14">Last 14 Days</option>
+                                <option value="30">Last 30 Days</option>
+                                <option value="60">Last 60 Days</option>
+                                <option value="90">Last 90 Days</option>
+                                <option value="custom">Custom Date Range</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Custom Date Range (initially hidden) -->
+                        <div class="col-md-3" id="custom_date_range" style="display: none;">
+                            <label class="form-label">Start Date</label>
+                            <input type="date" id="performance_start_date" class="form-control">
+                        </div>
+                        <div class="col-md-3" id="custom_date_range_end" style="display: none;">
+                            <label class="form-label">End Date</label>
+                            <input type="date" id="performance_end_date" class="form-control">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Chart Container (moved to top) -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line"></i> 
+                        Forecast Performance Chart 
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="forecast_performance_chart" style="height: 600px; width: 100%;"></div>
+                    
+                    <!-- Loading Indicator -->
+                    <div id="performance_loading" class="text-center" style="display: none;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading performance data...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Performance Metrics Cards (moved below chart) -->
+            <div id="performance_metrics" class="row" style="display: none;">
+                <div class="col-12 mb-3">
+                    <h5><i class="fas fa-chart-bar"></i> Performance Metrics Summary</h5>
+                    <p class="text-muted">Lower WMAPE and RMSE values indicate better performance. Higher R² values (closer to 1) indicate better fit.</p>
+                </div>
+                
+                <!-- Single row container for horizontal display -->
+                <div class="col-12">
+                    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3">
+                        <div class="col">
+                            <div class="card border-primary shadow-sm h-100" style="border-color: #e3f2fd !important;">
+                                <div class="card-header bg-gradient text-black" style="background: linear-gradient(135deg, #64b5f6, #42a5f5); border-bottom: 1px solid #e3f2fd;">
+                                    <h6 class="mb-0 text-center">
+                                        <i class="fas fa-chart-line"></i> Meteologica Min
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2">
+                                    <div class="row text-center">
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">WMAPE</small>
+                                            <span id="meteologica_min_wmape" class="badge fs-6" style="background: linear-gradient(135deg, #90caf9, #64b5f6); color: white;">-</span>
+                                        </div>
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">RMSE</small>
+                                            <span id="meteologica_min_rmse" class="badge fs-6" style="background: linear-gradient(135deg, #90caf9, #64b5f6); color: white;">-</span>
+                                        </div>
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">R²</small>
+                                            <span id="meteologica_min_r2" class="badge fs-6" style="background: linear-gradient(135deg, #90caf9, #64b5f6); color: white;">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col">
+                            <div class="card border-info shadow-sm h-100" style="border-color: #e0f7fa !important;">
+                                <div class="card-header bg-gradient text-black" style="background: linear-gradient(135deg, #4dd0e1, #26c6da); border-bottom: 1px solid #e0f7fa;">
+                                    <h6 class="mb-0 text-center">
+                                        <i class="fas fa-chart-area"></i> Meteologica Avg
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2">
+                                    <div class="row text-center">
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">WMAPE</small>
+                                            <span id="meteologica_avg_wmape" class="badge fs-6" style="background: linear-gradient(135deg, #80deea, #4dd0e1); color: white;">-</span>
+                                        </div>
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">RMSE</small>
+                                            <span id="meteologica_avg_rmse" class="badge fs-6" style="background: linear-gradient(135deg, #80deea, #4dd0e1); color: white;">-</span>
+                                        </div>
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">R²</small>
+                                            <span id="meteologica_avg_r2" class="badge fs-6" style="background: linear-gradient(135deg, #80deea, #4dd0e1); color: white;">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col">
+                            <div class="card border-secondary shadow-sm h-100" style="border-color: #f5f5f5 !important;">
+                                <div class="card-header bg-gradient text-black" style="background: linear-gradient(135deg, #90a4ae, #78909c); border-bottom: 1px solid #f5f5f5;">
+                                    <h6 class="mb-0 text-center">
+                                        <i class="fas fa-chart-bar"></i> Meteologica Max
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2">
+                                    <div class="row text-center">
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">WMAPE</small>
+                                            <span id="meteologica_max_wmape" class="badge fs-6" style="background: linear-gradient(135deg, #b0bec5, #90a4ae); color: white;">-</span>
+                                        </div>
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">RMSE</small>
+                                            <span id="meteologica_max_rmse" class="badge fs-6" style="background: linear-gradient(135deg, #b0bec5, #90a4ae); color: white;">-</span>
+                                        </div>
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">R²</small>
+                                            <span id="meteologica_max_r2" class="badge fs-6" style="background: linear-gradient(135deg, #b0bec5, #90a4ae); color: white;">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col">
+                            <div class="card border-success shadow-sm h-100" style="border-color: #e8f5e8 !important;">
+                                <div class="card-header bg-gradient text-black" style="background: linear-gradient(135deg, #81c784, #66bb6a); border-bottom: 1px solid #e8f5e8;">
+                                    <h6 class="mb-0 text-center">
+                                        <i class="fas fa-robot"></i> Model Forecast
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2">
+                                    <div class="row text-center">
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">WMAPE</small>
+                                            <span id="model_forecast_wmape" class="badge fs-6" style="background: linear-gradient(135deg, #a5d6a7, #81c784); color: white;">-</span>
+                                        </div>
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">RMSE</small>
+                                            <span id="model_forecast_rmse" class="badge fs-6" style="background: linear-gradient(135deg, #a5d6a7, #81c784); color: white;">-</span>
+                                        </div>
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">R²</small>
+                                            <span id="model_forecast_r2" class="badge fs-6" style="background: linear-gradient(135deg, #a5d6a7, #81c784); color: white;">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 {% block page_scripts %}

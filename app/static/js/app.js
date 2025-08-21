@@ -10,6 +10,7 @@ import { ligniteHeatmap } from './modules/ligniteHeatmap.js';
 import { miniTables } from './modules/mini-tables.js';
 import { hydroHeatmap } from './modules/hydro-heatmap.js';
 import { forecasting } from './modules/forecasting.js';
+import { forecastPerformance } from './modules/forecast-performance.js';
 
 // Main app object
 const app = {
@@ -27,6 +28,7 @@ const app = {
     miniTables,
     hydroHeatmap,
     forecasting,
+    forecastPerformance,
     helpers: {
         toggleLoading: function (show) {
             const loader = document.getElementById('aic_loading');
@@ -113,6 +115,10 @@ const app = {
                 toggleButtonLoading: this.helpers.toggleButtonLoading
             });
             this.forecasting.init();
+            
+            // Initialize forecast performance module
+            this.forecastPerformance.setup(this.helpers);
+            this.forecastPerformance.init();
             
             // Initialize mini-tables when showing home section
             this.miniTables.init();

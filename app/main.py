@@ -26,6 +26,8 @@ from app.models.licensed_solar import LicensedSolarData
 import zipfile
 import tempfile
 from dotenv import load_dotenv
+import psycopg2
+from sqlalchemy import create_engine
 
 # Conditionally set pandas option if it exists (available in pandas 2.1.0+)
 try:
@@ -3145,3 +3147,186 @@ def update_licensed_solar_data():
         db.session.rollback()
         print(f"Error in update_licensed_solar_data: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@main.route('/forecast-performance-data')
+def get_forecast_performance_data():
+    try:
+        # Get period parameter from request
+        period_days = request.args.get('period', '30', type=int)
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        import psycopg2
+        from sqlalchemy import create_engine
+        
+        # Get database connection using existing config or environment variables
+        try:
+            # Try to use Supabase credentials from environment
+            user = os.getenv("SUPABASE_USER")
+            password = os.getenv("SUPABASE_PASSWORD")
+            
+            if user and password:
+                connection_str = f"postgresql+psycopg2://{user}:{password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
+                engine = create_engine(connection_str)
+            else:
+                # Fallback to local database if Supabase credentials not available
+                return jsonify({
+                    'error': 'Database credentials not configured'
+                }), 500
+        except Exception as e:
+            return jsonify({
+                'error': f'Database connection failed: {str(e)}'
+            }), 500
+        
+        # Determine date range
+        if start_date and end_date:
+            # Custom date range
+            date_filter = f"date::timestamp >= '{start_date}' AND date::timestamp <= '{end_date}'"
+            period_info = f"{start_date} to {end_date}"
+        else:
+            # Use period in days
+            date_filter = f"date::timestamp >= NOW() - INTERVAL '{period_days} days'"
+            period_info = f"Last {period_days} Days"
+        
+        # Query actual price data (PTF)
+        ptf_query = f"SELECT date, price AS actual_price FROM epias.ptf WHERE {date_filter}"
+        
+        with engine.connect() as conn:
+            ptf_df = pd.read_sql(ptf_query, con=conn)
+        
+        if ptf_df.empty:
+            return jsonify({
+                'error': f'No PTF data available for the specified period'
+            }), 404
+        
+        # Clean and process PTF data
+        ptf_df['actual_price'] = ptf_df['actual_price'].apply(lambda x: 1 if x <= 0 else x)
+        ptf_df['date'] = ptf_df['date'].apply(lambda x: x.split('+')[0].replace('T', ' '))
+        ptf_df['date'] = pd.to_datetime(ptf_df['date'])
+        
+        # Query Meteologica forecast data with same date filter
+        meteologica_query = f"""
+        SELECT date, min_price AS meteologica_min, avg_price AS meteologica_avg, max_price AS meteologica_max
+        FROM public.meteologica_forecast
+        WHERE {date_filter.replace('epias.ptf', 'public.meteologica_forecast')}
+        """
+        
+        with engine.connect() as conn:
+            meteologica_forecast = pd.read_sql(meteologica_query, con=conn)
+        
+        meteologica_forecast['date'] = pd.to_datetime(meteologica_forecast['date'])
+        
+        # Query model forecast data with same date filter
+        model_query = f"""
+        SELECT * FROM public.model_forecast
+        WHERE {date_filter.replace('epias.ptf', 'public.model_forecast')}
+        """
+        
+        with engine.connect() as conn:
+            model_forecast = pd.read_sql(model_query, con=conn)
+        
+        model_forecast['date'] = pd.to_datetime(model_forecast['date'])
+        
+        # Merge all dataframes
+        price_df = pd.merge(ptf_df, meteologica_forecast, on='date', how='outer').sort_values(by='date')
+        price_df = pd.merge(price_df, model_forecast, on='date', how='left')
+        
+        # Remove rows with missing actual prices for evaluation
+        evaluation_df = price_df.dropna(subset=['actual_price']).copy()
+        
+        if evaluation_df.empty:
+            return jsonify({
+                'error': 'No data available with actual prices for evaluation period'
+            }), 404
+        
+        # Calculate metrics using simple numpy operations instead of darts
+        def calculate_wmape(actual, forecast):
+            actual_clean = actual.dropna()
+            forecast_clean = forecast[actual_clean.index]
+            forecast_clean = forecast_clean.dropna()
+            if len(forecast_clean) == 0:
+                return 0
+            common_indices = actual_clean.index.intersection(forecast_clean.index)
+            if len(common_indices) == 0:
+                return 0
+            actual_aligned = actual_clean[common_indices]
+            forecast_aligned = forecast_clean[common_indices]
+            return np.mean(np.abs(actual_aligned - forecast_aligned) / actual_aligned) * 100
+        
+        def calculate_rmse(actual, forecast):
+            actual_clean = actual.dropna()
+            forecast_clean = forecast[actual_clean.index]
+            forecast_clean = forecast_clean.dropna()
+            if len(forecast_clean) == 0:
+                return 0
+            common_indices = actual_clean.index.intersection(forecast_clean.index)
+            if len(common_indices) == 0:
+                return 0
+            actual_aligned = actual_clean[common_indices]
+            forecast_aligned = forecast_clean[common_indices]
+            return np.sqrt(np.mean((actual_aligned - forecast_aligned) ** 2))
+        
+        def calculate_r2(actual, forecast):
+            actual_clean = actual.dropna()
+            forecast_clean = forecast[actual_clean.index]
+            forecast_clean = forecast_clean.dropna()
+            if len(forecast_clean) == 0:
+                return 0
+            common_indices = actual_clean.index.intersection(forecast_clean.index)
+            if len(common_indices) == 0:
+                return 0
+            actual_aligned = actual_clean[common_indices]
+            forecast_aligned = forecast_clean[common_indices]
+            ss_res = np.sum((actual_aligned - forecast_aligned) ** 2)
+            ss_tot = np.sum((actual_aligned - np.mean(actual_aligned)) ** 2)
+            return 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
+        
+        # Prepare response data
+        response_data = {
+            'dates': evaluation_df['date'].dt.strftime('%Y-%m-%d %H:%M:%S').tolist(),
+            'actual_price': evaluation_df['actual_price'].fillna(0).tolist(),
+            'meteologica_min': evaluation_df['meteologica_min'].fillna(0).tolist(),
+            'meteologica_avg': evaluation_df['meteologica_avg'].fillna(0).tolist(),
+            'meteologica_max': evaluation_df['meteologica_max'].fillna(0).tolist(),
+            'model_forecast': evaluation_df['price_0.5'].fillna(0).tolist() if 'price_0.5' in evaluation_df.columns else [],
+            'period_info': period_info,
+            'data_points': len(evaluation_df)
+        }
+        
+        # Calculate metrics only for series with data
+        metrics = {}
+        actual_series = evaluation_df['actual_price']
+        
+        if not actual_series.dropna().empty:
+            for col, name in [
+                ('meteologica_min', 'Meteologica Min'),
+                ('meteologica_avg', 'Meteologica Avg'),
+                ('meteologica_max', 'Meteologica Max'),
+                ('price_0.5', 'Model Forecast')
+            ]:
+                if col in evaluation_df.columns and not evaluation_df[col].dropna().empty:
+                    try:
+                        metrics[name] = {
+                            'wmape': round(calculate_wmape(actual_series, evaluation_df[col]), 2),
+                            'rmse': round(calculate_rmse(actual_series, evaluation_df[col]), 2),
+                            'r2': round(calculate_r2(actual_series, evaluation_df[col]), 2)
+                        }
+                    except Exception as e:
+                        print(f"Error calculating metrics for {name}: {e}")
+                        metrics[name] = {'wmape': 0, 'rmse': 0, 'r2': 0}
+        
+        response_data['metrics'] = metrics
+        
+        return jsonify({
+            'code': 200,
+            'data': response_data
+        })
+        
+    except Exception as e:
+        print(f"Error in get_forecast_performance_data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'code': 500,
+            'error': f'Error fetching forecast performance data: {str(e)}'
+        }), 500

@@ -432,6 +432,12 @@
                 <span>System Direction Forecast</span>
             </a>
         </div>
+        <div class="nav-item">
+            <a href="#" class="nav-link" data-section="forecast-performance">
+                <i class="fas fa-chart-bar"></i>
+                <span>Forecast Performance</span>
+            </a>
+        </div>
     </nav>
 
     <!-- Main Content -->
@@ -530,6 +536,11 @@
                             case 'lignite-heatmap':
                                 if (window.app.ligniteHeatmap) {
                                     window.app.ligniteHeatmap.init();
+                                }
+                                break;
+                            case 'forecast-performance':
+                                if (window.app.forecastPerformance) {
+                                    window.app.forecastPerformance.init();
                                 }
                                 break;
                         }
