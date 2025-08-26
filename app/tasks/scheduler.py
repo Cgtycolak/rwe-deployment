@@ -131,6 +131,18 @@ def init_scheduler(app):
         misfire_grace_time=900  # 15 minutes grace time
     )
     
+    # Schedule retry update task for data that might not be available at 16:05
+    daily_retry = CronTrigger(hour=16, minute=45, timezone=tz)
+    scheduler.add_job(
+        update_daily_data,
+        trigger=daily_retry,
+        id='daily_data_retry',
+        name='Retry heatmap data update at 16:45',
+        args=[app],
+        replace_existing=True,
+        misfire_grace_time=900  # 15 minutes grace time
+    )
+    
     # Schedule the hourly update task (runs every hour)
     hourly_run = CronTrigger(minute=30, timezone=tz)  # Run at 30 minutes past every hour
     scheduler.add_job(
@@ -201,6 +213,6 @@ def init_scheduler(app):
     
     try:
         scheduler.start()
-        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates at 16:05, hourly updates at :30, realtime updates at 05:00 and 12:00")
+        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates at 16:05 (retry at 16:45), hourly updates at :30, realtime updates at 05:00 and 12:00")
     except Exception as e:
         app.logger.error(f"Error starting scheduler: {str(e)}")
