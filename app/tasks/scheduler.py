@@ -29,14 +29,14 @@ def update_daily_data(app):
             
             app.logger.info(f"Starting daily update job for date: {today}")
             
-            # Fetch data for today (don't store in local DB for scheduled updates)
-            app.logger.info(f"Fetching data for {today} (all versions)")
-            try:
-                populate_multiple_types(today, local_db=False, versions=['first', 'current'])
-                app.logger.info(f"Successfully fetched all version data for {today}")
-            except Exception as e:
-                app.logger.error(f"Error fetching data for {today}: {str(e)}")
-                # Don't raise here, so we can still try tomorrow's data
+            # # Fetch data for today (don't store in local DB for scheduled updates)
+            # app.logger.info(f"Fetching data for {today} (all versions)")
+            # try:
+            #     populate_multiple_types(today, local_db=False, versions=['first', 'current'])
+            #     app.logger.info(f"Successfully fetched all version data for {today}")
+            # except Exception as e:
+            #     app.logger.error(f"Error fetching data for {today}: {str(e)}")
+            #     # Don't raise here, so we can still try tomorrow's data
             
             # Try to fetch tomorrow's data, but don't fail the job if it's not available
             app.logger.info(f"Attempting to fetch data for {tomorrow} (all versions)")
