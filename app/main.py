@@ -2624,40 +2624,154 @@ def lignite_realtime_heatmap_data():
             LigniteRealtimeData.date == date_obj
         ).all()
         
-        if not query:
-            return jsonify({
-                'code': 404, 
-                'message': f'No lignite realtime data found for {date_str}'
-            })
+        # If we have data in database, process and return it
+        if query:
+            # Get plant names from mapping
+            plant_names = lignite_mapping['plant_names']
+            hours = [f"{i:02d}:00" for i in range(24)]
+            
+            # Initialize values matrix
+            values = [[0 for _ in range(len(plant_names))] for _ in range(24)]
+            
+            # Fill values matrix
+            for record in query:
+                try:
+                    plant_index = plant_names.index(record.plant_name)
+                    hour_index = record.hour
+                    if 0 <= hour_index < 24:
+                        values[hour_index][plant_index] = record.value or 0
+                except ValueError:
+                    # Plant not in mapping, skip
+                    continue
+            
+            response_data = {
+                'hours': hours,
+                'plants': [f"{name}--{capacity} MW" for name, capacity in zip(
+                    lignite_mapping['plant_names'],
+                    lignite_mapping['capacities']
+                )],
+                'values': values
+            }
+            
+            return jsonify({'code': 200, 'data': response_data})
+
+        # If no data in database, fetch from API
+        hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
+        df = pd.DataFrame(index=hours, columns=lignite_mapping['plant_names'])
         
-        # Get plant names from mapping
-        plant_names = lignite_mapping['plant_names']
-        hours = [f"{i:02d}:00" for i in range(24)]
+        # Get authentication token
+        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
         
-        # Initialize values matrix
-        values = [[0 for _ in range(len(plant_names))] for _ in range(24)]
+        # Create mappings for plant IDs (handle both valid and invalid p_ids)
+        p_id_count = {}
+        p_id_indices = {}
         
-        # Fill values matrix
-        for record in query:
+        # Process all p_ids, including invalid ones
+        for p_id in lignite_mapping['p_ids']:
+            p_id_count[p_id] = lignite_mapping['p_ids'].count(p_id)
+
+        for idx, p_id in enumerate(lignite_mapping['p_ids']):
+            if p_id not in p_id_indices:
+                p_id_indices[p_id] = []
+            p_id_indices[p_id].append(idx)
+        
+        # Separate valid and invalid p_ids
+        valid_p_ids = [p_id for p_id in set(lignite_mapping['p_ids']) if p_id and p_id > 0]
+        invalid_p_ids = [p_id for p_id in set(lignite_mapping['p_ids']) if not p_id or p_id <= 0]
+        
+        current_app.logger.info(f"Lignite plants: {len(set(lignite_mapping['p_ids']))} total, {len(valid_p_ids)} valid, {len(invalid_p_ids)} invalid")
+
+        # Fetch realtime data for each unique powerplant
+        batch_data = []
+        
+        # Handle valid p_ids - fetch from API
+        for p_id in valid_p_ids:
             try:
-                plant_index = plant_names.index(record.plant_name)
-                hour_index = record.hour
-                if 0 <= hour_index < 24:
-                    values[hour_index][plant_index] = record.value or 0
-            except ValueError:
-                # Plant not in mapping, skip
-                continue
+                print(f"Fetching realtime data for lignite plant ID: {p_id}")
+                
+                request_data = {
+                    "startDate": f"{date_str}T00:00:00+03:00",
+                    "endDate": f"{date_str}T23:59:59+03:00",
+                    "powerPlantId": str(p_id)
+                }
+
+                # Make API request
+                response = requests.post(
+                    current_app.config['REALTIME_URL'],
+                    json=request_data,
+                    headers={'TGT': tgt_token}
+                )
+                response.raise_for_status()
+                
+                items = response.json().get('items', [])
+                
+                hourly_values = [0] * 24
+                for item in items:
+                    hour = int(item.get('hour', '00:00').split(':')[0])
+                    total = item.get('total', 0)
+                    hourly_values[hour] = total
+
+                # Distribute values among plant instances
+                count = p_id_count[p_id]
+                distributed_values = [val / count for val in hourly_values]
+                
+                for idx in p_id_indices[p_id]:
+                    plant_name = lignite_mapping['plant_names'][idx]
+                    df[plant_name] = distributed_values
+                    
+                    # Prepare database records
+                    for hour, value in enumerate(distributed_values):
+                        batch_data.append({
+                            'date': date_obj,
+                            'hour': hour,
+                            'plant_name': plant_name,
+                            'value': value
+                        })
+                
+                time.sleep(0.5)  # Small delay between requests
+                
+            except Exception as e:
+                print(f"Error fetching realtime data for lignite plant {p_id}: {str(e)}")
+                for idx in p_id_indices.get(p_id, []):
+                    plant_name = lignite_mapping['plant_names'][idx]
+                    df[plant_name] = [0] * 24
         
-        response_data = {
-            'hours': hours,
-            'plants': [f"{name}--{capacity} MW" for name, capacity in zip(
-                lignite_mapping['plant_names'],
-                lignite_mapping['capacities']
-            )],
-            'values': values
-        }
-        
-        return jsonify({'code': 200, 'data': response_data})
+        # Handle invalid p_ids - set to zero values
+        for p_id in invalid_p_ids:
+            current_app.logger.info(f"Setting zero values for invalid lignite plant ID: {p_id}")
+            for idx in p_id_indices.get(p_id, []):
+                plant_name = lignite_mapping['plant_names'][idx]
+                df[plant_name] = [0] * 24
+                
+                # Prepare database records with zero values
+                for hour in range(24):
+                    batch_data.append({
+                        'date': date_obj,
+                        'hour': hour,
+                        'plant_name': plant_name,
+                        'value': 0.0
+                    })
+
+        # Store the fetched data in database
+        try:
+            if batch_data:
+                db.session.bulk_insert_mappings(LigniteRealtimeData, batch_data)
+                db.session.commit()
+        except Exception as e:
+            print(f"Error storing lignite realtime data: {str(e)}")
+            db.session.rollback()
+
+        return jsonify({
+            "code": 200,
+            "data": {
+                "hours": df.index.tolist(),
+                "plants": [f"{name}--{capacity} MW" for name, capacity in zip(
+                    lignite_mapping['plant_names'],
+                    lignite_mapping['capacities']
+                )],
+                "values": df.values.tolist()
+            }
+        })
         
     except Exception as e:
         current_app.logger.error(f"Error in lignite_realtime_heatmap_data: {str(e)}")

@@ -125,6 +125,11 @@ export const ligniteHeatmap = {
                     )
                 };
                 this.processAndDisplayHeatmap(differenceData, selectedDate, 'difference');
+            } else {
+                console.error('Failed to load lignite data. First version code:', firstVersionResult.code, 'Current version code:', currentVersionResult.code);
+                this.displayMessage(`Failed to load lignite heatmap data. First: ${firstVersionResult.code}, Current: ${currentVersionResult.code}`, "danger");
+                heatmapContainer.style.display = 'none';
+                if (toggleButton) toggleButton.disabled = true;
             }
 
         } catch (error) {

@@ -87,7 +87,7 @@ def populate_realtime_data(plant_type: str, start_date: datetime.date, end_date:
                     if local_db:
                         local_session.rollback()
                 
-                # Create mappings for plant IDs
+                # Create mappings for plant IDs (handle both valid and invalid p_ids)
                 p_id_count = {}
                 for p_id in mapping['p_ids']:
                     p_id_count[p_id] = mapping['p_ids'].count(p_id)
@@ -107,7 +107,14 @@ def populate_realtime_data(plant_type: str, start_date: datetime.date, end_date:
                 # Fetch realtime data for each unique powerplant
                 batch_data = []
                 unique_p_ids = set(mapping['p_ids'])
-                for p_id in unique_p_ids:
+                # Separate valid and invalid p_ids
+                valid_p_ids = [p_id for p_id in unique_p_ids if p_id and p_id > 0]
+                invalid_p_ids = [p_id for p_id in unique_p_ids if not p_id or p_id <= 0]
+                
+                print(f"Processing {plant_type}: {len(valid_p_ids)} valid, {len(invalid_p_ids)} invalid power plants")
+                
+                # Handle valid p_ids - fetch from API
+                for p_id in valid_p_ids:
                     try:
                         print(f"Fetching realtime data for {plant_type} plant ID: {p_id}")
                         
@@ -161,6 +168,25 @@ def populate_realtime_data(plant_type: str, start_date: datetime.date, end_date:
                     except Exception as e:
                         print(f"Error fetching data for plant {p_id}: {str(e)}")
                         continue
+                
+                # Handle invalid p_ids - set to zero values
+                for p_id in invalid_p_ids:
+                    print(f"Setting zero values for invalid {plant_type} plant ID: {p_id}")
+                    for idx in p_id_indices.get(p_id, []):
+                        plant_name = mapping['plant_names'][idx]
+                        
+                        # Create zero data for all hours
+                        current_date = chunk_start
+                        while current_date <= chunk_end:
+                            for hour in range(24):
+                                record_data = {
+                                    'date': current_date,
+                                    'hour': hour,
+                                    'plant_name': plant_name,
+                                    'value': 0.0
+                                }
+                                batch_data.append(record_data)
+                            current_date += timedelta(days=1)
 
                 # Store the fetched data in databases
                 try:
