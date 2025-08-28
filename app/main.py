@@ -3332,8 +3332,8 @@ def get_forecast_performance_data():
         
         # Query model forecast data with same date filter
         model_query = f"""
-        SELECT * FROM public.model_forecast
-        WHERE {date_filter.replace('epias.ptf', 'public.model_forecast')}
+        SELECT * FROM public.model_forecast_ptf
+        WHERE {date_filter.replace('epias.ptf', 'public.model_forecast_ptf')}
         """
         
         with engine.connect() as conn:
