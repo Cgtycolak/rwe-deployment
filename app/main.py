@@ -2199,6 +2199,56 @@ def get_demand_data():
         print(f"Error in get_demand_data: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@main.route('/get_monthly_demand_data')
+def get_monthly_demand_data():
+    try:
+        current_year = datetime.now().year
+        previous_year = current_year - 1
+        
+        # Get current date to limit the data range
+        current_date = datetime.now()
+        
+        # Use raw SQL to get monthly averages
+        query = text("""
+            SELECT 
+                EXTRACT(year FROM datetime) as year,
+                EXTRACT(month FROM datetime) as month,
+                AVG(consumption) as avg_consumption
+            FROM demand_data
+            WHERE (EXTRACT(year FROM datetime) = :current_year AND datetime <= :current_date)
+               OR (EXTRACT(year FROM datetime) = :previous_year)
+            GROUP BY EXTRACT(year FROM datetime), EXTRACT(month FROM datetime)
+            ORDER BY year, month
+        """)
+        
+        # Execute query
+        result = db.session.execute(
+            query, 
+            {
+                "current_year": current_year, 
+                "current_date": current_date,
+                "previous_year": previous_year
+            }
+        ).fetchall()
+        
+        # Process the data for the frontend
+        monthly_data = {
+            str(current_year): [0] * 12,
+            str(previous_year): [0] * 12
+        }
+        
+        for row in result:
+            year_str = str(int(row.year))
+            month_idx = int(row.month) - 1  # Convert to 0-based index
+            if year_str in monthly_data:
+                monthly_data[year_str][month_idx] = float(row.avg_consumption) if row.avg_consumption else 0
+        
+        return jsonify({'monthly_consumption': monthly_data})
+        
+    except Exception as e:
+        print(f"Error in get_monthly_demand_data: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @main.route('/update_demand_data_api')
 def update_demand_data_api():
     try:
@@ -3345,6 +3395,11 @@ def get_forecast_performance_data():
         price_df = pd.merge(ptf_df, meteologica_forecast, on='date', how='outer').sort_values(by='date')
         price_df = pd.merge(price_df, model_forecast, on='date', how='left')
         
+# [16.09.2025, 11:05:17] ~Ata Özarslan: from darts.metrics import wmape, rmse, r2_score
+# [16.09.2025, 11:07:00] ~Ata Özarslan: df = TimeSeries.from_dataframe(df)
+# [16.09.2025, 11:07:02] ~Ata Özarslan: from darts import TimeSeries
+        
+        
         # Remove rows with missing actual prices for evaluation
         evaluation_df = price_df.dropna(subset=['actual_price']).copy()
         
@@ -3402,7 +3457,7 @@ def get_forecast_performance_data():
             'meteologica_min': evaluation_df['meteologica_min'].fillna(0).tolist(),
             'meteologica_avg': evaluation_df['meteologica_avg'].fillna(0).tolist(),
             'meteologica_max': evaluation_df['meteologica_max'].fillna(0).tolist(),
-            'model_forecast': evaluation_df['price_0.5'].fillna(0).tolist() if 'price_0.5' in evaluation_df.columns else [],
+            'model_forecast': evaluation_df['best_price'].fillna(0).tolist() if 'best_price' in evaluation_df.columns else [],
             'period_info': period_info,
             'data_points': len(evaluation_df)
         }
@@ -3416,7 +3471,7 @@ def get_forecast_performance_data():
                 ('meteologica_min', 'Meteologica Min'),
                 ('meteologica_avg', 'Meteologica Avg'),
                 ('meteologica_max', 'Meteologica Max'),
-                ('price_0.5', 'Model Forecast')
+                ('best_price', 'Model Forecast')
             ]:
                 if col in evaluation_df.columns and not evaluation_df[col].dropna().empty:
                     try:

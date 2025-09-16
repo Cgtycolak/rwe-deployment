@@ -2756,7 +2756,7 @@ function renderCharts() {
             
             // Create the range area with dynamic date range
             traces.push({
-                name: `${dateRange} range: ${rangeLabel}`,
+                name: `${dateRange}`,
                 x: x.concat(x.slice().reverse()),
                 y: rangeData.map(d => d ? d.max : null).concat(rangeData.map(d => d ? d.min : null).reverse()),
                 fill: 'toself',
@@ -3046,7 +3046,7 @@ document.addEventListener('section:activated', function(e) {
     }
 });
 
-function renderDemandChart() {
+function createDemandChartsRow() {
     const chartsContainer = document.getElementById('charts-container');
     if (!chartsContainer) {
         console.error('Charts container not found');
@@ -3070,15 +3070,30 @@ function renderDemandChart() {
         chartsContainer.appendChild(sectionDivider);
     }
     
+    // Create a dedicated row for demand charts
+    const demandChartsRow = document.createElement('div');
+    demandChartsRow.className = 'row mb-4';
+    demandChartsRow.id = 'demand-charts-row';
+    chartsContainer.appendChild(demandChartsRow);
+}
+
+function renderDemandChart() {
     // Create demand chart container if it doesn't exist
     let chartDiv = document.getElementById('demand-chart');
     if (!chartDiv) {
+        const demandChartsRow = document.getElementById('demand-charts-row');
+        if (!demandChartsRow) {
+            console.error('Demand charts row not found');
+            return;
+        }
+        
         const chartContainer = document.createElement('div');
-        chartContainer.className = 'col-md-12';
+        chartContainer.className = 'col-md-6';
         chartContainer.innerHTML = `
-            <div class="chart-container" id="demand-chart" style="max-width: 800px; margin: 0 auto;"></div>
+            <div class="chart-container" id="demand-chart"></div>
         `;
-        chartsContainer.appendChild(chartContainer);
+        
+        demandChartsRow.appendChild(chartContainer);
         chartDiv = document.getElementById('demand-chart');
     }
 
@@ -3175,18 +3190,20 @@ function renderDemandChart() {
                     text: 'Avg. Demand',
                     font: {
                         family: 'RWE Sans Web',
-                        size: 20
+                        size: 22,
+                        color: '#333333'
                     },
-                    x: 0.125,
-                    y: 0.97,
+                    x: 0.127,
+                    y: 0.95,
                     xanchor: 'left',
                     yanchor: 'top'
                 },
                 xaxis: {
                     showgrid: true,
-                    gridcolor: 'rgba(0,0,0,0.1)',
+                    gridcolor: 'rgba(0,0,0,0.2)',
                     zeroline: true,
-                    zerolinecolor: 'rgba(0,0,0,0.1)',
+                    zerolinecolor: 'rgba(0,0,0,0.2)',
+                    zerolinewidth: 1,
                     linecolor: 'black',
                     linewidth: 1,
                     mirror: true,
@@ -3198,62 +3215,413 @@ function renderDemandChart() {
                     tickvals: tickVals,
                     nticks: tickVals.length,
                     tickfont: {
-                        size: 14
+                        family: 'RWE Sans Web',
+                        size: 14,
+                        color: '#333333'
                     }
                 },
                 yaxis: {
-                    title: 'MWh',
                     showgrid: true,
-                    gridcolor: 'rgba(0,0,0,0.1)',
+                    gridcolor: 'rgba(0,0,0,0.2)',
                     zeroline: true,
-                    zerolinecolor: 'rgba(0,0,0,0.1)',
+                    zerolinecolor: 'rgba(0,0,0,0.2)',
+                    zerolinewidth: 1,
                     linecolor: 'black',
                     linewidth: 1,
                     mirror: true,
+                    tickfont: {
+                        family: 'RWE Sans Web',
+                        size: 14,
+                        color: '#333333'
+                    },
+                    exponentformat: 'none',
+                    separatethousands: true,
+                    rangemode: 'normal',
+                    autorange: true,
                     tickformat: ',d'
                 },
                 showlegend: true,
                 legend: {
+                    orientation: 'v',
+                    y: 1,
                     x: 1,
                     xanchor: 'right',
-                    y: 1,
                     yanchor: 'top',
-                    bgcolor: 'rgba(255,255,255,0.9)',
-                    bordercolor: 'rgba(0,0,0,0.1)',
-                    borderwidth: 1
+                    bgcolor: 'rgba(255, 255, 255, 0.9)',
+                    bordercolor: 'rgba(0, 0, 0, 0.2)',
+                    borderwidth: 1,
+                    font: {
+                        family: 'RWE Sans Web',
+                        size: 12,
+                        color: '#333333'
+                    },
+                    traceorder: 'reversed'
                 },
                 plot_bgcolor: 'white',
                 paper_bgcolor: 'white',
                 hovermode: 'x unified',
-                hoverlabel: {
-                    bgcolor: 'white',
-                    bordercolor: '#ccc',
-                    font: {
-                        family: 'RWE Sans Web',
-                        size: 12
+                font: {
+                    family: 'RWE Sans Web'
+                },
+                shapes: [{
+                    type: 'rect',
+                    xref: 'paper',
+                    yref: 'paper',
+                    x0: 0,
+                    y0: 0,
+                    x1: 1,
+                    y1: 1,
+                    line: {
+                        color: 'black',
+                        width: 1
                     },
-                    namelength: -1  // Show full trace name
-                },
+                    layer: 'below'
+                }],
                 margin: {
-                    l: 80,
+                    l: 70,
                     r: 20,
-                    t: 40,
-                    b: 60
+                    t: 60,
+                    b: 50
                 },
-                height: 500,
-                width: 800,
-                autosize: false
+                autosize: false,
+                height: 480
             };
             
             Plotly.newPlot(chartDiv, traces, layout, {
                 displayModeBar: true,
                 responsive: true,
-                modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d']
+                modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d'],
+                toImageButtonOptions: {
+                    format: 'png',
+                    filename: 'TR_Average_Demand',
+                    height: 600,
+                    width: 800,
+                    scale: 2,
+                    bgcolor: 'white',
+                    font: {
+                        family: 'RWE Sans Web'
+                    }
+                }
             });
         })
         .catch(error => {
             console.error('Error fetching demand data:', error);
             chartDiv.innerHTML = `<div class="alert alert-danger">Error loading demand data: ${error.message}</div>`;
+        });
+}
+
+function renderMonthlyDemandChart() {
+    // Create monthly demand chart container if it doesn't exist
+    let chartDiv = document.getElementById('monthly-demand-chart');
+    if (!chartDiv) {
+        const demandChartsRow = document.getElementById('demand-charts-row');
+        if (!demandChartsRow) {
+            console.error('Demand charts row not found');
+            return;
+        }
+        
+        const chartContainer = document.createElement('div');
+        chartContainer.className = 'col-md-6';
+        chartContainer.innerHTML = `
+            <div class="chart-container" id="monthly-demand-chart"></div>
+        `;
+        
+        demandChartsRow.appendChild(chartContainer);
+        chartDiv = document.getElementById('monthly-demand-chart');
+    }
+
+    fetch('{{ url_for("main.get_monthly_demand_data") }}')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            const currentYear = new Date().getFullYear();
+            const previousYear = currentYear - 1;
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+            
+            const traces = [];
+            
+            // Get current month to limit display
+            const currentMonth = new Date().getMonth() + 1; // 1-based month
+            const displayMonths = monthNumbers.slice(0, currentMonth);
+            const displayMonthNames = monthNames.slice(0, currentMonth);
+            
+            // Get data for both years
+            const currentYearData = data.monthly_consumption[currentYear] ? data.monthly_consumption[currentYear].slice(0, currentMonth) : [];
+            const previousYearData = data.monthly_consumption[previousYear] ? data.monthly_consumption[previousYear].slice(0, currentMonth) : [];
+            
+            // Function to find intersection point between two line segments
+            function findIntersection(x1, y1, x2, y2, x3, y3, x4, y4) {
+                const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+                if (Math.abs(denom) < 1e-10) return null; // Lines are parallel
+                
+                const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+                if (t < 0 || t > 1) return null; // Intersection outside segment
+                
+                const x = x1 + t * (x2 - x1);
+                const y = y1 + t * (y2 - y1);
+                return { x, y };
+            }
+            
+            // Function to interpolate between two points
+            function interpolate(x1, y1, x2, y2, x) {
+                if (Math.abs(x2 - x1) < 1e-10) return y1;
+                const t = (x - x1) / (x2 - x1);
+                return y1 + t * (y2 - y1);
+            }
+            
+            // Create high-resolution fill areas with precise crossover detection
+            let hasGreenLegend = false;
+            let hasRedLegend = false;
+            
+            // For each monthly segment, create sub-segments with intersection detection
+            for (let i = 0; i < currentYearData.length - 1; i++) {
+                const x1 = displayMonths[i];
+                const x2 = displayMonths[i + 1];
+                const y1_current = currentYearData[i];     // 2025 start
+                const y2_current = currentYearData[i + 1]; // 2025 end
+                const y1_previous = previousYearData[i];    // 2024 start
+                const y2_previous = previousYearData[i + 1]; // 2024 end
+                
+                // Find intersection point within this segment
+                const intersection = findIntersection(x1, y1_current, x2, y2_current, x1, y1_previous, x2, y2_previous);
+                
+                if (intersection) {
+                    // Lines cross within this segment - create two sub-segments
+                    const intersectionX = intersection.x;
+                    const intersectionY = intersection.y;
+                    
+                    // First sub-segment: from start to intersection
+                    const isGreen1 = y1_current > y1_previous;
+                    const fillColor1 = isGreen1 ? 
+                        'rgba(34, 139, 34, 0.4)' : // Green
+                        'rgba(255, 0, 0, 0.4)';    // Red
+                    const traceName1 = isGreen1 ? 'Higher than 2024' : 'Lower than 2024';
+                    
+                    const showInLegend1 = (isGreen1 && !hasGreenLegend) || (!isGreen1 && !hasRedLegend);
+                    if (isGreen1) hasGreenLegend = true;
+                    if (!isGreen1) hasRedLegend = true;
+                    
+                    traces.push({
+                        name: traceName1,
+                        x: [x1, intersectionX, intersectionX, x1],
+                        y: [y1_current, intersectionY, intersectionY, y1_previous],
+                        fill: 'toself',
+                        type: 'scatter',
+                        mode: 'none',
+                        fillcolor: fillColor1,
+                        line: {color: 'transparent', width: 0},
+                        showlegend: showInLegend1,
+                        legendgroup: traceName1,
+                        hoverinfo: 'skip'
+                    });
+                    
+                    // Second sub-segment: from intersection to end
+                    const isGreen2 = y2_current > y2_previous;
+                    const fillColor2 = isGreen2 ? 
+                        'rgba(34, 139, 34, 0.4)' : // Green
+                        'rgba(255, 0, 0, 0.4)';    // Red
+                    const traceName2 = isGreen2 ? 'Higher than 2024' : 'Lower than 2024';
+                    
+                    const showInLegend2 = (isGreen2 && !hasGreenLegend) || (!isGreen2 && !hasRedLegend);
+                    if (isGreen2) hasGreenLegend = true;
+                    if (!isGreen2) hasRedLegend = true;
+                    
+                    traces.push({
+                        name: traceName2,
+                        x: [intersectionX, x2, x2, intersectionX],
+                        y: [intersectionY, y2_current, y2_previous, intersectionY],
+                        fill: 'toself',
+                        type: 'scatter',
+                        mode: 'none',
+                        fillcolor: fillColor2,
+                        line: {color: 'transparent', width: 0},
+                        showlegend: showInLegend2,
+                        legendgroup: traceName2,
+                        hoverinfo: 'skip'
+                    });
+                } else {
+                    // Lines don't cross within this segment - single color for entire segment
+                    const isGreen = y1_current > y1_previous; // Use start point to determine color
+                    const fillColor = isGreen ? 
+                        'rgba(34, 139, 34, 0.4)' : // Green
+                        'rgba(255, 0, 0, 0.4)';    // Red
+                    const traceName = isGreen ? 'Higher than 2024' : 'Lower than 2024';
+                    
+                    const showInLegend = (isGreen && !hasGreenLegend) || (!isGreen && !hasRedLegend);
+                    if (isGreen) hasGreenLegend = true;
+                    if (!isGreen) hasRedLegend = true;
+                    
+                    traces.push({
+                        name: traceName,
+                        x: [x1, x2, x2, x1],
+                        y: [y1_current, y2_current, y2_previous, y1_previous],
+                        fill: 'toself',
+                        type: 'scatter',
+                        mode: 'none',
+                        fillcolor: fillColor,
+                        line: {color: 'transparent', width: 0},
+                        showlegend: showInLegend,
+                        legendgroup: traceName,
+                        hoverinfo: 'skip'
+                    });
+                }
+            }
+            
+            // Add previous year line (2024) - blue
+            if (previousYearData.length > 0) {
+                traces.push({
+                    name: previousYear.toString(),
+                    x: displayMonths,
+                    y: previousYearData,
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: {
+                        color: 'blue',
+                        width: 2
+                    },
+                    hovertemplate: '<b>%{data.name}</b><br>%{text}: %{y:,.0f} MWh<extra></extra>',
+                    text: displayMonthNames
+                });
+            }
+            
+            // Add current year line (2025) - red
+            if (currentYearData.length > 0) {
+                traces.push({
+                    name: currentYear.toString(),
+                    x: displayMonths,
+                    y: currentYearData,
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: {
+                        color: 'red',
+                        width: 2
+                    },
+                    hovertemplate: '<b>%{data.name}</b><br>%{text}: %{y:,.0f} MWh<extra></extra>',
+                    text: displayMonthNames
+                });
+            }
+            
+            const layout = {
+                title: {
+                    text: 'Average Electricity Demand, Y-o-Y',
+                    font: {
+                        family: 'RWE Sans Web',
+                        size: 22,
+                        color: '#333333'
+                    },
+                    x: 0.127,
+                    y: 0.95,
+                    xanchor: 'left',
+                    yanchor: 'top'
+                },
+                xaxis: {
+                    ticktext: displayMonthNames,
+                    tickvals: displayMonths,
+                    showgrid: true,
+                    gridcolor: 'rgba(0,0,0,0.2)',
+                    tickfont: {
+                        family: 'RWE Sans Web',
+                        size: 14,
+                        color: '#333333'
+                    },
+                    linecolor: 'black',
+                    linewidth: 1,
+                    mirror: true,
+                    zeroline: true,
+                    zerolinecolor: 'rgba(0,0,0,0.2)',
+                    zerolinewidth: 1
+                },
+                yaxis: {
+                    showgrid: true,
+                    gridcolor: 'rgba(0,0,0,0.2)',
+                    tickfont: {
+                        family: 'RWE Sans Web',
+                        size: 14,
+                        color: '#333333'
+                    },
+                    exponentformat: 'none',
+                    separatethousands: true,
+                    rangemode: 'normal',
+                    autorange: true,
+                    tickformat: ',d',
+                    linecolor: 'black',
+                    linewidth: 1,
+                    mirror: true,
+                    zeroline: true,
+                    zerolinecolor: 'rgba(0,0,0,0.2)',
+                    zerolinewidth: 1
+                },
+                showlegend: true,
+                legend: {
+                    orientation: 'v',
+                    y: 1,
+                    x: 1,
+                    xanchor: 'right',
+                    yanchor: 'top',
+                    bgcolor: 'rgba(255, 255, 255, 0.9)',
+                    bordercolor: 'rgba(0, 0, 0, 0.2)',
+                    borderwidth: 1,
+                    font: {
+                        family: 'RWE Sans Web',
+                        size: 12,
+                        color: '#333333'
+                    },
+                    traceorder: 'reversed'
+                },
+                margin: {
+                    l: 70,
+                    r: 20,
+                    t: 60,
+                    b: 50
+                },
+                autosize: false,
+                height: 480,
+                hovermode: 'x unified',
+                plot_bgcolor: 'white',
+                paper_bgcolor: 'white',
+                font: {
+                    family: 'RWE Sans Web'
+                },
+                shapes: [{
+                    type: 'rect',
+                    xref: 'paper',
+                    yref: 'paper',
+                    x0: 0,
+                    y0: 0,
+                    x1: 1,
+                    y1: 1,
+                    line: {
+                        color: 'black',
+                        width: 1
+                    },
+                    layer: 'below'
+                }]
+            };
+            
+            Plotly.newPlot(chartDiv, traces, layout, {
+                displayModeBar: true,
+                responsive: true,
+                modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d'],
+                toImageButtonOptions: {
+                    format: 'png',
+                    filename: 'TR_Average_Electricity_Demand_YoY',
+                    height: 600,
+                    width: 800,
+                    scale: 2,
+                    bgcolor: 'white',
+                    font: {
+                        family: 'RWE Sans Web'
+                    }
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching monthly demand data:', error);
+            chartDiv.innerHTML = `<div class="alert alert-danger">Error loading monthly demand data: ${error.message}</div>`;
         });
 }
 
@@ -3293,8 +3661,12 @@ function loadRollingCharts() {
             // Render the charts
             renderCharts();
             
-            // Render the demand chart
+            // Create a dedicated row for the demand charts
+            createDemandChartsRow();
+            
+            // Render both demand charts
             renderDemandChart();
+            renderMonthlyDemandChart();
             
             // Set the loaded flag
             chartsLoaded = true;
