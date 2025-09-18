@@ -1796,49 +1796,48 @@ def get_rolling_data():
                 # Calculate combined solar (unlicensed + licensed)
                 df_hourly['solar_combined'] = df_hourly['unlicensed_solar'] + df_hourly['licensed_solar']
                 
-                # Filter out incomplete days - only keep days with all 24 hours
-                # Also exclude today and yesterday to be extra safe
-                print("Filtering out incomplete days from current year data...")
-                daily_counts = df_hourly.groupby(df_hourly.index.date).size()
-                
-                # Get today and yesterday dates
+                # Build completeness sets per-series so solar-derived series can lag without
+                # forcing other series to drop the latest day
+                print("Computing completeness per series (production vs solar)...")
                 today = datetime.now().date()
-                yesterday = today - timedelta(days=1)
                 
-                # Find complete days (24 hours) but exclude today and yesterday
-                complete_days = daily_counts[daily_counts == 24].index
-                safe_complete_days = [day for day in complete_days if day not in [today, yesterday]]
+                # Production completeness (use overall index)
+                prod_counts_by_day = df_hourly.groupby(df_hourly.index.date).size()
+                prod_complete_days = [d for d, c in prod_counts_by_day.items() if c == 24 and d != today]
                 
-                # Debug: Show which days are incomplete or excluded
-                incomplete_days = daily_counts[daily_counts != 24]
-                if len(incomplete_days) > 0:
-                    print("🔍 Incomplete days found:")
-                    for day, count in incomplete_days.items():
-                        missing_hours = 24 - count
-                        available_hours = list(range(count))
-                        missing_hours_list = list(range(count, 24))
-                        print(f"   📅 {day}: {count} hours (missing {missing_hours} hours)")
-                        print(f"   ⏰ Available hours: {available_hours}")
-                        print(f"   ❌ Missing hours: {missing_hours_list}")
+                # Solar completeness (require 24 points in both unlicensed and licensed if they exist)
+                solar_complete_days = None
+                if not unlicensed_hourly.empty:
+                    unl_counts = unlicensed_hourly.groupby(unlicensed_hourly.index.date).size()
+                    unl_complete = set([d for d, c in unl_counts.items() if c == 24 and d != today])
+                else:
+                    unl_complete = set()
+                if not licensed_hourly.empty:
+                    lic_counts = licensed_hourly.groupby(licensed_hourly.index.date).size()
+                    lic_complete = set([d for d, c in lic_counts.items() if c == 24 and d != today])
+                else:
+                    lic_complete = set()
                 
-                # Show excluded days
-                excluded_days = [day for day in complete_days if day in [today, yesterday]]
-                if excluded_days:
-                    print("🚫 Complete days excluded for safety:")
-                    for day in excluded_days:
-                        print(f"   📅 {day}: Excluded ({'today' if day == today else 'yesterday'})")
+                if not unlicensed_hourly.empty and not licensed_hourly.empty:
+                    solar_complete_days = unl_complete.intersection(lic_complete)
+                elif not unlicensed_hourly.empty:
+                    solar_complete_days = unl_complete
+                elif not licensed_hourly.empty:
+                    solar_complete_days = lic_complete
+                else:
+                    # No separate solar sources → treat as production completeness
+                    solar_complete_days = set(prod_complete_days)
                 
-                # Filter the DataFrame to only include safe complete days
-                safe_complete_days_set = set(safe_complete_days)
-                df_hourly = df_hourly[df_hourly.index.map(lambda x: x.date()).isin(safe_complete_days_set)]
+                print(f"Production complete days: {len(prod_complete_days)} | Solar complete days: {len(solar_complete_days)}")
                 
-                print(f"Found {len(safe_complete_days)} safe complete days out of {len(daily_counts)} total days")
-                print(f"After filtering incomplete days and recent days - DataFrame shape: {df_hourly.shape}")
+                # Do not filter df_hourly globally anymore; we will apply these day sets per-series
+                # when constructing outputs to avoid unintended drops.
+                
                 print(f"Sample unlicensed solar values: {df_hourly['unlicensed_solar'].head()}")
                 print(f"Sample licensed solar values: {df_hourly['licensed_solar'].head()}")
                 print(f"Sample combined solar values: {df_hourly['solar_combined'].head()}")
                 
-                # Use the hourly DataFrame for further processing
+                # Use the hourly DataFrame for further processing without global trimming
                 df = df_hourly
             else:
                 # No solar data from separate tables, set to 0
@@ -1860,6 +1859,11 @@ def get_rolling_data():
             for column in regular_columns:
                 # Resample to daily frequency
                 daily_avg = df[column].resample('D', closed='left', label='left').mean()
+                # Apply completeness per-series
+                if column in ['solar_combined', 'unlicensed_solar', 'licensed_solar', 'sun']:
+                    daily_avg = daily_avg[daily_avg.index.map(lambda x: x.date() in solar_complete_days)]
+                else:
+                    daily_avg = daily_avg[daily_avg.index.map(lambda x: x.date() in set(prod_complete_days))]
                 rolling_avg = daily_avg.rolling(window=7, min_periods=1).mean()
                 
                 # Get current year data
@@ -1877,7 +1881,9 @@ def get_rolling_data():
             
             # Special handling for renewables ratio - monthly averages for current year
             if 'renewablesratio' in df.columns:
-                monthly_data = df.groupby([df.index.month, df.index.year])['renewablesratio'].mean()
+                # For renewables ratio, restrict to solar-complete days to avoid sharp drops
+                df_ratio = df[df.index.map(lambda x: x.date() in solar_complete_days)]
+                monthly_data = df_ratio.groupby([df_ratio.index.month, df_ratio.index.year])['renewablesratio'].mean()
             
             # Convert to DataFrame for easier manipulation
             monthly_df = pd.DataFrame(monthly_data)
