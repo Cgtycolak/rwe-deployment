@@ -2846,7 +2846,7 @@ function renderCharts() {
         
         // Special handling for renewables ratio
         let yaxisFormat = ',d';
-        let yaxisTitle = '';
+        let yaxisTitle = 'MWh';
         let chartTitle = `TR 7-Day Rolling ${displayType} Generation - MWh`;
         let xaxisTicktext = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -3221,6 +3221,7 @@ function renderDemandChart() {
                     }
                 },
                 yaxis: {
+                    title: 'MWh',
                     showgrid: true,
                     gridcolor: 'rgba(0,0,0,0.2)',
                     zeroline: true,
@@ -3536,6 +3537,7 @@ function renderMonthlyDemandChart() {
                     zerolinewidth: 1
                 },
                 yaxis: {
+                    title: 'MWh',
                     showgrid: true,
                     gridcolor: 'rgba(0,0,0,0.2)',
                     tickfont: {
