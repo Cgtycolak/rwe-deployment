@@ -2175,7 +2175,7 @@ def get_demand_data():
             else:
                 previous_year_data.append(data_point)
         
-        # Convert to pandas DataFrame for resampling
+        # Convert to pandas DataFrame for resampling and metrics
         if current_year_data:
             df_current = pd.DataFrame(current_year_data)
             df_current['datetime'] = pd.to_datetime(df_current['datetime'])
@@ -2192,8 +2192,74 @@ def get_demand_data():
         else:
             weekly_avg_previous = pd.DataFrame()
         
+        # Calculate MTD/YTD metrics (average consumption), comparing to same period last year
+        metrics = {}
+        try:
+            now = pd.to_datetime(current_date)
+            # Month-to-date masks
+            if current_year_data:
+                mtd_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                df_cur_mtd = df_current.loc[(df_current.index >= mtd_start) & (df_current.index <= now)]
+            else:
+                df_cur_mtd = pd.DataFrame(columns=['consumption'])
+
+            if previous_year_data:
+                prev_now = now.replace(year=previous_year)
+                mtd_start_prev = prev_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                df_prev_mtd = df_previous.loc[(df_previous.index >= mtd_start_prev) & (df_previous.index <= prev_now)]
+            else:
+                df_prev_mtd = pd.DataFrame(columns=['consumption'])
+
+            # Year-to-date masks (up to same month-day and hour)
+            if current_year_data:
+                ytd_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                df_cur_ytd = df_current.loc[(df_current.index >= ytd_start) & (df_current.index <= now)]
+            else:
+                df_cur_ytd = pd.DataFrame(columns=['consumption'])
+
+            if previous_year_data:
+                prev_ytd_end = now.replace(year=previous_year)
+                ytd_start_prev = prev_ytd_end.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                df_prev_ytd = df_previous.loc[(df_previous.index >= ytd_start_prev) & (df_previous.index <= prev_ytd_end)]
+            else:
+                df_prev_ytd = pd.DataFrame(columns=['consumption'])
+
+            def total(series: pd.Series) -> float:
+                return float(series.sum()) if series is not None and not series.empty else 0.0
+
+            mtd_cur = total(df_cur_mtd['consumption'])
+            mtd_prev = total(df_prev_mtd['consumption'])
+            ytd_cur = total(df_cur_ytd['consumption'])
+            ytd_prev = total(df_prev_ytd['consumption'])
+
+            def delta(cur: float, prev: float):
+                diff = cur - prev
+                pct = (diff / prev * 100.0) if prev not in [0, None] else None
+                return diff, pct
+
+            mtd_diff, mtd_pct = delta(mtd_cur, mtd_prev)
+            ytd_diff, ytd_pct = delta(ytd_cur, ytd_prev)
+
+            metrics = {
+                'mtd': {
+                    'current_year': round(mtd_cur, 2),
+                    'previous_year': round(mtd_prev, 2),
+                    'diff': round(mtd_diff, 2),
+                    'pct': round(mtd_pct, 2) if mtd_pct is not None else None,
+                    'month_name': now.strftime('%B')
+                },
+                'ytd': {
+                    'current_year': round(ytd_cur, 2),
+                    'previous_year': round(ytd_prev, 2),
+                    'diff': round(ytd_diff, 2),
+                    'pct': round(ytd_pct, 2) if ytd_pct is not None else None
+                }
+            }
+        except Exception as _:
+            metrics = {}
+
         # Format the response as expected by the frontend
-        result = {'consumption': {}}
+        result = {'consumption': {}, 'metrics': metrics}
         
         if not weekly_avg_current.empty:
             result['consumption'][str(current_year)] = weekly_avg_current['consumption'].tolist()

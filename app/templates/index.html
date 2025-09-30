@@ -2846,14 +2846,15 @@ function renderCharts() {
         
         // Special handling for renewables ratio
         let yaxisFormat = ',d';
-        let yaxisTitle = 'MWh';
-        let chartTitle = `TR 7-Day Rolling ${displayType} Generation - MWh`;
+        let yaxisTitle = 'mW';
+        let chartTitle = `TR 7-Day Rolling ${displayType} Generation - mW`;
         let xaxisTicktext = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         let xaxisTickvals = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
 
         if (type === 'renewablesratio_monthly') {
             yaxisFormat = '.0%';  // Format as percentage
+            yaxisTitle = '';  // Percentage label for renewables ratio
             chartTitle = `${displayType}`;  // No need for "Generation - MWh" suffix
             xaxisTickvals = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // Month numbers
         }
@@ -3104,6 +3105,48 @@ function renderDemandChart() {
             const previousYear = currentYear - 1;
             const traces = [];
             
+            // Render MTD/YTD metrics panel
+            try {
+                const demandChartsRow = document.getElementById('demand-charts-row');
+                if (demandChartsRow && data.metrics) {
+                    let metricsCol = document.getElementById('demand-metrics-col');
+                    if (!metricsCol) {
+                        metricsCol = document.createElement('div');
+                        metricsCol.className = 'col-12 mb-2';
+                        metricsCol.id = 'demand-metrics-col';
+                        // Insert metrics row before charts
+                        demandChartsRow.parentNode.insertBefore(metricsCol, demandChartsRow);
+                    }
+                    const fmt = (n) => (n === null || n === undefined) ? '-' : Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+                    const fmtPct = (p) => (p === null || p === undefined) ? '-' : `${(p>0?'+':'')}${Number(p).toFixed(2)}%`;
+                    const m = data.metrics;
+                    const monthName = (m && m.mtd && m.mtd.month_name) ? m.mtd.month_name : '';
+                    const mtd = m && m.mtd ? m.mtd : null;
+                    const ytd = m && m.ytd ? m.ytd : null;
+                    metricsCol.innerHTML = `
+                        <div class="card" style="border: 1px solid rgba(0,0,0,0.1);">
+                          <div class="card-body py-2" style="font-family: 'RWE Sans Web';">
+                            <div class="row text-center" style="font-size: 14px;">
+                              <div class="col-md-6">
+                                <div><strong>MTD (${monthName})</strong></div>
+                                <div>${previousYear}: <strong>${fmt(mtd ? mtd.previous_year : null)} MWh</strong></div>
+                                <div>${currentYear}: <strong>${fmt(mtd ? mtd.current_year : null)} MWh</strong></div>
+                                <div>Δ: <strong>${fmt(mtd ? mtd.diff : null)} MWh</strong> (<span style="color:${mtd && mtd.pct>=0?'#228B22':'#cc0000'};">${fmtPct(mtd ? mtd.pct : null)}</span>)</div>
+                              </div>
+                              <div class="col-md-6">
+                                <div><strong>YTD</strong></div>
+                                <div>${previousYear}: <strong>${fmt(ytd ? ytd.previous_year : null)} MWh</strong></div>
+                                <div>${currentYear}: <strong>${fmt(ytd ? ytd.current_year : null)} MWh</strong></div>
+                                <div>Δ: <strong>${fmt(ytd ? ytd.diff : null)} MWh</strong> (<span style="color:${ytd && ytd.pct>=0?'#228B22':'#cc0000'};">${fmtPct(ytd ? ytd.pct : null)}</span>)</div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>`;
+                }
+            } catch (e) {
+                console.warn('Failed to render demand metrics panel', e);
+            }
+
             // Get current date to limit the data range
             const now = new Date();
             const currentWeek = Math.ceil((now - new Date(now.getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24 * 7));
