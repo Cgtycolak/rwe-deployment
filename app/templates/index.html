@@ -2224,6 +2224,31 @@
             </div>
         </div>
     </div>
+    
+    <!-- Combined: Gas Consumption & GM -->
+    <div class="content-section" data-section="gas-gm">
+        <div class="container-fluid">
+            <div class="row gy-2">
+                <div class="col-12 ata-embed">
+                    <h2 class="mb-3">Gas Consumption</h2>
+                    <div class="card">
+                        <div class="card-body">
+                            <iframe class="ata-iframe" src="{{ url_for('static', filename='ata_htmls/mtd_gc.html') }}"></iframe>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 ata-embed">
+                    <h2 class="mb-3 mt-0">Gross Margin</h2>
+                    <div class="card">
+                        <div class="card-body">
+                            <iframe class="ata-iframe" src="{{ url_for('static', filename='ata_htmls/mtd_gm.html') }}"></iframe>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 {% endblock %}
 {% block page_scripts %}

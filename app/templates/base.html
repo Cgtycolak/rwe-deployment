@@ -303,6 +303,27 @@
         }
 
         /* Font loading states */
+        /* Clean, borderless container for embedded ATA iframes */
+        .ata-embed .card {
+            border: none;
+            box-shadow: none;
+            margin: 0;
+        }
+        .ata-embed .card-body {
+            padding: 0;
+        }
+        .ata-iframe {
+            border: 0;
+            width: 100%;
+            height: 65vh; /* ensure x-axis is fully visible with less whitespace */
+            display: block;
+        }
+        @media (max-height: 700px) {
+            .ata-iframe { height: 60vh; }
+        }
+        @media (max-width: 576px) {
+            .ata-iframe { height: 68vh; }
+        }
         html:not(.fonts-loaded) {
             /* Styles when fonts are not yet loaded */
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -421,6 +442,15 @@
             <a href="#" class="nav-link" data-section="lignite-heatmap">
                 <i class="fas fa-industry"></i>
                 <span>Lignite DPP Heatmap</span>
+            </a>
+        </div>
+
+        <!-- ATA Mini Tables -->
+        <div class="nav-category">Expectations</div>
+        <div class="nav-item">
+            <a href="#" class="nav-link" data-section="gas-gm">
+                <i class="fas fa-gas-pump"></i>
+                <span>Gas Consumption & GM</span>
             </a>
         </div>
         
@@ -553,12 +583,74 @@
                 }));
             }
 
+            // Enhance Plotly charts inside ATA iframes (legend + x-axis)
+            function enhanceAtaIframe(iframe) {
+                if (!iframe || !iframe.contentWindow) return;
+                const win = iframe.contentWindow;
+                const doc = win.document;
+                const applyEnhancements = () => {
+                    if (!win.Plotly) return;
+                    const graphs = doc.querySelectorAll('.plotly-graph-div');
+                    graphs.forEach((gd) => {
+                        try {
+                            const layout = gd.layout || {};
+                            const updates = {
+                                showlegend: true,
+                                legend: { orientation: 'h', x: 0, xanchor: 'left', y: -0.2, yanchor: 'top', font: { size: 11 } },
+                                margin: { t: Math.max(60, (layout.margin && layout.margin.t) || 60), r: 60, l: 60, b: 150 },
+                                xaxis: Object.assign({}, layout.xaxis || {}, { tickangle: -90, automargin: true, ticklabelstandoff: 6 })
+                            };
+                            if (layout.xaxis2) updates.xaxis2 = Object.assign({}, layout.xaxis2, { tickangle: -45, automargin: true, ticklabelstandoff: 6 });
+                            win.Plotly.relayout(gd, updates);
+                            win.Plotly.Plots.resize(gd);
+                        } catch (e) { /* noop */ }
+                    });
+                };
+                applyEnhancements();
+                setTimeout(applyEnhancements, 300);
+                setTimeout(applyEnhancements, 800);
+            }
+
+            function enhanceAtaSection(sectionId) {
+                const section = document.querySelector(`.content-section[data-section="${sectionId}"]`);
+                if (!section) return;
+                const iframe = section.querySelector('iframe.ata-iframe');
+                if (!iframe) return;
+                if (!iframe.dataset.enhancerAttached) {
+                    iframe.addEventListener('load', () => enhanceAtaIframe(iframe));
+                    iframe.dataset.enhancerAttached = 'true';
+                }
+                if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+                    enhanceAtaIframe(iframe);
+                }
+            }
+
+            document.addEventListener('section:activated', (ev) => {
+                if (ev.detail && (ev.detail.section === 'gas-gm')) {
+                    // Enhance both iframes in combined section
+                    const section = document.querySelector('.content-section[data-section="gas-gm"]');
+                    section && section.querySelectorAll('iframe.ata-iframe').forEach((iframe) => {
+                        if (!iframe.dataset.enhancerAttached) {
+                            iframe.addEventListener('load', () => enhanceAtaIframe(iframe));
+                            iframe.dataset.enhancerAttached = 'true';
+                        }
+                        if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+                            enhanceAtaIframe(iframe);
+                        }
+                    });
+                }
+            });
+
             // Check for fragment identifier in URL
             if (window.location.hash) {
                 const sectionId = window.location.hash.substring(1);
                 const targetSection = document.querySelector(`.content-section[data-section="${sectionId}"]`);
                 if (targetSection) {
                     showSection(sectionId);
+                    if (sectionId === 'gas-gm') {
+                        const section = document.querySelector('.content-section[data-section="gas-gm"]');
+                        section && section.querySelectorAll('iframe.ata-iframe').forEach((iframe) => enhanceAtaSection('gas-gm'));
+                    }
                 } else {
                     showSection('home');
                 }
@@ -585,10 +677,20 @@
                     const targetSection = document.querySelector(`.content-section[data-section="${sectionId}"]`);
                     if (targetSection) {
                         showSection(sectionId);
+                        if (sectionId === 'gas-gm') {
+                            const section = document.querySelector('.content-section[data-section="gas-gm"]');
+                            section && section.querySelectorAll('iframe.ata-iframe').forEach((iframe) => enhanceAtaSection('gas-gm'));
+                        }
                     }
                 } else {
                     showSection('home');
                 }
+            });
+
+            // Re-apply on window resize to maintain margins
+            window.addEventListener('resize', () => {
+                const section = document.querySelector('.content-section[data-section="gas-gm"]');
+                section && section.querySelectorAll('iframe.ata-iframe').forEach((iframe) => enhanceAtaIframe(iframe));
             });
         });
     </script>
