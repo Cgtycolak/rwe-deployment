@@ -12,6 +12,40 @@ import random
 # Load environment variables
 load_dotenv()
 
+def ts_to_df(series_or_df):
+    """Return a pandas DataFrame from a Darts TimeSeries or pass-through DataFrame.
+
+    This provides compatibility across Darts versions where the conversion API
+    changed (e.g., pd_dataframe vs to_dataframe). It also supports pandas Series.
+    """
+    # Already a DataFrame
+    if isinstance(series_or_df, pd.DataFrame):
+        return series_or_df
+
+    # pandas Series
+    if isinstance(series_or_df, pd.Series):
+        return series_or_df.to_frame()
+
+    # Darts TimeSeries (lazy import type check to avoid strict coupling)
+    try:
+        from darts import TimeSeries as _DartsTimeSeries  # local import to avoid unused import when not needed
+        is_ts = isinstance(series_or_df, _DartsTimeSeries)
+    except Exception:
+        is_ts = False
+
+    if is_ts:
+        # Try legacy/newer APIs in order
+        if hasattr(series_or_df, 'pd_dataframe') and callable(getattr(series_or_df, 'pd_dataframe')):
+            return series_or_df.pd_dataframe()
+        if hasattr(series_or_df, 'to_dataframe') and callable(getattr(series_or_df, 'to_dataframe')):
+            return series_or_df.to_dataframe()
+        if hasattr(series_or_df, 'pd_series') and callable(getattr(series_or_df, 'pd_series')):
+            return series_or_df.pd_series().to_frame()
+        if hasattr(series_or_df, 'to_series') and callable(getattr(series_or_df, 'to_series')):
+            return series_or_df.to_series().to_frame()
+
+    raise AttributeError("Unsupported object type for ts_to_df conversion")
+
 def get_database_connection():
     """Create a database connection using environment variables with better connection pooling."""
     sb_user = os.getenv("SUPABASE_USER")
@@ -139,7 +173,7 @@ def prepare_data_for_modeling(generation_df, dgp_df, excel_data):
     
     # Add holidays with a different name to avoid conflict with Prophet
     ts_df_with_holidays = ts_df.add_holidays('TR')
-    df = ts_df_with_holidays.pd_dataframe().rename(columns={'holidays': 'is_holiday'})
+    df = ts_to_df(ts_df_with_holidays).rename(columns={'holidays': 'is_holiday'})
     
     df['hour'] = df.index.hour.astype(float)
     hour_map = {hour: 'off-peak1' if hour < 10 else 'peak' if hour >= 18 else 'off-peak2' for hour in range(24)}

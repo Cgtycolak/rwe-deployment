@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 import traceback
-from ..forecasting.utils import get_database_connection, fetch_generation_data, fetch_dgp_data, prepare_data_for_modeling
+from ..forecasting.utils import get_database_connection, fetch_generation_data, fetch_dgp_data, prepare_data_for_modeling, ts_to_df
 from ..forecasting.model_testing import evaluate_model, evaluate_and_find_best
 from ..forecasting.model_forecast import make_forecast, to_excel_bytes
 from ..forecasting.models import get_models
@@ -42,7 +42,8 @@ def get_recent_data():
         
         # Get recent hours data
         hours = int(request.form.get('hours', 24))
-        recent_data = ts_df.pd_dataframe()[ts_df.pd_dataframe()['system_direction'].notna()].tail(hours)
+        ts_df_pd = ts_to_df(ts_df)
+        recent_data = ts_df_pd[ts_df_pd['system_direction'].notna()].tail(hours)
         
         # Convert to list for JSON response
         data_list = []
@@ -95,15 +96,16 @@ def evaluate():
         
         # Split data
         covariates = ts_df.drop_columns(['system_direction'])
-        train_val, test = ts_df[:-ts_df.pd_dataframe()['system_direction'].isnull().sum()], ts_df[-ts_df.pd_dataframe()['system_direction'].isnull().sum():]
+        ts_df_pd = ts_to_df(ts_df)
+        train_val, test = ts_df[:-ts_df_pd['system_direction'].isnull().sum()], ts_df[-ts_df_pd['system_direction'].isnull().sum():]
         
         # Handle NaNs in covariates
-        covariates_df = covariates.pd_dataframe().copy()
+        covariates_df = ts_to_df(covariates).copy()
         covariates_df = covariates_df.fillna(0)  # Fill all NaNs in covariates with 0
         covariates = TimeSeries.from_dataframe(covariates_df)
         
         # Handle NaNs in training data
-        train_val_df = train_val.pd_dataframe().copy()
+        train_val_df = ts_to_df(train_val).copy()
         train_val_df = train_val_df.fillna(0)  # Fill NaNs in training data
         train_val = TimeSeries.from_dataframe(train_val_df)
         
@@ -173,18 +175,19 @@ def predict():
         
         # Split data
         covariates = ts_df.drop_columns(['system_direction'])
-        train_val, test = ts_df[:-ts_df.pd_dataframe()['system_direction'].isnull().sum()], ts_df[-ts_df.pd_dataframe()['system_direction'].isnull().sum():]
+        ts_df_pd = ts_to_df(ts_df)
+        train_val, test = ts_df[:-ts_df_pd['system_direction'].isnull().sum()], ts_df[-ts_df_pd['system_direction'].isnull().sum():]
         
         # Get models
         models = get_models()
         
         # Handle NaNs in covariates and training data
-        covariates_df = covariates.pd_dataframe().copy()
+        covariates_df = ts_to_df(covariates).copy()
         covariates_df = covariates_df.fillna(0)  # Fill all NaNs in covariates with 0
         covariates = TimeSeries.from_dataframe(covariates_df)
         
         # Handle NaNs in training data
-        train_val_df = train_val.pd_dataframe().copy()
+        train_val_df = ts_to_df(train_val).copy()
         train_val_df = train_val_df.fillna(0)  # Fill NaNs in training data
         train_val = TimeSeries.from_dataframe(train_val_df)
         
@@ -296,15 +299,16 @@ def download_forecast():
         
         # Split data
         covariates = ts_df.drop_columns(['system_direction'])
-        train_val, test = ts_df[:-ts_df.pd_dataframe()['system_direction'].isnull().sum()], ts_df[-ts_df.pd_dataframe()['system_direction'].isnull().sum():]
+        ts_df_pd = ts_to_df(ts_df)
+        train_val, test = ts_df[:-ts_df_pd['system_direction'].isnull().sum()], ts_df[-ts_df_pd['system_direction'].isnull().sum():]
         
         # Handle NaNs in covariates
-        covariates_df = covariates.pd_dataframe().copy()
+        covariates_df = ts_to_df(covariates).copy()
         covariates_df = covariates_df.fillna(0)  # Fill all NaNs in covariates with 0
         covariates = TimeSeries.from_dataframe(covariates_df)
         
         # Handle NaNs in training data
-        train_val_df = train_val.pd_dataframe().copy()
+        train_val_df = ts_to_df(train_val).copy()
         train_val_df = train_val_df.fillna(0)  # Fill NaNs in training data
         train_val = TimeSeries.from_dataframe(train_val_df)
         

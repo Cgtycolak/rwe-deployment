@@ -4,6 +4,7 @@ from darts import TimeSeries
 import io
 import pytz
 from datetime import datetime
+from .utils import ts_to_df
 
 def make_forecast(model, forecast_period, covariates_data=None, num_simulations=100):
     """Make a forecast using the specified model."""
@@ -17,7 +18,7 @@ def make_forecast(model, forecast_period, covariates_data=None, num_simulations=
     now_tr = datetime.now(tz=turkey_tz)
     next_hour = now_tr.replace(minute=0, second=0, microsecond=0) + pd.Timedelta(hours=1)
     
-    new_covariates = covariates_data.pd_dataframe().copy()
+    new_covariates = ts_to_df(covariates_data).copy()
     new_covariates = TimeSeries.from_dataframe(new_covariates)
     
     if forecast_period > 1:
@@ -27,7 +28,7 @@ def make_forecast(model, forecast_period, covariates_data=None, num_simulations=
             
             long_forecast = probabilistic_forecast.rename(columns={'system_direction_0.5':'system_direction_lag1'})
             long_forecast.index = long_forecast.index + pd.Timedelta(hours=1)
-            new_covariates = new_covariates.pd_dataframe()
+            new_covariates = ts_to_df(new_covariates)
             new_covariates.update(long_forecast['system_direction_lag1'])
             new_covariates = TimeSeries.from_dataframe(new_covariates)
         
