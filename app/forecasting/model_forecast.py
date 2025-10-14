@@ -6,6 +6,29 @@ import pytz
 from datetime import datetime
 from .utils import ts_to_df
 
+def _safe_quantiles_df(series: TimeSeries, quantiles=None) -> pd.DataFrame:
+    """Return a DataFrame of quantiles for a Darts TimeSeries, with fallbacks.
+
+    If the underlying Darts version does not expose quantiles_df, fallback to
+    using the deterministic values for all requested quantiles.
+    """
+    if quantiles is None:
+        quantiles = [0.05, 0.5, 0.95]
+    # Try common Darts APIs
+    try:
+        return series.quantiles_df(quantiles)
+    except Exception:
+        try:
+            return series.quantiles_df(q=quantiles)
+        except Exception:
+            base_df = ts_to_df(series)
+            # Choose the primary target column; default to first column
+            target_col = 'system_direction' if 'system_direction' in base_df.columns else base_df.columns[0]
+            out = pd.DataFrame(index=base_df.index)
+            for q in quantiles:
+                out[f"{target_col}_{q}"] = base_df[target_col].values
+            return out
+
 def make_forecast(model, forecast_period, covariates_data=None, num_simulations=100):
     """Make a forecast using the specified model."""
     if covariates_data is None:
@@ -23,20 +46,24 @@ def make_forecast(model, forecast_period, covariates_data=None, num_simulations=
     
     if forecast_period > 1:
         for loop in range(1, forecast_period):
-            probabilistic_forecast = model.predict(1*loop, num_samples=num_simulations, future_covariates=new_covariates)
-            probabilistic_forecast = probabilistic_forecast.quantiles_df([0.05,0.5,0.95]).iloc[-1:]
-            
-            long_forecast = probabilistic_forecast.rename(columns={'system_direction_0.5':'system_direction_lag1'})
+            one_step_fc = model.predict(1*loop, num_samples=num_simulations, future_covariates=new_covariates)
+            qdf_last = _safe_quantiles_df(one_step_fc, [0.05, 0.5, 0.95]).iloc[-1:]
+            long_forecast = qdf_last.rename(columns={'system_direction_0.5':'system_direction_lag1'})
             long_forecast.index = long_forecast.index + pd.Timedelta(hours=1)
             new_covariates = ts_to_df(new_covariates)
+            # If fallback changed column naming, handle general case
+            if 'system_direction_lag1' not in long_forecast.columns:
+                # Try to infer the median column name
+                median_cols = [c for c in long_forecast.columns if c.endswith('_0.5')]
+                if median_cols:
+                    long_forecast['system_direction_lag1'] = long_forecast[median_cols[0]]
             new_covariates.update(long_forecast['system_direction_lag1'])
             new_covariates = TimeSeries.from_dataframe(new_covariates)
-        
-        probabilistic_forecast = model.predict(forecast_period, num_samples=num_simulations, future_covariates=new_covariates)
-        probabilistic_forecast = probabilistic_forecast.quantiles_df([0.05,0.5,0.95])
+        full_fc = model.predict(forecast_period, num_samples=num_simulations, future_covariates=new_covariates)
+        probabilistic_forecast = _safe_quantiles_df(full_fc, [0.05, 0.5, 0.95])
     else:
-        probabilistic_forecast = model.predict(forecast_period, num_samples=num_simulations, future_covariates=new_covariates)
-        probabilistic_forecast = probabilistic_forecast.quantiles_df([0.05,0.5,0.95])
+        full_fc = model.predict(forecast_period, num_samples=num_simulations, future_covariates=new_covariates)
+        probabilistic_forecast = _safe_quantiles_df(full_fc, [0.05, 0.5, 0.95])
     
     # Adjust forecast times to start from the next hour
     # This is the key change - we're explicitly setting the index to start from the next hour
