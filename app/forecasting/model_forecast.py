@@ -18,51 +18,75 @@ def _safe_quantiles_df(series: TimeSeries, quantiles=None) -> pd.DataFrame:
     # Try common Darts APIs for quantile extraction
     # Note: quantile_df (singular) is the correct method name in recent Darts versions
     try:
-        return series.quantile_df(quantiles)
+        result = series.quantile_df(quantiles)
+        return result
     except AttributeError:
         pass
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"quantile_df failed with: {e}")
     
     try:
-        return series.quantile_df(q=quantiles)
+        result = series.quantile_df(q=quantiles)
+        return result
     except AttributeError:
         pass
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"quantile_df(q=...) failed with: {e}")
     
     # Try legacy API
     try:
-        return series.quantiles_df(quantiles)
+        result = series.quantiles_df(quantiles)
+        return result
     except AttributeError:
         pass
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"quantiles_df failed with: {e}")
     
     # Fallback: extract from stochastic samples or use deterministic values
     try:
         base_df = ts_to_df(series)
-        # Determine the target column name
-        target_col = 'system_direction' if 'system_direction' in base_df.columns else base_df.columns[0]
+        print(f"Fallback: DataFrame shape={base_df.shape}, columns={base_df.columns.tolist()[:10]}")
         
-        # Check if this is a stochastic series (multiple sample columns)
-        # Stochastic series often have columns like: component_sample0, component_sample1, ...
-        sample_cols = [c for c in base_df.columns if 'sample' in str(c).lower()]
+        # For stochastic series, columns might be like: component_sample_0, component_sample_1, etc.
+        # Extract component name from first column
+        first_col = str(base_df.columns[0])
         
-        if sample_cols:
-            # Compute quantiles from samples
+        # Try to identify the base component name
+        if '_sample_' in first_col or '_sample' in first_col:
+            # Extract component name before '_sample'
+            parts = first_col.split('_sample')
+            target_col = parts[0]
+        elif 'system_direction' in first_col:
+            target_col = 'system_direction'
+        else:
+            # Use the first column name, stripping any numeric suffix
+            import re
+            match = re.match(r'^(.+?)(_\d+)?$', first_col)
+            target_col = match.group(1) if match else first_col
+        
+        # Check if this is a stochastic series (multiple columns with similar names)
+        # All columns should be samples of the same component
+        if len(base_df.columns) > 1:
+            print(f"Stochastic series detected with {len(base_df.columns)} samples, target_col={target_col}")
+            # Compute quantiles from all columns (each column is a sample)
             out = pd.DataFrame(index=base_df.index)
-            sample_data = base_df[sample_cols].values
+            sample_data = base_df.values  # All columns are samples
             for q in quantiles:
                 out[f"{target_col}_{q}"] = np.quantile(sample_data, q, axis=1)
+            print(f"Created quantile DataFrame with columns: {out.columns.tolist()}")
             return out
         else:
-            # Deterministic series: use same value for all quantiles
+            # Deterministic series: single column, use same value for all quantiles
+            print(f"Deterministic series detected, target_col={target_col}")
             out = pd.DataFrame(index=base_df.index)
             for q in quantiles:
-                out[f"{target_col}_{q}"] = base_df[target_col].values
+                out[f"{target_col}_{q}"] = base_df.iloc[:, 0].values
+            print(f"Created quantile DataFrame with columns: {out.columns.tolist()}")
             return out
     except Exception as e:
+        import traceback
+        print(f"Fallback failed: {e}")
+        print(traceback.format_exc())
         raise RuntimeError(f"Could not extract quantiles from TimeSeries: {e}")
 
 def make_forecast(model, forecast_period, covariates_data=None, num_simulations=100):
