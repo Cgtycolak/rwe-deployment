@@ -9,25 +9,61 @@ from .utils import ts_to_df
 def _safe_quantiles_df(series: TimeSeries, quantiles=None) -> pd.DataFrame:
     """Return a DataFrame of quantiles for a Darts TimeSeries, with fallbacks.
 
-    If the underlying Darts version does not expose quantiles_df, fallback to
+    If the underlying Darts version does not expose quantile_df, fallback to
     using the deterministic values for all requested quantiles.
     """
     if quantiles is None:
         quantiles = [0.05, 0.5, 0.95]
-    # Try common Darts APIs
+    
+    # Try common Darts APIs for quantile extraction
+    # Note: quantile_df (singular) is the correct method name in recent Darts versions
+    try:
+        return series.quantile_df(quantiles)
+    except AttributeError:
+        pass
+    except Exception:
+        pass
+    
+    try:
+        return series.quantile_df(q=quantiles)
+    except AttributeError:
+        pass
+    except Exception:
+        pass
+    
+    # Try legacy API
     try:
         return series.quantiles_df(quantiles)
+    except AttributeError:
+        pass
     except Exception:
-        try:
-            return series.quantiles_df(q=quantiles)
-        except Exception:
-            base_df = ts_to_df(series)
-            # Choose the primary target column; default to first column
-            target_col = 'system_direction' if 'system_direction' in base_df.columns else base_df.columns[0]
+        pass
+    
+    # Fallback: extract from stochastic samples or use deterministic values
+    try:
+        base_df = ts_to_df(series)
+        # Determine the target column name
+        target_col = 'system_direction' if 'system_direction' in base_df.columns else base_df.columns[0]
+        
+        # Check if this is a stochastic series (multiple sample columns)
+        # Stochastic series often have columns like: component_sample0, component_sample1, ...
+        sample_cols = [c for c in base_df.columns if 'sample' in str(c).lower()]
+        
+        if sample_cols:
+            # Compute quantiles from samples
+            out = pd.DataFrame(index=base_df.index)
+            sample_data = base_df[sample_cols].values
+            for q in quantiles:
+                out[f"{target_col}_{q}"] = np.quantile(sample_data, q, axis=1)
+            return out
+        else:
+            # Deterministic series: use same value for all quantiles
             out = pd.DataFrame(index=base_df.index)
             for q in quantiles:
                 out[f"{target_col}_{q}"] = base_df[target_col].values
             return out
+    except Exception as e:
+        raise RuntimeError(f"Could not extract quantiles from TimeSeries: {e}")
 
 def make_forecast(model, forecast_period, covariates_data=None, num_simulations=100):
     """Make a forecast using the specified model."""

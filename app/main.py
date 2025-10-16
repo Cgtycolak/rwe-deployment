@@ -1,7 +1,7 @@
 import sys
 import time
 from datetime import datetime, timedelta, timezone
-from flask import abort, app, Blueprint, session, render_template, redirect, url_for, Response, request, jsonify, Request, Response, current_app
+from flask import abort, app, Blueprint, session, render_template, redirect, url_for, Response, request, jsonify, Request, Response, current_app, flash
 from requests import post, Session
 from .functions import get_tgt_token, asutc, invalidates_or_none, fetch_plant_data
 from requests.adapters import HTTPAdapter
@@ -30,6 +30,7 @@ import psycopg2
 from sqlalchemy import create_engine
 from darts.metrics import wmape, rmse, r2_score
 from darts import TimeSeries
+from functools import wraps
 
 # Conditionally set pandas option if it exists (available in pandas 2.1.0+)
 try:
@@ -40,7 +41,46 @@ except pd._config.config.OptionError:
 
 main = Blueprint('main', __name__)
 
+# Authentication decorator
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('authenticated'):
+            return redirect(url_for('main.login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@main.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        # Get credentials from config
+        correct_username = current_app.config.get('DASHBOARD_USERNAME', 'admin')
+        correct_password = current_app.config.get('DASHBOARD_PASSWORD', 'admin')
+        
+        if username == correct_username and password == correct_password:
+            session['authenticated'] = True
+            session['username'] = username
+            session.permanent = True
+            return redirect(url_for('main.index'))
+        else:
+            return render_template('login.html', error='Invalid username or password')
+    
+    # If already authenticated, redirect to dashboard
+    if session.get('authenticated'):
+        return redirect(url_for('main.index'))
+    
+    return render_template('login.html')
+
+@main.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('main.login'))
+
 @main.route('/', methods=['GET'])
+@login_required
 def index():
     urls = {
         'getOrgs': url_for('main.get_orgs'),

@@ -83,6 +83,24 @@
             padding: 0.5rem;
             cursor: pointer;
         }
+        
+        .logout-btn {
+            color: var(--text-light);
+            background: none;
+            border: none;
+            padding: 0.5rem;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+        
+        .logout-btn:hover {
+            color: #e74c3c;
+        }
+        
+        .sidebar-controls {
+            display: flex;
+            gap: 5px;
+        }
 
         .nav-category {
             padding: 0.5rem 1rem;
@@ -375,9 +393,14 @@
     <nav class="sidebar">
         <div class="sidebar-header">
             <h1><a href="#" class="home-link" data-section="home">RWE Dashboard</a></h1>
-            <button class="toggle-sidebar">
-                <i class="fas fa-bars"></i>
-            </button>
+            <div class="sidebar-controls">
+                <button class="toggle-sidebar" title="Toggle Sidebar">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <a href="{{ url_for('main.logout') }}" class="logout-btn" title="Logout">
+                    <i class="fas fa-sign-out-alt"></i>
+                </a>
+            </div>
         </div>
 
         <!-- Add Home section as the first nav item -->

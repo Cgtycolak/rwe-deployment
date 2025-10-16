@@ -1,6 +1,7 @@
 import os
 import pytz
 import logging
+from datetime import timedelta
 from flask import Flask, render_template
 from flask_session import Session
 from flask_cors import CORS
@@ -26,7 +27,8 @@ def create_app():
 
     # Configure app
     app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
-    app.config['SESSION_PERMANENT'] = False
+    app.config['SESSION_PERMANENT'] = True
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)  # Session lasts 30 minutes
     app.config["SESSION_TYPE"] = "filesystem"
     app.config['SESSION_FILE_DIR'] = os.path.join(app.root_path, '../flask_session')
 
@@ -35,6 +37,10 @@ def create_app():
     app.config['USERNAME'] = os.getenv('USERNAME')
     app.config['PASSWORD'] = os.getenv('PASSWORD')
     app.config['TIMEZONE'] = pytz.timezone('Etc/GMT-3')
+    
+    # Dashboard authentication
+    app.config['DASHBOARD_USERNAME'] = os.getenv('DASHBOARD_USERNAME', 'admin')
+    app.config['DASHBOARD_PASSWORD'] = os.getenv('DASHBOARD_PASSWORD', 'admin')
 
     # API endpoints
     app.config['BASEURL_1'] = 'https://seffaflik.epias.com.tr/electricity-service/'
