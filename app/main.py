@@ -2233,32 +2233,38 @@ def get_demand_data():
             weekly_avg_previous = pd.DataFrame()
         
         # Calculate MTD/YTD metrics (average consumption), comparing to same period last year
+        # IMPORTANT: EPİAŞ has 4-hour data lag, so we must compare like-for-like periods
         metrics = {}
         try:
             now = pd.to_datetime(current_date)
-            # Month-to-date masks
+            # Account for 4-hour EPİAŞ data lag - use data available time, not current time
+            data_available_until = now - pd.Timedelta(hours=4)
+            
+            # Month-to-date masks (both years compare to data_available_until)
             if current_year_data:
-                mtd_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                df_cur_mtd = df_current.loc[(df_current.index >= mtd_start) & (df_current.index <= now)]
+                mtd_start = data_available_until.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                df_cur_mtd = df_current.loc[(df_current.index >= mtd_start) & (df_current.index <= data_available_until)]
             else:
                 df_cur_mtd = pd.DataFrame(columns=['consumption'])
 
             if previous_year_data:
-                prev_now = now.replace(year=previous_year)
-                mtd_start_prev = prev_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                df_prev_mtd = df_previous.loc[(df_previous.index >= mtd_start_prev) & (df_previous.index <= prev_now)]
+                # Use same hour-of-day for previous year comparison
+                prev_data_available = data_available_until.replace(year=previous_year)
+                mtd_start_prev = prev_data_available.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                df_prev_mtd = df_previous.loc[(df_previous.index >= mtd_start_prev) & (df_previous.index <= prev_data_available)]
             else:
                 df_prev_mtd = pd.DataFrame(columns=['consumption'])
 
-            # Year-to-date masks (up to same month-day and hour)
+            # Year-to-date masks (both years compare to data_available_until at same hour)
             if current_year_data:
-                ytd_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-                df_cur_ytd = df_current.loc[(df_current.index >= ytd_start) & (df_current.index <= now)]
+                ytd_start = data_available_until.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                df_cur_ytd = df_current.loc[(df_current.index >= ytd_start) & (df_current.index <= data_available_until)]
             else:
                 df_cur_ytd = pd.DataFrame(columns=['consumption'])
 
             if previous_year_data:
-                prev_ytd_end = now.replace(year=previous_year)
+                # Compare to same hour last year (accounting for 4-hour lag)
+                prev_ytd_end = data_available_until.replace(year=previous_year)
                 ytd_start_prev = prev_ytd_end.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
                 df_prev_ytd = df_previous.loc[(df_previous.index >= ytd_start_prev) & (df_previous.index <= prev_ytd_end)]
             else:

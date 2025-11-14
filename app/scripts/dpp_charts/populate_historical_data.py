@@ -34,7 +34,7 @@ def get_local_session():
     Session = sessionmaker(bind=engine)
     return Session()
 
-def populate_heatmap_data(plant_type: str, start_date: datetime.date, end_date: datetime.date, local_db=True):
+def populate_heatmap_data(plant_type: str, start_date: datetime.date, end_date: datetime.date, local_db=False):
     """
     Populate heatmap data for a specific type and date range
     
@@ -335,6 +335,8 @@ def main():
     parser.add_argument('--types', nargs='+', choices=list(TYPE_MAPPINGS.keys()),
                       default=list(TYPE_MAPPINGS.keys()),
                       help='Plant types to populate (default: all types)')
+    parser.add_argument('--no-local-db', action='store_true',
+                      help='Skip updating local database (only update deployed database)')
     
     args = parser.parse_args()
     
@@ -345,10 +347,13 @@ def main():
         if start_date > end_date:
             raise ValueError("End date must be after start date")
         
+        # Determine if we should update local DB
+        local_db = not args.no_local_db
+        
         # Populate each type
         for plant_type in args.types:
             try:
-                populate_heatmap_data(plant_type, start_date, end_date)
+                populate_heatmap_data(plant_type, start_date, end_date, local_db=local_db)
             except Exception as e:
                 print(f"Error processing {plant_type}: {str(e)}")
                 with open('error.log', 'a') as f:
