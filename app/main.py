@@ -2256,6 +2256,7 @@ def get_demand_data():
                 df_prev_mtd = pd.DataFrame(columns=['consumption'])
 
             # Year-to-date masks (both years compare to data_available_until at same hour)
+            # IMPORTANT: Handle leap years - if comparing across leap year boundary, skip Feb 29
             if current_year_data:
                 ytd_start = data_available_until.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
                 df_cur_ytd = df_current.loc[(df_current.index >= ytd_start) & (df_current.index <= data_available_until)]
@@ -2267,6 +2268,20 @@ def get_demand_data():
                 prev_ytd_end = data_available_until.replace(year=previous_year)
                 ytd_start_prev = prev_ytd_end.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
                 df_prev_ytd = df_previous.loc[(df_previous.index >= ytd_start_prev) & (df_previous.index <= prev_ytd_end)]
+                
+                # Handle leap year: if previous year was leap year and current is not (or vice versa),
+                # exclude Feb 29 from the leap year to ensure fair comparison
+                import calendar
+                prev_is_leap = calendar.isleap(previous_year)
+                curr_is_leap = calendar.isleap(current_year)
+                
+                if prev_is_leap and not curr_is_leap:
+                    # Remove Feb 29 from previous year data
+                    feb29_prev = pd.Timestamp(year=previous_year, month=2, day=29)
+                    df_prev_ytd = df_prev_ytd[~((df_prev_ytd.index.month == 2) & (df_prev_ytd.index.day == 29))]
+                elif curr_is_leap and not prev_is_leap and data_available_until.month > 2:
+                    # If we're past Feb 29 in current leap year, remove Feb 29 from current year
+                    df_cur_ytd = df_cur_ytd[~((df_cur_ytd.index.month == 2) & (df_cur_ytd.index.day == 29))]
             else:
                 df_prev_ytd = pd.DataFrame(columns=['consumption'])
 
