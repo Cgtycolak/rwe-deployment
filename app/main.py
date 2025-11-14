@@ -2237,8 +2237,13 @@ def get_demand_data():
         metrics = {}
         try:
             now = pd.to_datetime(current_date)
-            # Account for 4-hour EPİAŞ data lag - use data available time, not current time
-            data_available_until = now - pd.Timedelta(hours=4)
+            # Use the actual last timestamp from database instead of assuming 4-hour lag
+            # This handles cases where data might be delayed more than 4 hours
+            if current_year_data:
+                data_available_until = df_current.index.max()
+            else:
+                # Fallback to 4-hour lag if no current year data
+                data_available_until = now - pd.Timedelta(hours=4)
             
             # Month-to-date masks (both years compare to data_available_until)
             if current_year_data:
