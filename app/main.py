@@ -2158,6 +2158,37 @@ def check_demand_completeness():
         
         missing_dates = db.session.execute(query).fetchall()
         
+        # Group consecutive missing dates into gap ranges
+        gaps = []
+        if missing_dates:
+            missing_datetimes = [d[0] for d in missing_dates]
+            gap_start = missing_datetimes[0]
+            gap_end = missing_datetimes[0]
+            
+            for i in range(1, len(missing_datetimes)):
+                current = missing_datetimes[i]
+                # Check if current datetime is consecutive (1 hour after gap_end)
+                if (current - gap_end).total_seconds() == 3600:
+                    gap_end = current
+                else:
+                    # Save the previous gap and start a new one
+                    gap_hours = int((gap_end - gap_start).total_seconds() / 3600) + 1
+                    gaps.append({
+                        'start': gap_start.strftime('%Y-%m-%d %H:%M'),
+                        'end': gap_end.strftime('%Y-%m-%d %H:%M'),
+                        'missing_hours': gap_hours
+                    })
+                    gap_start = current
+                    gap_end = current
+            
+            # Don't forget the last gap
+            gap_hours = int((gap_end - gap_start).total_seconds() / 3600) + 1
+            gaps.append({
+                'start': gap_start.strftime('%Y-%m-%d %H:%M'),
+                'end': gap_end.strftime('%Y-%m-%d %H:%M'),
+                'missing_hours': gap_hours
+            })
+        
         return jsonify({
             'start_date': min_date.strftime('%Y-%m-%d %H:%M'),
             'end_date': max_date.strftime('%Y-%m-%d %H:%M'),
@@ -2166,6 +2197,8 @@ def check_demand_completeness():
             'expected_records': expected_records,
             'missing_records': expected_records - total_records,
             'coverage_percentage': (total_records / expected_records) * 100,
+            'total_gaps': len(gaps),
+            'gaps': gaps,
             'missing_dates': [d[0].strftime('%Y-%m-%d %H:%M') for d in missing_dates[:100]] if missing_dates else [],
             'total_missing_dates': len(missing_dates) if missing_dates else 0
         })
