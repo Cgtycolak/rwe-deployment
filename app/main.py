@@ -2161,10 +2161,13 @@ def check_demand_completeness():
         # Group consecutive missing dates into gap ranges
         gaps = []
         all_missing_dates_list = []
-        if missing_dates:
+        
+        # Convert missing_dates to list first
+        if missing_dates and len(missing_dates) > 0:
             missing_datetimes = [d[0] for d in missing_dates]
             all_missing_dates_list = [d.strftime('%Y-%m-%d %H:%M') for d in missing_datetimes]
             
+            # Group consecutive dates into gaps
             if len(missing_datetimes) > 0:
                 gap_start = missing_datetimes[0]
                 gap_end = missing_datetimes[0]
@@ -2204,7 +2207,10 @@ def check_demand_completeness():
             'total_gaps': len(gaps),
             'gaps': gaps,
             'all_missing_dates': all_missing_dates_list,
-            'total_missing_dates': len(missing_dates) if missing_dates else 0
+            'total_missing_dates': len(missing_dates) if missing_dates else 0,
+            'debug_missing_dates_length': len(missing_dates) if missing_dates else 0,
+            'debug_missing_dates_type': str(type(missing_dates)),
+            'debug_first_missing': str(missing_dates[0]) if missing_dates and len(missing_dates) > 0 else 'none'
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
