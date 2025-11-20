@@ -2141,18 +2141,26 @@ def check_demand_completeness():
         
         # Find gaps in data using SQLAlchemy's text()
         query = text("""
-            WITH dates AS (
+            WITH date_range AS (
+                SELECT 
+                    date_trunc('hour', min(datetime)) as start_date,
+                    date_trunc('hour', max(datetime)) as end_date
+                FROM demand_data
+            ),
+            all_expected_hours AS (
                 SELECT generate_series(
-                    date_trunc('hour', min(datetime)),
-                    date_trunc('hour', max(datetime)),
+                    (SELECT start_date FROM date_range),
+                    (SELECT end_date FROM date_range),
                     '1 hour'::interval
                 ) as expected_datetime
+            ),
+            existing_hours AS (
+                SELECT DISTINCT date_trunc('hour', datetime) as hour
                 FROM demand_data
             )
             SELECT expected_datetime::timestamp
-            FROM dates
-            LEFT JOIN demand_data ON dates.expected_datetime = date_trunc('hour', demand_data.datetime)
-            WHERE demand_data.id IS NULL
+            FROM all_expected_hours
+            WHERE expected_datetime NOT IN (SELECT hour FROM existing_hours)
             ORDER BY expected_datetime;
         """)
         
