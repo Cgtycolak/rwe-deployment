@@ -2139,32 +2139,31 @@ def check_demand_completeness():
         days = (max_date - min_date).days + 1
         expected_records = days * 24
         
-        # Find gaps in data using SQLAlchemy's text()
-        query = text("""
-            WITH date_range AS (
-                SELECT 
-                    date_trunc('hour', min(datetime)) as start_date,
-                    date_trunc('hour', max(datetime)) as end_date
-                FROM demand_data
-            ),
-            all_expected_hours AS (
-                SELECT generate_series(
-                    (SELECT start_date FROM date_range),
-                    (SELECT end_date FROM date_range),
-                    '1 hour'::interval
-                ) as expected_datetime
-            ),
-            existing_hours AS (
-                SELECT DISTINCT date_trunc('hour', datetime) as hour
-                FROM demand_data
-            )
-            SELECT expected_datetime::timestamp
-            FROM all_expected_hours
-            WHERE expected_datetime NOT IN (SELECT hour FROM existing_hours)
-            ORDER BY expected_datetime;
-        """)
+        # Get all existing datetimes and find gaps in Python
+        all_datetimes_query = db.session.query(DemandData.datetime).order_by(DemandData.datetime).all()
+        existing_hours = set()
         
-        missing_dates = db.session.execute(query).fetchall()
+        for dt_tuple in all_datetimes_query:
+            dt = dt_tuple[0]
+            # Truncate to hour
+            hour_dt = dt.replace(minute=0, second=0, microsecond=0)
+            existing_hours.add(hour_dt)
+        
+        # Generate all expected hours
+        from datetime import timedelta
+        expected_hours = []
+        current = min_date.replace(minute=0, second=0, microsecond=0)
+        end = max_date.replace(minute=0, second=0, microsecond=0)
+        
+        while current <= end:
+            expected_hours.append(current)
+            current += timedelta(hours=1)
+        
+        # Find missing hours
+        missing_datetimes = [dt for dt in expected_hours if dt not in existing_hours]
+        
+        # Convert to the format expected by the rest of the code
+        missing_dates = [(dt,) for dt in missing_datetimes]
         
         # Group consecutive missing dates into gap ranges
         gaps = []
