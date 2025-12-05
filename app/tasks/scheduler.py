@@ -115,10 +115,10 @@ def send_daily_email_report(app):
         with app.app_context():
             tz = timezone('Europe/Istanbul')
             current_time = datetime.now(tz)
-            yesterday = (current_time - timedelta(days=1)).date()
+            tomorrow = (current_time + timedelta(days=1)).date()  # CHANGED: Send tomorrow's data
             
             app.logger.info(f"Email report job triggered at {current_time}")
-            app.logger.info(f"Sending heatmap report for {yesterday}")
+            app.logger.info(f"Sending heatmap report for {tomorrow}")
             
             # Check which email service to use
             email_service_type = os.environ.get('EMAIL_SERVICE', 'smtp')
@@ -134,12 +134,12 @@ def send_daily_email_report(app):
                 from ..services.email_service import EmailService
                 email_service = EmailService(app)
             
-            success = email_service.send_daily_heatmap_report(yesterday)
+            success = email_service.send_daily_heatmap_report(tomorrow)  # CHANGED: Send tomorrow's data
             
             if success:
-                app.logger.info(f"Successfully sent daily email report for {yesterday}")
+                app.logger.info(f"Successfully sent daily email report for {tomorrow}")
             else:
-                app.logger.error(f"Failed to send daily email report for {yesterday}")
+                app.logger.error(f"Failed to send daily email report for {tomorrow}")
             
     except Exception as e:
         app.logger.error(f"Error in send_daily_email_report: {str(e)}")
