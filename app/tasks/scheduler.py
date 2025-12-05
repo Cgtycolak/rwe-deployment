@@ -109,6 +109,42 @@ def update_realtime_data(app):
         app.logger.error(f"Error in update_realtime_data: {str(e)}")
         raise
 
+def send_daily_email_report(app):
+    """Send daily heatmap email report"""
+    try:
+        with app.app_context():
+            tz = timezone('Europe/Istanbul')
+            current_time = datetime.now(tz)
+            yesterday = (current_time - timedelta(days=1)).date()
+            
+            app.logger.info(f"Email report job triggered at {current_time}")
+            app.logger.info(f"Sending heatmap report for {yesterday}")
+            
+            # Check which email service to use
+            email_service_type = os.environ.get('EMAIL_SERVICE', 'smtp')
+            
+            if email_service_type == 'sendgrid':
+                # Use SendGrid (no personal email needed)
+                app.logger.info("Using SendGrid email service")
+                from ..services.sendgrid_email_service import SendGridEmailService
+                email_service = SendGridEmailService(app)
+            else:
+                # Use SMTP (Gmail or other)
+                app.logger.info("Using SMTP email service")
+                from ..services.email_service import EmailService
+                email_service = EmailService(app)
+            
+            success = email_service.send_daily_heatmap_report(yesterday)
+            
+            if success:
+                app.logger.info(f"Successfully sent daily email report for {yesterday}")
+            else:
+                app.logger.error(f"Failed to send daily email report for {yesterday}")
+            
+    except Exception as e:
+        app.logger.error(f"Error in send_daily_email_report: {str(e)}")
+        raise
+
 def init_scheduler(app):
     """Initialize the scheduler with proper timezone and error handling"""
     tz = timezone('Europe/Istanbul')
@@ -181,6 +217,18 @@ def init_scheduler(app):
         misfire_grace_time=900  # 15 minutes grace time
     )
     
+    # Schedule daily email report (runs at 16:10 every day)
+    email_report = CronTrigger(hour=16, minute=10, timezone=tz)
+    scheduler.add_job(
+        send_daily_email_report,
+        trigger=email_report,
+        id='daily_email_report',
+        name='Send daily heatmap email at 16:10',
+        args=[app],
+        replace_existing=True,
+        misfire_grace_time=900  # 15 minutes grace time
+    )
+    
     # Add error listener
     def job_listener(event):
         """Handle different types of scheduler events"""
@@ -213,6 +261,6 @@ def init_scheduler(app):
     
     try:
         scheduler.start()
-        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates at 16:05 (retry at 16:45), hourly updates at :30, realtime updates at 05:00 and 12:00")
+        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates at 16:05 (retry at 16:45), hourly updates at :30, realtime updates at 05:00 and 12:00, email report at 16:10")
     except Exception as e:
         app.logger.error(f"Error starting scheduler: {str(e)}")
