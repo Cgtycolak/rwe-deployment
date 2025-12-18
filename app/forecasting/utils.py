@@ -96,7 +96,7 @@ def fetch_generation_data(engine):
     JOIN meteologica.wind w on u."From-yyyy-mm-dd-hh-mm" = w."From-yyyy-mm-dd-hh-mm"
     JOIN meteologica.dam_hydro d on u."From-yyyy-mm-dd-hh-mm" = d."From-yyyy-mm-dd-hh-mm"
     JOIN meteologica.runofriver_hydro r on u."From-yyyy-mm-dd-hh-mm" = r."From-yyyy-mm-dd-hh-mm"
-    WHERE u."From-yyyy-mm-dd-hh-mm" > '2025'
+    WHERE u."From-yyyy-mm-dd-hh-mm" > '2025-01-01 00:00:00'
     """
     
     generation_df = fetch_with_retry(query, engine)
@@ -107,7 +107,7 @@ def fetch_dgp_data(engine):
     """Fetch DGP data from the database with retry logic."""
     query = """
     SELECT date, net AS system_direction FROM epias.yal
-    WHERE date > '2025'
+    WHERE date > '2025-01-01 00:00:00'
     """
     
     dgp_df = fetch_with_retry(query, engine)

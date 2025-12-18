@@ -3532,37 +3532,30 @@ def get_forecast_performance_data():
                 'error': f'Database connection failed: {str(e)}'
             }), 500
         
-        # Determine date range
-        if start_date and end_date:
-            # Custom date range
-            date_filter = f"date::timestamp >= '{start_date}' AND date::timestamp <= '{end_date}'"
-            period_info = f"{start_date} to {end_date}"
-        else:
-            # Use period in days
-            date_filter = f"date::timestamp >= NOW() - INTERVAL '{period_days} days'"
-            period_info = f"Last {period_days} Days"
-        
-        # Query actual price data (PTF)
-        ptf_query = f"SELECT date, price AS actual_price FROM epias.ptf WHERE {date_filter}"
+        # Query actual price data (PTF) - fetch all data first
+        ptf_query = "SELECT date, price AS actual_price FROM epias.ptf"
         
         with engine.connect() as conn:
             ptf_df = pd.read_sql(ptf_query, con=conn)
         
         if ptf_df.empty:
             return jsonify({
-                'error': f'No PTF data available for the specified period'
+                'error': f'No PTF data available'
             }), 404
         
         # Clean and process PTF data
         ptf_df['actual_price'] = ptf_df['actual_price'].apply(lambda x: 1 if x <= 0 else x)
-        ptf_df['date'] = ptf_df['date'].apply(lambda x: x.split('+')[0].replace('T', ' '))
-        ptf_df['date'] = pd.to_datetime(ptf_df['date'])
+        # Convert date to datetime if it's not already
+        if not pd.api.types.is_datetime64_any_dtype(ptf_df['date']):
+            ptf_df['date'] = ptf_df['date'].apply(lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x)
+            ptf_df['date'] = pd.to_datetime(ptf_df['date'])
+        else:
+            ptf_df['date'] = pd.to_datetime(ptf_df['date'])
         
-        # Query Meteologica forecast data with same date filter
-        meteologica_query = f"""
+        # Query Meteologica forecast data - fetch all data
+        meteologica_query = """
         SELECT date, min_price AS meteologica_min, avg_price AS meteologica_avg, max_price AS meteologica_max
         FROM public.meteologica_forecast
-        WHERE {date_filter.replace('epias.ptf', 'public.meteologica_forecast')}
         """
         
         with engine.connect() as conn:
@@ -3570,11 +3563,8 @@ def get_forecast_performance_data():
         
         meteologica_forecast['date'] = pd.to_datetime(meteologica_forecast['date'])
         
-        # Query model forecast data with same date filter
-        model_query = f"""
-        SELECT * FROM public.model_forecast_ptf
-        WHERE {date_filter.replace('epias.ptf', 'public.model_forecast_ptf')}
-        """
+        # Query model forecast data - fetch all data
+        model_query = "SELECT * FROM public.model_forecast_ptf"
         
         with engine.connect() as conn:
             model_forecast = pd.read_sql(model_query, con=conn)
@@ -3584,6 +3574,19 @@ def get_forecast_performance_data():
         # Merge all dataframes
         price_df = pd.merge(ptf_df, meteologica_forecast, on='date', how='outer').sort_values(by='date')
         price_df = pd.merge(price_df, model_forecast, on='date', how='left')
+        
+        # Apply date filtering after merging
+        if start_date and end_date:
+            # Custom date range
+            start_dt = pd.to_datetime(start_date)
+            end_dt = pd.to_datetime(end_date)
+            price_df = price_df[(price_df['date'] >= start_dt) & (price_df['date'] <= end_dt)]
+            period_info = f"{start_date} to {end_date}"
+        else:
+            # Use period in days
+            cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=period_days)
+            price_df = price_df[price_df['date'] >= cutoff_date]
+            period_info = f"Last {period_days} Days"
         
         # Remove rows with missing actual prices for evaluation
         evaluation_df = price_df.dropna(subset=['actual_price']).copy()
