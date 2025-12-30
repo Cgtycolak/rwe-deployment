@@ -109,7 +109,10 @@ def update_realtime_data(app):
         app.logger.error(f"Error in update_realtime_data: {str(e)}")
         raise
 
-def send_daily_email_report(app):
+# Dictionary to track email send status (date -> success boolean)
+_email_send_status = {}
+
+def send_daily_email_report(app, is_retry=False):
     """Send daily heatmap email report"""
     try:
         with app.app_context():
@@ -117,7 +120,12 @@ def send_daily_email_report(app):
             current_time = datetime.now(tz)
             tomorrow = (current_time + timedelta(days=1)).date()  # CHANGED: Send tomorrow's data
             
-            app.logger.info(f"Email report job triggered at {current_time}")
+            # Check if email was already sent successfully today
+            if is_retry and tomorrow in _email_send_status and _email_send_status[tomorrow]:
+                app.logger.info(f"Email for {tomorrow} was already sent successfully at 16:10. Skipping retry.")
+                return
+            
+            app.logger.info(f"Email report job triggered at {current_time} (retry={is_retry})")
             app.logger.info(f"Sending heatmap report for {tomorrow}")
             
             # Check which email service to use
@@ -138,8 +146,18 @@ def send_daily_email_report(app):
             
             if success:
                 app.logger.info(f"Successfully sent daily email report for {tomorrow}")
+                # Mark as successfully sent
+                _email_send_status[tomorrow] = True
+                
+                # Clean up old entries (keep only last 7 days)
+                cutoff_date = tomorrow - timedelta(days=7)
+                _email_send_status.clear()
+                for date in list(_email_send_status.keys()):
+                    if date < cutoff_date:
+                        del _email_send_status[date]
             else:
                 app.logger.error(f"Failed to send daily email report for {tomorrow}")
+                _email_send_status[tomorrow] = False
             
     except Exception as e:
         app.logger.error(f"Error in send_daily_email_report: {str(e)}")
@@ -224,7 +242,7 @@ def init_scheduler(app):
         trigger=email_report,
         id='daily_email_report',
         name='Send daily heatmap email at 16:10',
-        args=[app],
+        args=[app, False],  # is_retry=False
         replace_existing=True,
         misfire_grace_time=900  # 15 minutes grace time
     )
@@ -235,8 +253,8 @@ def init_scheduler(app):
         send_daily_email_report,
         trigger=email_report_retry,
         id='daily_email_report_retry',
-        name='Retry send daily heatmap email at 16:40',
-        args=[app],
+        name='Retry send daily heatmap email at 16:50 (only if 16:10 failed)',
+        args=[app, True],  # is_retry=True
         replace_existing=True,
         misfire_grace_time=900  # 15 minutes grace time
     )
@@ -273,6 +291,6 @@ def init_scheduler(app):
     
     try:
         scheduler.start()
-        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates at 16:05 (retry at 16:45), hourly updates at :30, realtime updates at 05:00 and 12:00, email report at 16:10")
+        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates at 16:05 (retry at 16:45), hourly updates at :30, realtime updates at 05:00 and 12:00, email report at 16:10 (retry at 16:50 if failed)")
     except Exception as e:
         app.logger.error(f"Error starting scheduler: {str(e)}")
