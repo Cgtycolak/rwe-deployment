@@ -229,6 +229,18 @@ def init_scheduler(app):
         misfire_grace_time=900  # 15 minutes grace time
     )
     
+    # Schedule daily email report retry update task for data that might not be available at 16:10
+    email_report_retry = CronTrigger(hour=16, minute=50, timezone=tz)
+    scheduler.add_job(
+        send_daily_email_report,
+        trigger=email_report_retry,
+        id='daily_email_report_retry',
+        name='Retry send daily heatmap email at 16:40',
+        args=[app],
+        replace_existing=True,
+        misfire_grace_time=900  # 15 minutes grace time
+    )
+
     # Add error listener
     def job_listener(event):
         """Handle different types of scheduler events"""
