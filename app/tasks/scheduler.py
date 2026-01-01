@@ -121,9 +121,13 @@ def send_daily_email_report(app, is_retry=False):
             tomorrow = (current_time + timedelta(days=1)).date()  # CHANGED: Send tomorrow's data
             
             # Check if email was already sent successfully today
-            if is_retry and tomorrow in _email_send_status and _email_send_status[tomorrow]:
-                app.logger.info(f"Email for {tomorrow} was already sent successfully at 16:10. Skipping retry.")
-                return
+            if is_retry:
+                app.logger.info(f"Retry attempt for {tomorrow}. Current status cache: {_email_send_status}")
+                if tomorrow in _email_send_status and _email_send_status[tomorrow]:
+                    app.logger.info(f"✓ Email for {tomorrow} was already sent successfully. Skipping retry.")
+                    return
+                else:
+                    app.logger.info(f"⚠ Email for {tomorrow} was not sent successfully or not found in cache. Retrying...")
             
             app.logger.info(f"Email report job triggered at {current_time} (retry={is_retry})")
             app.logger.info(f"Sending heatmap report for {tomorrow}")
@@ -148,16 +152,17 @@ def send_daily_email_report(app, is_retry=False):
                 app.logger.info(f"Successfully sent daily email report for {tomorrow}")
                 # Mark as successfully sent
                 _email_send_status[tomorrow] = True
+                app.logger.info(f"Marked {tomorrow} as sent successfully. Cache: {_email_send_status}")
                 
                 # Clean up old entries (keep only last 7 days)
                 cutoff_date = tomorrow - timedelta(days=7)
-                _email_send_status.clear()
                 for date in list(_email_send_status.keys()):
                     if date < cutoff_date:
                         del _email_send_status[date]
             else:
                 app.logger.error(f"Failed to send daily email report for {tomorrow}")
                 _email_send_status[tomorrow] = False
+                app.logger.info(f"Marked {tomorrow} as failed. Cache: {_email_send_status}")
             
     except Exception as e:
         app.logger.error(f"Error in send_daily_email_report: {str(e)}")
