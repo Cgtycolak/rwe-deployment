@@ -1665,25 +1665,25 @@ def check_data_completeness():
 @main.route('/get-rolling-data')
 def get_rolling_data():
     try:
-        # Load the original historical data (2016-2024) as the base
+        # Load the original historical data (2016-2025) as the base
         historical_file = os.path.join(current_app.static_folder, 'data', 'historical_averages.json')
         
         if os.path.exists(historical_file):
-            print("Loading original historical data (2016-2024) as base")
+            print("Loading original historical data (2016-2025) as base")
             with open(historical_file, 'r') as f:
                 historical_data = json.load(f)
             
-            # Set base metadata for 2016-2024 data
+            # Set base metadata for 2016-2025 data
             historical_data['_metadata'] = {
                 'data_source': 'original',
-                'date_range': '2016-2024',
+                'date_range': '2016-2025',
                 'uses_combined_solar': False
             }
         else:
             historical_data = {}
             historical_data['_metadata'] = {
                 'data_source': 'none',
-                'date_range': '2016-2024',
+                'date_range': '2016-2025',
                 'uses_combined_solar': False
             }
 
@@ -1691,7 +1691,7 @@ def get_rolling_data():
         combined_solar_file = os.path.join(current_app.static_folder, 'data', 'historical_averages_combined_solar.json')
         
         if os.path.exists(combined_solar_file):
-            print("Loading combined solar historical data (2020-2024) for solar_combined chart")
+            print("Loading combined solar historical data (2020-2025) for solar_combined chart")
             with open(combined_solar_file, 'r') as f:
                 combined_solar_data = json.load(f)
             
@@ -1703,9 +1703,9 @@ def get_rolling_data():
             if 'renewablesratio_monthly' in combined_solar_data:
                 historical_data['renewablesratio_monthly'] = combined_solar_data['renewablesratio_monthly']
                 
-            # Add special metadata for solar_combined to indicate it uses 2020-2024 data
+            # Add special metadata for solar_combined to indicate it uses 2020-2025 data
             historical_data['_solar_combined_metadata'] = {
-                'date_range': '2020-2024',
+                'date_range': '2020-2025',
                 'uses_combined_solar': True
             }
             
@@ -1713,7 +1713,7 @@ def get_rolling_data():
         else:
             print("Combined solar historical data file not found")
 
-        # Get current year data (2025 and beyond)
+        # Get current year data (2026 and beyond)
         current_year = datetime.now().year
         cutoff_date = datetime(current_year, 1, 1)
         
@@ -2225,8 +2225,8 @@ def check_demand_completeness():
 @main.route('/get_demand_data')
 def get_demand_data():
     try:
-        current_year = datetime.now().year
-        previous_year = current_year - 1
+        current_year = datetime.now().year  # 2026
+        previous_year = current_year - 1    # 2025
         
         # Get current date to limit the data range
         current_date = datetime.now()
@@ -2392,8 +2392,8 @@ def get_demand_data():
 @main.route('/get_monthly_demand_data')
 def get_monthly_demand_data():
     try:
-        current_year = datetime.now().year
-        previous_year = current_year - 1
+        current_year = datetime.now().year  # 2026
+        previous_year = current_year - 1    # 2025
         
         # Get current date to limit the data range
         current_date = datetime.now()
@@ -3679,12 +3679,19 @@ def get_forecast_performance_data():
         actual_series = evaluation_df['actual_price']
         
         if not actual_series.dropna().empty:
-            for col, name in [
+            # Define models to evaluate - automatically detect available columns
+            models_to_evaluate = [
                 ('meteologica_min', 'Meteologica Min'),
                 ('meteologica_avg', 'Meteologica Avg'),
                 ('meteologica_max', 'Meteologica Max'),
-                ('best_price', 'Model Forecast')
-            ]:
+                ('best_price', 'Model Forecast'),
+                # Add new models here - format: ('column_name', 'Display Name')
+                # Example: ('xgboost_price', 'XGBoost Model'),
+                # Example: ('prophet_price', 'Prophet Model'),
+                # Example: ('ensemble_price', 'Ensemble Model'),
+            ]
+            
+            for col, name in models_to_evaluate:
                 if col in evaluation_df.columns and not evaluation_df[col].dropna().empty:
                     try:
                         metrics[name] = calculate_darts_metrics(actual_series, evaluation_df[col])

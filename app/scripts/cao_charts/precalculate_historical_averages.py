@@ -19,8 +19,8 @@ def precalculate_historical_averages():
     with app.app_context():
         print("Fetching production data...")
         
-        # Get all production data up to the end of 2024
-        cutoff_date = datetime(2025, 1, 1)
+        # Get all production data up to the end of 2025
+        cutoff_date = datetime(2026, 1, 1)
         data = db.session.query(ProductionData).filter(
             ProductionData.datetime < cutoff_date
         ).order_by(ProductionData.datetime).all()
@@ -46,7 +46,6 @@ def precalculate_historical_averages():
             'wind': d.wind,
             'nuclear': d.nuclear,
             'sun': d.sun,
-            'unlicensed_solar': d.unlicensed_solar,  # Add this
             'importexport': d.importexport,
             'total': d.total,
             'wasteheat': d.wasteheat
@@ -60,11 +59,11 @@ def precalculate_historical_averages():
         istanbul_tz = pytz.timezone('Europe/Istanbul')
         df.index = df.index.tz_convert(istanbul_tz)
         
-        # Calculate combined solar (existing + unlicensed)
-        df['solar_combined'] = df['sun'].fillna(0) + df['unlicensed_solar'].fillna(0)
+        # For the base historical averages, we use 'sun' column directly
+        # (Combined solar data is handled separately in generate_combined_historical_averages.py)
         
-        # Calculate renewables total and ratio (now using combined solar)
-        df['renewablestotal'] = df['geothermal'] + df['biomass'] + df['wind'] + df['solar_combined']
+        # Calculate renewables total and ratio (using sun column)
+        df['renewablestotal'] = df['geothermal'] + df['biomass'] + df['wind'] + df['sun']
         df['renewablesratio'] = df['renewablestotal'] / df['total']
         
         # Calculate rolling averages for most columns
@@ -72,7 +71,6 @@ def precalculate_historical_averages():
         
         # Process regular columns with 7-day rolling averages
         regular_columns = [col for col in df.columns if col != 'renewablesratio']
-        regular_columns.append('solar_combined')  # Add combined solar data
         for column in regular_columns:
             print(f"Processing {column}...")
             # Resample to daily frequency

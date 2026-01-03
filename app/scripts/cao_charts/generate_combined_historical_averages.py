@@ -23,16 +23,16 @@ from app.models.unlicensed_solar import UnlicensedSolarData
 from app.models.licensed_solar import LicensedSolarData
 
 def generate_combined_historical_averages():
-    """Generate historical averages with combined solar data (2020-2024)"""
+    """Generate historical averages with combined solar data (2020-2025)"""
     app = create_app()
     
     with app.app_context():
-        print("Generating historical averages with combined solar data (2020-2024)...")
+        print("Generating historical averages with combined solar data (2020-2025)...")
         
-        # Define date range for historical data (2020-2024)
+        # Define date range for historical data (2020-2025)
         # Start from May 1, 2020 since that's when data is available
         start_date = datetime(2020, 5, 1)  # Changed from 2020-01-01
-        end_date = datetime(2024, 12, 31, 23, 59, 59)
+        end_date = datetime(2025, 12, 31, 23, 59, 59)
         
         print(f"Processing data from {start_date} to {end_date}")
         
@@ -197,7 +197,7 @@ def generate_combined_historical_averages():
             rolling_avg_df['day_of_year'] = rolling_avg_df.index.dayofyear
             rolling_avg_df['year'] = rolling_avg_df.index.year
             
-            # Calculate statistics for each day of year (2020-2024)
+            # Calculate statistics for each day of year (2020-2025)
             historical_range = []
             historical_avg = []
             
@@ -229,13 +229,14 @@ def generate_combined_historical_averages():
                 "historical_avg": historical_avg
             }
             
-            # Add year-specific data for 2024
-            year_2024_data = rolling_avg[rolling_avg.index.year == 2024]
-            if not year_2024_data.empty:
-                historical_data[column]["2024"] = [
-                    round(float(x), 2) if pd.notnull(x) else None 
-                    for x in year_2024_data.values
-                ]
+            # Add year-specific data for 2024 and 2025
+            for year in [2024, 2025]:
+                year_data = rolling_avg[rolling_avg.index.year == year]
+                if not year_data.empty:
+                    historical_data[column][str(year)] = [
+                        round(float(x), 2) if pd.notnull(x) else None 
+                        for x in year_data.values
+                    ]
         
         # Add renewables ratio monthly (special handling)
         if all(col in df_hourly.columns for col in ['geothermal', 'biomass', 'wind', 'total', 'solar_combined']):
@@ -254,7 +255,7 @@ def generate_combined_historical_averages():
             
             monthly_df = pd.DataFrame(monthly_data)
             
-            # Calculate historical averages for each month (2020-2024)
+            # Calculate historical averages for each month (2020-2025)
             monthly_historical = {}
             for month in range(1, 13):
                 month_data = monthly_df[monthly_df['month'] == month]['renewablesratio']
@@ -263,7 +264,7 @@ def generate_combined_historical_averages():
                 else:
                     monthly_historical[month] = 0
             
-            # Calculate monthly ranges for 2020-2024
+            # Calculate monthly ranges for 2020-2025
             monthly_ranges = {}
             for month in range(1, 13):
                 month_data = monthly_df[monthly_df['month'] == month]['renewablesratio']
@@ -280,16 +281,17 @@ def generate_combined_historical_averages():
                 "historical_range": list(monthly_ranges.values())
             }
             
-            # Add 2024 data
-            year_2024_monthly = []
-            for month in range(1, 13):
-                month_data = monthly_df[(monthly_df['month'] == month) & (monthly_df['year'] == 2024)]['renewablesratio']
-                if len(month_data) > 0:
-                    year_2024_monthly.append(round(float(month_data.values[0]), 4))
-                else:
-                    year_2024_monthly.append(None)
-            
-            historical_data['renewablesratio_monthly']["2024"] = year_2024_monthly
+            # Add 2024 and 2025 data
+            for year in [2024, 2025]:
+                year_monthly = []
+                for month in range(1, 13):
+                    month_data = monthly_df[(monthly_df['month'] == month) & (monthly_df['year'] == year)]['renewablesratio']
+                    if len(month_data) > 0:
+                        year_monthly.append(round(float(month_data.values[0]), 4))
+                    else:
+                        year_monthly.append(None)
+                
+                historical_data['renewablesratio_monthly'][str(year)] = year_monthly
             
             print(f"Sample renewables calculation: geothermal={df_hourly['geothermal'].mean():.2f}, biomass={df_hourly['biomass'].mean():.2f}, wind={df_hourly['wind'].mean():.2f}, solar_combined={df_hourly['solar_combined'].mean():.2f}")
             print(f"Average renewables ratio: {df_hourly['renewablesratio'].mean():.4f}")
