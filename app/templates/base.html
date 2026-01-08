@@ -83,7 +83,7 @@
             padding: 0.5rem;
             cursor: pointer;
         }
-        
+
         .logout-btn {
             color: var(--text-light);
             background: none;
@@ -395,8 +395,8 @@
             <h1><a href="#" class="home-link" data-section="home">RWE Dashboard</a></h1>
             <div class="sidebar-controls">
                 <button class="toggle-sidebar" title="Toggle Sidebar">
-                    <i class="fas fa-bars"></i>
-                </button>
+                <i class="fas fa-bars"></i>
+            </button>
                 <a href="{{ url_for('main.logout') }}" class="logout-btn" title="Logout">
                     <i class="fas fa-sign-out-alt"></i>
                 </a>
@@ -489,6 +489,15 @@
             <a href="#" class="nav-link" data-section="forecast-performance">
                 <i class="fas fa-chart-bar"></i>
                 <span>Forecast Performance</span>
+            </a>
+        </div>
+
+        <!-- External Integrations -->
+        <div class="nav-category">External Integrations</div>
+        <div class="nav-item">
+            <a href="#" class="nav-link" data-section="databricks-test">
+                <i class="fas fa-external-link-alt"></i>
+                <span>Databricks Dashboard</span>
             </a>
         </div>
     </nav>
