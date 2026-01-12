@@ -2115,7 +2115,7 @@
                 
                 <!-- Single row container for horizontal display -->
                 <div class="col-12">
-                    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3">
+                    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 row-cols-xl-5 g-3">
                         <div class="col">
                             <div class="card border-primary shadow-sm h-100" style="border-color: #e3f2fd !important;">
                                 <div class="card-header bg-gradient text-black" style="background: linear-gradient(135deg, #64b5f6, #42a5f5); border-bottom: 1px solid #e3f2fd;">
@@ -2214,6 +2214,32 @@
                                         <div class="col-4">
                                             <small class="text-muted d-block">R²</small>
                                             <span id="model_forecast_r2" class="badge fs-6" style="background: linear-gradient(135deg, #a5d6a7, #81c784); color: white;">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col">
+                            <div class="card border-warning shadow-sm h-100" style="border-color: #fff3cd !important;">
+                                <div class="card-header bg-gradient text-black" style="background: linear-gradient(135deg, #ffb74d, #ffa726); border-bottom: 1px solid #fff3cd;">
+                                    <h6 class="mb-0 text-center">
+                                        <i class="fas fa-chart-pie"></i> Cemre Forecast
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2">
+                                    <div class="row text-center">
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">WMAPE</small>
+                                            <span id="cemre_forecast_wmape" class="badge fs-6" style="background: linear-gradient(135deg, #ffcc80, #ffb74d); color: white;">-</span>
+                                        </div>
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">RMSE</small>
+                                            <span id="cemre_forecast_rmse" class="badge fs-6" style="background: linear-gradient(135deg, #ffcc80, #ffb74d); color: white;">-</span>
+                                        </div>
+                                        <div class="col-4">
+                                            <small class="text-muted d-block">R²</small>
+                                            <span id="cemre_forecast_r2" class="badge fs-6" style="background: linear-gradient(135deg, #ffcc80, #ffb74d); color: white;">-</span>
                                         </div>
                                     </div>
                                 </div>

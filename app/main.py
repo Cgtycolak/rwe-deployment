@@ -3571,9 +3571,30 @@ def get_forecast_performance_data():
         
         model_forecast['date'] = pd.to_datetime(model_forecast['date'])
         
+        # Query cemre forecast data - combine d+1 and d+2 tables
+        cemre_query = """
+        SELECT date, forecasted_price AS cemre_forecast
+        FROM public."cemre_ptf_d+1"
+        UNION ALL
+        SELECT date, forecasted_price AS cemre_forecast
+        FROM public."cemre_ptf_d+2"
+        """
+        
+        with engine.connect() as conn:
+            cemre_forecast = pd.read_sql(cemre_query, con=conn)
+        
+        if not cemre_forecast.empty:
+            cemre_forecast['date'] = pd.to_datetime(cemre_forecast['date'])
+            # Remove duplicates if any (keep first occurrence)
+            cemre_forecast = cemre_forecast.drop_duplicates(subset=['date'], keep='first')
+        
         # Merge all dataframes
         price_df = pd.merge(ptf_df, meteologica_forecast, on='date', how='outer').sort_values(by='date')
         price_df = pd.merge(price_df, model_forecast, on='date', how='left')
+        
+        # Merge cemre forecast if available
+        if not cemre_forecast.empty:
+            price_df = pd.merge(price_df, cemre_forecast, on='date', how='left')
         
         # Apply date filtering after merging
         if start_date and end_date:
@@ -3670,6 +3691,7 @@ def get_forecast_performance_data():
             'meteologica_avg': evaluation_df['meteologica_avg'].fillna(0).tolist(),
             'meteologica_max': evaluation_df['meteologica_max'].fillna(0).tolist(),
             'model_forecast': evaluation_df['best_price'].fillna(0).tolist() if 'best_price' in evaluation_df.columns else [],
+            'cemre_forecast': evaluation_df['cemre_forecast'].fillna(0).tolist() if 'cemre_forecast' in evaluation_df.columns else [],
             'period_info': period_info,
             'data_points': len(evaluation_df)
         }
@@ -3685,6 +3707,7 @@ def get_forecast_performance_data():
                 ('meteologica_avg', 'Meteologica Avg'),
                 ('meteologica_max', 'Meteologica Max'),
                 ('best_price', 'Model Forecast'),
+                ('cemre_forecast', 'Cemre Forecast'),
                 # Add new models here - format: ('column_name', 'Display Name')
                 # Example: ('xgboost_price', 'XGBoost Model'),
                 # Example: ('prophet_price', 'Prophet Model'),

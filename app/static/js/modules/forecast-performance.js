@@ -182,7 +182,8 @@ export const forecastPerformance = {
             min: '#4A90E2',         // Soft Blue
             avg: '#50C878',         // Emerald Green  
             max: '#FF6B6B',         // Soft Red
-            model: '#9B59B6'        // Purple
+            model: '#9B59B6',       // Purple
+            cemre: '#F39C12'        // Orange - for Cemre forecast
         };
         
         const traces = [];
@@ -272,6 +273,23 @@ export const forecastPerformance = {
             });
         }
         
+        // Cemre forecast
+        if (data.cemre_forecast && data.cemre_forecast.some(v => v > 0)) {
+            traces.push({
+                x: data.dates,
+                y: data.cemre_forecast,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Cemre Forecast',
+                line: { 
+                    color: colors.cemre,
+                    width: 2,
+                    dash: 'dot'
+                },
+                hovertemplate: '<b>Cemre Forecast</b><br>%{x}<br>%{y:.2f} TL<extra></extra>'
+            });
+        }
+        
         const layout = {
             title: {
                 text: `Forecast Performance Analysis ${data.period_info || ''}`,
@@ -320,7 +338,8 @@ export const forecastPerformance = {
             'Meteologica Min': 'meteologica_min',
             'Meteologica Avg': 'meteologica_avg', 
             'Meteologica Max': 'meteologica_max',
-            'Model Forecast': 'model_forecast'
+            'Model Forecast': 'model_forecast',
+            'Cemre Forecast': 'cemre_forecast'
         };
         
         Object.entries(metricMappings).forEach(([displayName, key]) => {
