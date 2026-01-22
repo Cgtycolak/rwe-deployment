@@ -34,6 +34,16 @@ export const forecastPerformance = {
                 this.handlePeriodChange(e.target.value);
             });
         }
+        
+        const horizonSelect = document.getElementById('forecast_horizon');
+        if (horizonSelect) {
+            horizonSelect.addEventListener('change', () => {
+                // Reload data when horizon changes
+                if (this.currentData) {
+                    this.loadPerformanceData();
+                }
+            });
+        }
     },
     
     setupDateDefaults() {
@@ -155,8 +165,14 @@ export const forecastPerformance = {
         const periodSelect = document.getElementById('performance_period');
         const startDateInput = document.getElementById('performance_start_date');
         const endDateInput = document.getElementById('performance_end_date');
+        const horizonSelect = document.getElementById('forecast_horizon');
         
         const params = {};
+        
+        // Add forecast horizon
+        if (horizonSelect && horizonSelect.value) {
+            params.horizon = horizonSelect.value;
+        }
         
         if (periodSelect && periodSelect.value === 'custom') {
             if (startDateInput && startDateInput.value) {
@@ -290,9 +306,10 @@ export const forecastPerformance = {
             });
         }
         
+        const horizonLabel = data.forecast_horizon ? ` (${data.forecast_horizon.toUpperCase()})` : '';
         const layout = {
             title: {
-                text: `Forecast Performance Analysis ${data.period_info || ''}`,
+                text: `Forecast Performance Analysis ${data.period_info || ''}${horizonLabel}`,
                 font: { size: 18, color: '#2c3e50' }
             },
             xaxis: {

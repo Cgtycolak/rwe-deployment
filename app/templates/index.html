@@ -2059,8 +2059,17 @@
                 </div>
                 <div class="card-body">
                     <div class="row">
+                        <!-- Forecast Horizon Selection -->
+                        <div class="col-md-3">
+                            <label class="form-label">Forecast Horizon</label>
+                            <select id="forecast_horizon" class="form-select">
+                                <option value="d+1" selected>D+1 Forecast</option>
+                                <option value="d+2">D+2 Forecast</option>
+                            </select>
+                        </div>
+                        
                         <!-- Date Selection Options -->
-                        <div class="col-md-6">
+                        <div class="col-md-3">
                             <label class="form-label">Analysis Period</label>
                             <select id="performance_period" class="form-select">
                                 <option value="7" selected>Last 7 Days</option>
@@ -2124,18 +2133,18 @@
                                     </h6>
                                 </div>
                                 <div class="card-body p-2">
-                                    <div class="row text-center">
+                                    <div class="row text-center g-1">
                                         <div class="col-4">
-                                            <small class="text-muted d-block">WMAPE</small>
-                                            <span id="meteologica_min_wmape" class="badge fs-6" style="background: linear-gradient(135deg, #90caf9, #64b5f6); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">WMAPE</small>
+                                            <span id="meteologica_min_wmape" class="badge d-inline-block" style="background: linear-gradient(135deg, #90caf9, #64b5f6); color: white; font-size: 0.85rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                         <div class="col-4">
-                                            <small class="text-muted d-block">RMSE</small>
-                                            <span id="meteologica_min_rmse" class="badge fs-6" style="background: linear-gradient(135deg, #90caf9, #64b5f6); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">RMSE</small>
+                                            <span id="meteologica_min_rmse" class="badge d-inline-block" style="background: linear-gradient(135deg, #90caf9, #64b5f6); color: white; font-size: 0.8rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                         <div class="col-4">
-                                            <small class="text-muted d-block">R²</small>
-                                            <span id="meteologica_min_r2" class="badge fs-6" style="background: linear-gradient(135deg, #90caf9, #64b5f6); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">R²</small>
+                                            <span id="meteologica_min_r2" class="badge d-inline-block" style="background: linear-gradient(135deg, #90caf9, #64b5f6); color: white; font-size: 0.85rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                     </div>
                                 </div>
@@ -2150,18 +2159,18 @@
                                     </h6>
                                 </div>
                                 <div class="card-body p-2">
-                                    <div class="row text-center">
+                                    <div class="row text-center g-1">
                                         <div class="col-4">
-                                            <small class="text-muted d-block">WMAPE</small>
-                                            <span id="meteologica_avg_wmape" class="badge fs-6" style="background: linear-gradient(135deg, #80deea, #4dd0e1); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">WMAPE</small>
+                                            <span id="meteologica_avg_wmape" class="badge d-inline-block" style="background: linear-gradient(135deg, #80deea, #4dd0e1); color: white; font-size: 0.85rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                         <div class="col-4">
-                                            <small class="text-muted d-block">RMSE</small>
-                                            <span id="meteologica_avg_rmse" class="badge fs-6" style="background: linear-gradient(135deg, #80deea, #4dd0e1); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">RMSE</small>
+                                            <span id="meteologica_avg_rmse" class="badge d-inline-block" style="background: linear-gradient(135deg, #80deea, #4dd0e1); color: white; font-size: 0.8rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                         <div class="col-4">
-                                            <small class="text-muted d-block">R²</small>
-                                            <span id="meteologica_avg_r2" class="badge fs-6" style="background: linear-gradient(135deg, #80deea, #4dd0e1); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">R²</small>
+                                            <span id="meteologica_avg_r2" class="badge d-inline-block" style="background: linear-gradient(135deg, #80deea, #4dd0e1); color: white; font-size: 0.85rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                     </div>
                                 </div>
@@ -2176,18 +2185,18 @@
                                     </h6>
                                 </div>
                                 <div class="card-body p-2">
-                                    <div class="row text-center">
+                                    <div class="row text-center g-1">
                                         <div class="col-4">
-                                            <small class="text-muted d-block">WMAPE</small>
-                                            <span id="meteologica_max_wmape" class="badge fs-6" style="background: linear-gradient(135deg, #b0bec5, #90a4ae); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">WMAPE</small>
+                                            <span id="meteologica_max_wmape" class="badge d-inline-block" style="background: linear-gradient(135deg, #b0bec5, #90a4ae); color: white; font-size: 0.85rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                         <div class="col-4">
-                                            <small class="text-muted d-block">RMSE</small>
-                                            <span id="meteologica_max_rmse" class="badge fs-6" style="background: linear-gradient(135deg, #b0bec5, #90a4ae); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">RMSE</small>
+                                            <span id="meteologica_max_rmse" class="badge d-inline-block" style="background: linear-gradient(135deg, #b0bec5, #90a4ae); color: white; font-size: 0.8rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                         <div class="col-4">
-                                            <small class="text-muted d-block">R²</small>
-                                            <span id="meteologica_max_r2" class="badge fs-6" style="background: linear-gradient(135deg, #b0bec5, #90a4ae); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">R²</small>
+                                            <span id="meteologica_max_r2" class="badge d-inline-block" style="background: linear-gradient(135deg, #b0bec5, #90a4ae); color: white; font-size: 0.85rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                     </div>
                                 </div>
@@ -2202,18 +2211,18 @@
                                     </h6>
                                 </div>
                                 <div class="card-body p-2">
-                                    <div class="row text-center">
+                                    <div class="row text-center g-1">
                                         <div class="col-4">
-                                            <small class="text-muted d-block">WMAPE</small>
-                                            <span id="model_forecast_wmape" class="badge fs-6" style="background: linear-gradient(135deg, #a5d6a7, #81c784); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">WMAPE</small>
+                                            <span id="model_forecast_wmape" class="badge d-inline-block" style="background: linear-gradient(135deg, #a5d6a7, #81c784); color: white; font-size: 0.85rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                         <div class="col-4">
-                                            <small class="text-muted d-block">RMSE</small>
-                                            <span id="model_forecast_rmse" class="badge fs-6" style="background: linear-gradient(135deg, #a5d6a7, #81c784); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">RMSE</small>
+                                            <span id="model_forecast_rmse" class="badge d-inline-block" style="background: linear-gradient(135deg, #a5d6a7, #81c784); color: white; font-size: 0.8rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                         <div class="col-4">
-                                            <small class="text-muted d-block">R²</small>
-                                            <span id="model_forecast_r2" class="badge fs-6" style="background: linear-gradient(135deg, #a5d6a7, #81c784); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">R²</small>
+                                            <span id="model_forecast_r2" class="badge d-inline-block" style="background: linear-gradient(135deg, #a5d6a7, #81c784); color: white; font-size: 0.85rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                     </div>
                                 </div>
@@ -2228,18 +2237,18 @@
                                     </h6>
                                 </div>
                                 <div class="card-body p-2">
-                                    <div class="row text-center">
+                                    <div class="row text-center g-1">
                                         <div class="col-4">
-                                            <small class="text-muted d-block">WMAPE</small>
-                                            <span id="cemre_forecast_wmape" class="badge fs-6" style="background: linear-gradient(135deg, #ffcc80, #ffb74d); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">WMAPE</small>
+                                            <span id="cemre_forecast_wmape" class="badge d-inline-block" style="background: linear-gradient(135deg, #ffcc80, #ffb74d); color: white; font-size: 0.85rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                         <div class="col-4">
-                                            <small class="text-muted d-block">RMSE</small>
-                                            <span id="cemre_forecast_rmse" class="badge fs-6" style="background: linear-gradient(135deg, #ffcc80, #ffb74d); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">RMSE</small>
+                                            <span id="cemre_forecast_rmse" class="badge d-inline-block" style="background: linear-gradient(135deg, #ffcc80, #ffb74d); color: white; font-size: 0.8rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                         <div class="col-4">
-                                            <small class="text-muted d-block">R²</small>
-                                            <span id="cemre_forecast_r2" class="badge fs-6" style="background: linear-gradient(135deg, #ffcc80, #ffb74d); color: white;">-</span>
+                                            <small class="text-muted d-block mb-1">R²</small>
+                                            <span id="cemre_forecast_r2" class="badge d-inline-block" style="background: linear-gradient(135deg, #ffcc80, #ffb74d); color: white; font-size: 0.85rem; max-width: 100%; word-break: break-word; white-space: normal; padding: 0.35em 0.65em;">-</span>
                                         </div>
                                     </div>
                                 </div>

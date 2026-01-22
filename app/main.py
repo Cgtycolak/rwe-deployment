@@ -3509,6 +3509,7 @@ def get_forecast_performance_data():
         period_days = request.args.get('period', '30', type=int)
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
+        forecast_horizon = request.args.get('horizon', 'd+1')  # Default to D+1, can be 'd+1' or 'd+2'
         
         import psycopg2
         from sqlalchemy import create_engine
@@ -3552,41 +3553,100 @@ def get_forecast_performance_data():
         else:
             ptf_df['date'] = pd.to_datetime(ptf_df['date'])
         
-        # Query Meteologica forecast data - fetch all data
-        meteologica_query = """
-        SELECT date, min_price AS meteologica_min, avg_price AS meteologica_avg, max_price AS meteologica_max
-        FROM public.meteologica_forecast
-        """
-        
-        with engine.connect() as conn:
-            meteologica_forecast = pd.read_sql(meteologica_query, con=conn)
-        
-        meteologica_forecast['date'] = pd.to_datetime(meteologica_forecast['date'])
-        
-        # Query model forecast data - fetch all data
-        model_query = "SELECT * FROM public.model_forecast_ptf"
-        
-        with engine.connect() as conn:
-            model_forecast = pd.read_sql(model_query, con=conn)
-        
-        model_forecast['date'] = pd.to_datetime(model_forecast['date'])
-        
-        # Query cemre forecast data - combine d+1 and d+2 tables
-        cemre_query = """
-        SELECT date, forecasted_price AS cemre_forecast
-        FROM public."cemre_ptf_d+1"
-        UNION ALL
-        SELECT date, forecasted_price AS cemre_forecast
-        FROM public."cemre_ptf_d+2"
-        """
-        
-        with engine.connect() as conn:
-            cemre_forecast = pd.read_sql(cemre_query, con=conn)
-        
-        if not cemre_forecast.empty:
-            cemre_forecast['date'] = pd.to_datetime(cemre_forecast['date'])
-            # Remove duplicates if any (keep first occurrence)
-            cemre_forecast = cemre_forecast.drop_duplicates(subset=['date'], keep='first')
+        # Query forecast data based on horizon (D+1 or D+2)
+        if forecast_horizon.lower() == 'd+2':
+            # Query Meteologica D+2 forecast data
+            meteologica_query = """
+            SELECT date, min_price AS meteologica_min, avg_price AS meteologica_avg, max_price AS meteologica_max
+            FROM public."meteologica_forecast_d+2"
+            """
+            
+            with engine.connect() as conn:
+                meteologica_forecast = pd.read_sql(meteologica_query, con=conn)
+            
+            # Handle date parsing - meteologica_forecast_d+2 has date as text
+            if not meteologica_forecast.empty:
+                if not pd.api.types.is_datetime64_any_dtype(meteologica_forecast['date']):
+                    meteologica_forecast['date'] = meteologica_forecast['date'].apply(
+                        lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x
+                    )
+                meteologica_forecast['date'] = pd.to_datetime(meteologica_forecast['date'])
+            
+            # Query model forecast D+2 data (model_forecast_sfc)
+            # Try best_price first, fallback to other common column names
+            try:
+                model_query = "SELECT date, best_price FROM public.model_forecast_sfc"
+                with engine.connect() as conn:
+                    model_forecast = pd.read_sql(model_query, con=conn)
+            except Exception:
+                # Fallback: try to get all columns and use the first price column
+                model_query = "SELECT * FROM public.model_forecast_sfc"
+                with engine.connect() as conn:
+                    model_forecast = pd.read_sql(model_query, con=conn)
+                    # Find price column (best_price, forecasted_price, or price)
+                    price_cols = [col for col in model_forecast.columns if 'price' in col.lower() or 'forecast' in col.lower()]
+                    if price_cols:
+                        model_forecast = model_forecast[['date', price_cols[0]]].rename(columns={price_cols[0]: 'best_price'})
+                    else:
+                        # Use first numeric column after date
+                        numeric_cols = model_forecast.select_dtypes(include=['number']).columns.tolist()
+                        if numeric_cols:
+                            model_forecast = model_forecast[['date', numeric_cols[0]]].rename(columns={numeric_cols[0]: 'best_price'})
+            
+            if not model_forecast.empty:
+                if not pd.api.types.is_datetime64_any_dtype(model_forecast['date']):
+                    model_forecast['date'] = model_forecast['date'].apply(
+                        lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x
+                    )
+                model_forecast['date'] = pd.to_datetime(model_forecast['date'])
+            
+            # Query cemre D+2 forecast data
+            cemre_query = """
+            SELECT date, forecasted_price AS cemre_forecast
+            FROM public."cemre_ptf_d+2"
+            """
+            
+            with engine.connect() as conn:
+                cemre_forecast = pd.read_sql(cemre_query, con=conn)
+            
+            if not cemre_forecast.empty:
+                if not pd.api.types.is_datetime64_any_dtype(cemre_forecast['date']):
+                    cemre_forecast['date'] = cemre_forecast['date'].apply(
+                        lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x
+                    )
+                cemre_forecast['date'] = pd.to_datetime(cemre_forecast['date'])
+        else:
+            # Default: D+1 forecasts
+            # Query Meteologica forecast data - fetch all data
+            meteologica_query = """
+            SELECT date, min_price AS meteologica_min, avg_price AS meteologica_avg, max_price AS meteologica_max
+            FROM public.meteologica_forecast
+            """
+            
+            with engine.connect() as conn:
+                meteologica_forecast = pd.read_sql(meteologica_query, con=conn)
+            
+            meteologica_forecast['date'] = pd.to_datetime(meteologica_forecast['date'])
+            
+            # Query model forecast data - fetch all data
+            model_query = "SELECT * FROM public.model_forecast_ptf"
+            
+            with engine.connect() as conn:
+                model_forecast = pd.read_sql(model_query, con=conn)
+            
+            model_forecast['date'] = pd.to_datetime(model_forecast['date'])
+            
+            # Query cemre forecast data - D+1 only
+            cemre_query = """
+            SELECT date, forecasted_price AS cemre_forecast
+            FROM public."cemre_ptf_d+1"
+            """
+            
+            with engine.connect() as conn:
+                cemre_forecast = pd.read_sql(cemre_query, con=conn)
+            
+            if not cemre_forecast.empty:
+                cemre_forecast['date'] = pd.to_datetime(cemre_forecast['date'])
         
         # Merge all dataframes
         price_df = pd.merge(ptf_df, meteologica_forecast, on='date', how='outer').sort_values(by='date')
@@ -3693,7 +3753,8 @@ def get_forecast_performance_data():
             'model_forecast': evaluation_df['best_price'].fillna(0).tolist() if 'best_price' in evaluation_df.columns else [],
             'cemre_forecast': evaluation_df['cemre_forecast'].fillna(0).tolist() if 'cemre_forecast' in evaluation_df.columns else [],
             'period_info': period_info,
-            'data_points': len(evaluation_df)
+            'data_points': len(evaluation_df),
+            'forecast_horizon': forecast_horizon
         }
         
         # Calculate metrics only for series with data
