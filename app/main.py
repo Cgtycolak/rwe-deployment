@@ -1769,10 +1769,12 @@ def get_rolling_data():
             df['datetime'] = pd.to_datetime(df['datetime'])
             df = df.set_index('datetime')
             
+            # Define Istanbul timezone
+            istanbul_tz = pytz.timezone('Europe/Istanbul')
+            
             # Ensure index has UTC timezone, then convert to Istanbul
             if df.index.tz is None:
                 df.index = df.index.tz_localize('UTC')
-            istanbul_tz = pytz.timezone('Europe/Istanbul')
             df.index = df.index.tz_convert(istanbul_tz)
             
             # Process solar data from separate tables first
