@@ -1775,7 +1775,8 @@ def get_rolling_data():
             # Ensure index has UTC timezone, then convert to Istanbul
             if df.index.tz is None:
                 df.index = df.index.tz_localize('UTC')
-            df.index = df.index.tz_convert(istanbul_tz)
+            if df.index.tz is not None:
+                df.index = df.index.tz_convert(istanbul_tz)
             
             # Process solar data from separate tables first
             if unlicensed_data or licensed_data:
@@ -1792,7 +1793,8 @@ def get_rolling_data():
                     unlicensed_df = unlicensed_df.set_index('datetime')
                     if unlicensed_df.index.tz is None:
                         unlicensed_df.index = unlicensed_df.index.tz_localize('UTC')
-                    unlicensed_df.index = unlicensed_df.index.tz_convert(istanbul_tz)
+                    if unlicensed_df.index.tz is not None:
+                        unlicensed_df.index = unlicensed_df.index.tz_convert(istanbul_tz)
                 else:
                     unlicensed_df = pd.DataFrame(columns=['unlicensed_solar'])
                     unlicensed_df.index = pd.DatetimeIndex([])
@@ -1808,7 +1810,8 @@ def get_rolling_data():
                     licensed_df = licensed_df.set_index('datetime')
                     if licensed_df.index.tz is None:
                         licensed_df.index = licensed_df.index.tz_localize('UTC')
-                    licensed_df.index = licensed_df.index.tz_convert(istanbul_tz)
+                    if licensed_df.index.tz is not None:
+                        licensed_df.index = licensed_df.index.tz_convert(istanbul_tz)
                 else:
                     licensed_df = pd.DataFrame(columns=['licensed_solar'])
                     licensed_df.index = pd.DatetimeIndex([])
