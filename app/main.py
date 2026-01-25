@@ -1766,17 +1766,14 @@ def get_rolling_data():
             } for d in current_data])
             
             # Convert datetime to pandas datetime with UTC timezone
-            df['datetime'] = pd.to_datetime(df['datetime'])
+            df['datetime'] = pd.to_datetime(df['datetime'], utc=True)
             df = df.set_index('datetime')
             
             # Define Istanbul timezone
             istanbul_tz = pytz.timezone('Europe/Istanbul')
             
-            # Ensure index has UTC timezone, then convert to Istanbul
-            if df.index.tz is None:
-                df.index = df.index.tz_localize('UTC')
-            if df.index.tz is not None:
-                df.index = df.index.tz_convert(istanbul_tz)
+            # Convert to Istanbul timezone
+            df.index = df.index.tz_convert(istanbul_tz)
             
             # Process solar data from separate tables first
             if unlicensed_data or licensed_data:
@@ -1789,12 +1786,9 @@ def get_rolling_data():
                         'unlicensed_solar': d.unlicensed_solar
                     } for d in unlicensed_data])
                     
-                    unlicensed_df['datetime'] = pd.to_datetime(unlicensed_df['datetime'])
+                    unlicensed_df['datetime'] = pd.to_datetime(unlicensed_df['datetime'], utc=True)
                     unlicensed_df = unlicensed_df.set_index('datetime')
-                    if unlicensed_df.index.tz is None:
-                        unlicensed_df.index = unlicensed_df.index.tz_localize('UTC')
-                    if unlicensed_df.index.tz is not None:
-                        unlicensed_df.index = unlicensed_df.index.tz_convert(istanbul_tz)
+                    unlicensed_df.index = unlicensed_df.index.tz_convert(istanbul_tz)
                 else:
                     unlicensed_df = pd.DataFrame(columns=['unlicensed_solar'])
                     unlicensed_df.index = pd.DatetimeIndex([])
@@ -1806,12 +1800,9 @@ def get_rolling_data():
                         'licensed_solar': d.licensed_solar
                     } for d in licensed_data])
                     
-                    licensed_df['datetime'] = pd.to_datetime(licensed_df['datetime'])
+                    licensed_df['datetime'] = pd.to_datetime(licensed_df['datetime'], utc=True)
                     licensed_df = licensed_df.set_index('datetime')
-                    if licensed_df.index.tz is None:
-                        licensed_df.index = licensed_df.index.tz_localize('UTC')
-                    if licensed_df.index.tz is not None:
-                        licensed_df.index = licensed_df.index.tz_convert(istanbul_tz)
+                    licensed_df.index = licensed_df.index.tz_convert(istanbul_tz)
                 else:
                     licensed_df = pd.DataFrame(columns=['licensed_solar'])
                     licensed_df.index = pd.DatetimeIndex([])
