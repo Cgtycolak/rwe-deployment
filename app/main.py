@@ -1818,9 +1818,9 @@ def get_rolling_data():
                 print(f"Production data range: {df.index.min()} to {df.index.max()}")
                 
                 # Resample all DataFrames to hourly frequency to align timestamps
-                df_hourly = df.resample('H', closed='left', label='left').mean()
-                unlicensed_hourly = unlicensed_df.resample('H', closed='left', label='left').mean() if not unlicensed_df.empty else pd.DataFrame()
-                licensed_hourly = licensed_df.resample('H', closed='left', label='left').mean() if not licensed_df.empty else pd.DataFrame()
+                df_hourly = df.resample('h', closed='left', label='left').mean()
+                unlicensed_hourly = unlicensed_df.resample('h', closed='left', label='left').mean() if not unlicensed_df.empty else pd.DataFrame()
+                licensed_hourly = licensed_df.resample('h', closed='left', label='left').mean() if not licensed_df.empty else pd.DataFrame()
                 
                 print(f"After resampling - Production shape: {df_hourly.shape}")
                 if not unlicensed_hourly.empty:
@@ -1906,7 +1906,7 @@ def get_rolling_data():
             regular_columns.append('solar_combined')  # Add combined solar data
             for column in regular_columns:
                 # Resample to daily frequency
-                daily_avg = df[column].resample('D', closed='left', label='left').mean()
+                daily_avg = df[column].resample('d', closed='left', label='left').mean()
                 # Apply completeness per-series
                 if column in ['solar_combined', 'unlicensed_solar', 'licensed_solar', 'sun']:
                     daily_avg = daily_avg[daily_avg.index.map(lambda x: x.date() in solar_complete_days)]
@@ -2278,7 +2278,7 @@ def get_demand_data():
             df_current = pd.DataFrame(current_year_data)
             df_current['datetime'] = pd.to_datetime(df_current['datetime'])
             df_current.set_index('datetime', inplace=True)
-            weekly_avg_current = df_current.resample('W').mean()
+            weekly_avg_current = df_current.resample('w').mean()
         else:
             weekly_avg_current = pd.DataFrame()
             
@@ -2286,7 +2286,7 @@ def get_demand_data():
             df_previous = pd.DataFrame(previous_year_data)
             df_previous['datetime'] = pd.to_datetime(df_previous['datetime'])
             df_previous.set_index('datetime', inplace=True)
-            weekly_avg_previous = df_previous.resample('W').mean()
+            weekly_avg_previous = df_previous.resample('w').mean()
         else:
             weekly_avg_previous = pd.DataFrame()
         
