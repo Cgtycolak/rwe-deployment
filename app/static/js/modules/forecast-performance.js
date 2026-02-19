@@ -15,6 +15,7 @@ export const forecastPerformance = {
     setupEventListeners() {
         const loadButton = document.getElementById('load_forecast_performance');
         const downloadButton = document.getElementById('download_performance_chart');
+        const downloadExcelButton = document.getElementById('download_performance_excel');
         const periodSelect = document.getElementById('performance_period');
         
         if (loadButton) {
@@ -26,6 +27,12 @@ export const forecastPerformance = {
         if (downloadButton) {
             downloadButton.addEventListener('click', () => {
                 this.downloadChart();
+            });
+        }
+        
+        if (downloadExcelButton) {
+            downloadExcelButton.addEventListener('click', () => {
+                this.downloadExcel();
             });
         }
         
@@ -127,10 +134,14 @@ export const forecastPerformance = {
                     metricsSection.style.display = 'block';
                 }
                 
-                // Enable download button
+                // Enable download buttons
                 const downloadButton = document.getElementById('download_performance_chart');
                 if (downloadButton) {
                     downloadButton.disabled = false;
+                }
+                const downloadExcelButton = document.getElementById('download_performance_excel');
+                if (downloadExcelButton) {
+                    downloadExcelButton.disabled = false;
                 }
                 
                 this.helpers.displayMessage('Forecast performance data loaded successfully!', 'success');
@@ -382,6 +393,37 @@ export const forecastPerformance = {
                 height: 800,
                 filename: filename
             });
+        }
+    },
+    
+    downloadExcel() {
+        if (!this.currentData) {
+            this.helpers.displayMessage('Please load data first before downloading', 'warning');
+            return;
+        }
+        
+        try {
+            // Get current parameters
+            const params = this.getRequestParams();
+            const queryString = new URLSearchParams(params).toString();
+            
+            // Create download URL
+            const downloadUrl = `/download-forecast-performance-excel?${queryString}`;
+            
+            // Show loading message
+            this.helpers.displayMessage('Preparing Excel file for download...', 'info');
+            
+            // Use window.location for download (simpler and more reliable)
+            window.location.href = downloadUrl;
+            
+            // Show success message after a short delay
+            setTimeout(() => {
+                this.helpers.displayMessage('Excel file download started!', 'success');
+            }, 500);
+            
+        } catch (error) {
+            console.error('Error downloading Excel file:', error);
+            this.helpers.displayMessage(`Error: ${error.message}`, 'error');
         }
     }
 }; 

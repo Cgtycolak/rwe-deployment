@@ -1,7 +1,7 @@
 import sys
 import time
 from datetime import datetime, timedelta, timezone
-from flask import abort, app, Blueprint, session, render_template, redirect, url_for, Response, request, jsonify, Request, Response, current_app, flash
+from flask import abort, app, Blueprint, session, render_template, redirect, url_for, Response, request, jsonify, Request, Response, current_app, flash, send_file
 from requests import post, Session
 from .functions import get_tgt_token, asutc, invalidates_or_none, fetch_plant_data
 from requests.adapters import HTTPAdapter
@@ -3805,4 +3805,186 @@ def get_forecast_performance_data():
         return jsonify({
             'code': 500,
             'error': f'Error fetching forecast performance data: {str(e)}'
+        }), 500
+
+@main.route('/download-forecast-performance-excel')
+def download_forecast_performance_excel():
+    """Download forecast performance data as Excel file"""
+    try:
+        from io import BytesIO
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        
+        # Get parameters from request
+        period_days = request.args.get('period', '30', type=int)
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        forecast_horizon = request.args.get('horizon', 'd+1')
+        
+        # Get database connection
+        user = os.getenv("SUPABASE_USER")
+        password = os.getenv("SUPABASE_PASSWORD")
+        
+        if not user or not password:
+            return jsonify({'error': 'Database credentials not configured'}), 500
+        
+        from sqlalchemy import create_engine
+        connection_str = f"postgresql+psycopg2://{user}:{password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
+        engine = create_engine(connection_str)
+        
+        # Query actual price data
+        ptf_query = "SELECT date, price AS actual_price FROM epias.ptf"
+        with engine.connect() as conn:
+            ptf_df = pd.read_sql(ptf_query, con=conn)
+        
+        if ptf_df.empty:
+            return jsonify({'error': 'No PTF data available'}), 404
+        
+        # Clean PTF data
+        ptf_df['actual_price'] = ptf_df['actual_price'].apply(lambda x: 1 if x <= 0 else x)
+        if not pd.api.types.is_datetime64_any_dtype(ptf_df['date']):
+            ptf_df['date'] = ptf_df['date'].apply(lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x)
+        ptf_df['date'] = pd.to_datetime(ptf_df['date'])
+        
+        # Query forecast data based on horizon
+        if forecast_horizon.lower() == 'd+2':
+            meteologica_query = """
+            SELECT date, min_price AS meteologica_min, avg_price AS meteologica_avg, max_price AS meteologica_max
+            FROM public."meteologica_forecast_d+2"
+            """
+            with engine.connect() as conn:
+                meteologica_forecast = pd.read_sql(meteologica_query, con=conn)
+            if not meteologica_forecast.empty:
+                if not pd.api.types.is_datetime64_any_dtype(meteologica_forecast['date']):
+                    meteologica_forecast['date'] = meteologica_forecast['date'].apply(
+                        lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x)
+                meteologica_forecast['date'] = pd.to_datetime(meteologica_forecast['date'])
+            
+            try:
+                model_query = "SELECT date, best_price FROM public.model_forecast_sfc"
+                with engine.connect() as conn:
+                    model_forecast = pd.read_sql(model_query, con=conn)
+            except Exception:
+                model_query = "SELECT * FROM public.model_forecast_sfc"
+                with engine.connect() as conn:
+                    model_forecast = pd.read_sql(model_query, con=conn)
+                    price_cols = [col for col in model_forecast.columns if 'price' in col.lower() or 'forecast' in col.lower()]
+                    if price_cols:
+                        model_forecast = model_forecast[['date', price_cols[0]]].rename(columns={price_cols[0]: 'best_price'})
+            
+            if not model_forecast.empty:
+                if not pd.api.types.is_datetime64_any_dtype(model_forecast['date']):
+                    model_forecast['date'] = model_forecast['date'].apply(
+                        lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x)
+                model_forecast['date'] = pd.to_datetime(model_forecast['date'])
+            
+            cemre_query = """SELECT date, forecasted_price AS cemre_forecast FROM public."cemre_ptf_d+2" """
+            with engine.connect() as conn:
+                cemre_forecast = pd.read_sql(cemre_query, con=conn)
+            if not cemre_forecast.empty:
+                if not pd.api.types.is_datetime64_any_dtype(cemre_forecast['date']):
+                    cemre_forecast['date'] = cemre_forecast['date'].apply(
+                        lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x)
+                cemre_forecast['date'] = pd.to_datetime(cemre_forecast['date'])
+        else:
+            meteologica_query = """
+            SELECT date, min_price AS meteologica_min, avg_price AS meteologica_avg, max_price AS meteologica_max
+            FROM public.meteologica_forecast
+            """
+            with engine.connect() as conn:
+                meteologica_forecast = pd.read_sql(meteologica_query, con=conn)
+            meteologica_forecast['date'] = pd.to_datetime(meteologica_forecast['date'])
+            
+            model_query = "SELECT * FROM public.model_forecast_ptf"
+            with engine.connect() as conn:
+                model_forecast = pd.read_sql(model_query, con=conn)
+            model_forecast['date'] = pd.to_datetime(model_forecast['date'])
+            
+            cemre_query = """SELECT date, forecasted_price AS cemre_forecast FROM public."cemre_ptf_d+1" """
+            with engine.connect() as conn:
+                cemre_forecast = pd.read_sql(cemre_query, con=conn)
+            if not cemre_forecast.empty:
+                cemre_forecast['date'] = pd.to_datetime(cemre_forecast['date'])
+        
+        # Merge dataframes
+        price_df = pd.merge(ptf_df, meteologica_forecast, on='date', how='outer').sort_values(by='date')
+        price_df = pd.merge(price_df, model_forecast, on='date', how='left')
+        if not cemre_forecast.empty:
+            price_df = pd.merge(price_df, cemre_forecast, on='date', how='left')
+        
+        # Apply date filtering
+        if start_date and end_date:
+            start_dt = pd.to_datetime(start_date)
+            end_dt = pd.to_datetime(end_date)
+            price_df = price_df[(price_df['date'] >= start_dt) & (price_df['date'] <= end_dt)]
+        else:
+            cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=period_days)
+            price_df = price_df[price_df['date'] >= cutoff_date]
+        
+        # Prepare data for Excel
+        evaluation_df = price_df.dropna(subset=['actual_price']).copy()
+        
+        # Create Excel workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Forecast Performance"
+        
+        # Define styles
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center")
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Write headers
+        headers = ['Date', 'Realized Price (TL/MWh)', 'Meteologica Min', 'Meteologica Avg', 
+                   'Meteologica Max', 'Model Forecast', 'Cemre Forecast']
+        
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = border
+        
+        # Write data
+        for row_num, row_data in enumerate(evaluation_df.itertuples(index=False), 2):
+            ws.cell(row=row_num, column=1, value=row_data.date.strftime('%Y-%m-%d %H:%M:%S')).border = border
+            ws.cell(row=row_num, column=2, value=round(row_data.actual_price, 2) if pd.notna(row_data.actual_price) else 0).border = border
+            ws.cell(row=row_num, column=3, value=round(row_data.meteologica_min, 2) if pd.notna(row_data.meteologica_min) else 0).border = border
+            ws.cell(row=row_num, column=4, value=round(row_data.meteologica_avg, 2) if pd.notna(row_data.meteologica_avg) else 0).border = border
+            ws.cell(row=row_num, column=5, value=round(row_data.meteologica_max, 2) if pd.notna(row_data.meteologica_max) else 0).border = border
+            ws.cell(row=row_num, column=6, value=round(row_data.best_price, 2) if 'best_price' in evaluation_df.columns and pd.notna(row_data.best_price) else 0).border = border
+            ws.cell(row=row_num, column=7, value=round(row_data.cemre_forecast, 2) if 'cemre_forecast' in evaluation_df.columns and pd.notna(row_data.cemre_forecast) else 0).border = border
+        
+        # Auto-adjust column widths
+        for col_num in range(1, len(headers) + 1):
+            ws.column_dimensions[get_column_letter(col_num)].width = 20
+        
+        # Save to BytesIO
+        excel_file = BytesIO()
+        wb.save(excel_file)
+        excel_file.seek(0)
+        
+        # Generate filename
+        filename = f"forecast_performance_{forecast_horizon}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        return send_file(
+            excel_file,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        print(f"Error in download_forecast_performance_excel: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': f'Error downloading forecast performance data: {str(e)}'
         }), 500
