@@ -667,6 +667,51 @@
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   }
+
+  /* Merit Order specific styles */
+  .content-section[data-section="merit-order"] {
+    padding: 20px;
+    background: white;
+  }
+
+  .merit-order-table {
+    font-size: 0.8rem;
+  }
+
+  .merit-order-table th {
+    font-size: 0.75rem;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  .merit-order-table td {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.4rem;
+    white-space: nowrap;
+  }
+
+  .content-section[data-section="merit-order"] .form-control,
+  .content-section[data-section="merit-order"] .form-select {
+    border: 1px solid #e0e0e0;
+    border-radius: 0.5rem;
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  }
+
+  .content-section[data-section="merit-order"] .form-control:focus,
+  .content-section[data-section="merit-order"] .form-select:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  }
+
+  .content-section[data-section="merit-order"] .btn {
+    border-radius: 0.5rem;
+    transition: all 0.2s ease-in-out;
+  }
+
+  .content-section[data-section="merit-order"] .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
 </style>
 
 <div class="container-fluid">
@@ -2289,6 +2334,98 @@
                     <div class="card">
                         <div class="card-body">
                             <iframe class="ata-iframe" src="{{ url_for('static', filename='ata_htmls/mtd_gm.html') }}"></iframe>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Merit Order Analysis -->
+    <div class="content-section" data-section="merit-order">
+        <div class="container-fluid">
+            <h2 class="mb-4">Merit Order Analysis</h2>
+            
+            <div class="alert alert-info" role="alert">
+                <i class="fas fa-info-circle"></i> Compare actual generation data with forecasted predictions to analyze capacity deltas, AIC data, and active failures.
+            </div>
+            
+            <!-- Controls Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <h5 class="mb-0"><i class="fas fa-cogs"></i> Analysis Controls</h5>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <button id="load_merit_order" class="btn btn-primary">
+                                <span class="button-content">
+                                    <i class="fas fa-sync-alt"></i> Load Data
+                                </span>
+                                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            </button>
+                            <button id="download_merit_order_excel" class="btn btn-outline-primary" disabled>
+                                <i class="fas fa-file-excel"></i> Download Excel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Generation Date (Actual)</label>
+                            <input type="date" id="merit_gen_date" class="form-control">
+                            <small class="text-muted">Select the date for actual generation data</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Prediction Date (Forecast)</label>
+                            <input type="date" id="merit_pred_date" class="form-control">
+                            <small class="text-muted">Select the date for forecast/prediction data</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Results Table -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-table"></i> Generation vs Prediction Comparison</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div id="merit_order_results">
+                        <div class="text-center p-4 text-muted">
+                            <i class="fas fa-chart-bar fa-3x mb-3"></i>
+                            <p>Select dates and click "Load Data" to see the comparison table.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- AIC Table -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-industry"></i> Available Installed Capacity (AIC)</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div id="merit_order_aic">
+                        <div class="text-center p-4 text-muted">
+                            <i class="fas fa-industry fa-3x mb-3"></i>
+                            <p>AIC data for tracked natural gas power plants will appear here.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Failure Table -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Active Failures / Outages</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div id="merit_order_failure">
+                        <div class="text-center p-4 text-muted">
+                            <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+                            <p>Current power plant failures and outages will appear here.</p>
                         </div>
                     </div>
                 </div>

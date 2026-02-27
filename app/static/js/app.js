@@ -11,6 +11,7 @@ import { miniTables } from './modules/mini-tables.js';
 import { hydroHeatmap } from './modules/hydro-heatmap.js';
 import { forecasting } from './modules/forecasting.js';
 import { forecastPerformance } from './modules/forecast-performance.js';
+import { meritOrder } from './modules/merit-order.js';
 
 // Main app object
 const app = {
@@ -29,6 +30,7 @@ const app = {
     hydroHeatmap,
     forecasting,
     forecastPerformance,
+    meritOrder,
     helpers: {
         toggleLoading: function (show) {
             const loader = document.getElementById('aic_loading');
@@ -119,6 +121,10 @@ const app = {
             // Initialize forecast performance module
             this.forecastPerformance.setup(this.helpers);
             this.forecastPerformance.init();
+            
+            // Initialize merit order module
+            this.meritOrder.setup(this.helpers);
+            this.meritOrder.init();
             
             // Initialize mini-tables when showing home section
             this.miniTables.init();

@@ -3988,3 +3988,567 @@ def download_forecast_performance_excel():
         return jsonify({
             'error': f'Error downloading forecast performance data: {str(e)}'
         }), 500
+
+
+@main.route('/merit-order-data')
+def get_merit_order_data():
+    """Get merit order comparison data between a generation date and a prediction date"""
+    try:
+        gen_date = request.args.get('gen_date')
+        pred_date = request.args.get('pred_date')
+        
+        if not gen_date or not pred_date:
+            return jsonify({'code': 400, 'message': 'Both gen_date and pred_date are required'}), 400
+        
+        # Database connection
+        user = os.getenv("SUPABASE_USER")
+        password = os.getenv("SUPABASE_PASSWORD")
+        
+        if not user or not password:
+            return jsonify({'code': 500, 'error': 'Database credentials not configured'}), 500
+        
+        connection_str = f"postgresql+psycopg2://{user}:{password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
+        engine = create_engine(connection_str)
+        
+        # Query actual generation data for the gen_date (sun + unlicensed solar)
+        gen_query = f"""
+        SELECT
+            rg.date AS date,
+            DATE(rg.date) AS day,
+            TO_CHAR(rg.date, 'HH24:MI') AS hour,
+            CAST(rc.consumption AS INT) AS demand,
+            CAST(rg."dammedHydro" AS INT) AS dam,
+            CAST(rg.river AS INT) AS river,
+            CAST(rg.wind AS INT) AS wind,
+            CAST(rg.sun + us.unlicensed_forecast AS INT) AS solar
+        FROM epias.realtime_generation rg
+        JOIN epias.realtime_consumption rc ON rg.date = rc.date
+        LEFT JOIN meteologica.unlicensed_solar us ON rg.date = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        WHERE DATE(rg.date) = '{gen_date}'
+        ORDER BY rg.date
+        """
+        
+        # Query prediction data for the pred_date (includes MCP forecast)
+        pred_query = f"""
+        SELECT
+            CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP) AS date,
+            DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) AS day,
+            TO_CHAR(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP), 'HH24:MI') AS hour,
+            mf.avg_price AS mcp,
+            d.demand_forecast AS demand,
+            w.wind_forecast AS wind,
+            ls.licensed_forecast + us.unlicensed_forecast AS solar,
+            dam.conventional_forecast AS dam,
+            ror.runofriver_forecast AS river
+        FROM meteologica.demand d
+        JOIN public.meteologica_forecast mf ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(mf.date, 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.wind w ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(w."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.licensed_solar ls ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ls."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.unlicensed_solar us ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.dam_hydro dam ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(dam."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.runofriver_hydro ror ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ror."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        WHERE DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) = '{pred_date}'
+        ORDER BY date
+        """
+        
+        with engine.connect() as conn:
+            gen_df = pd.read_sql(gen_query, con=conn)
+            pred_df = pd.read_sql(pred_query, con=conn)
+            pred_df['day'] = pd.to_datetime(pred_df['day'])
+            pred_df['mcp'] = pred_df['mcp'].round(2)
+        
+        if gen_df.empty:
+            return jsonify({'code': 404, 'message': f'No generation data found for {gen_date}'}), 404
+        
+        if pred_df.empty:
+            return jsonify({'code': 404, 'message': f'No prediction data found for {pred_date}'}), 404
+        
+        # Merge on hour
+        cols = ['demand', 'dam', 'river', 'wind', 'solar']
+        df_diff = pd.merge(gen_df, pred_df, on='hour', suffixes=('_gen', '_pred'))
+        
+        # Calculate deltas
+        for col in cols:
+            df_diff[f'{col}_delta'] = df_diff[f'{col}_pred'] - df_diff[f'{col}_gen']
+        
+        # Calculate capacity delta
+        df_diff['capacity_delta'] = (df_diff['demand_delta'] - df_diff['dam_delta'] 
+                                     - df_diff['river_delta'] - df_diff['wind_delta'] 
+                                     - df_diff['solar_delta'])
+        
+        # Build result rows (include mcp from prediction)
+        result_rows = []
+        for _, row in df_diff.iterrows():
+            result_rows.append({
+                'date_gen': str(row['date_gen']),
+                'date_pred': str(row['date_pred']),
+                'mcp': float(row['mcp']) if pd.notna(row['mcp']) else None,
+                'capacity_delta': float(row['capacity_delta']) if pd.notna(row['capacity_delta']) else None,
+                'demand_gen': float(row['demand_gen']) if pd.notna(row['demand_gen']) else None,
+                'demand_pred': float(row['demand_pred']) if pd.notna(row['demand_pred']) else None,
+                'demand_delta': float(row['demand_delta']) if pd.notna(row['demand_delta']) else None,
+                'dam_gen': float(row['dam_gen']) if pd.notna(row['dam_gen']) else None,
+                'dam_pred': float(row['dam_pred']) if pd.notna(row['dam_pred']) else None,
+                'dam_delta': float(row['dam_delta']) if pd.notna(row['dam_delta']) else None,
+                'river_gen': float(row['river_gen']) if pd.notna(row['river_gen']) else None,
+                'river_pred': float(row['river_pred']) if pd.notna(row['river_pred']) else None,
+                'river_delta': float(row['river_delta']) if pd.notna(row['river_delta']) else None,
+                'wind_gen': float(row['wind_gen']) if pd.notna(row['wind_gen']) else None,
+                'wind_pred': float(row['wind_pred']) if pd.notna(row['wind_pred']) else None,
+                'wind_delta': float(row['wind_delta']) if pd.notna(row['wind_delta']) else None,
+                'solar_gen': float(row['solar_gen']) if pd.notna(row['solar_gen']) else None,
+                'solar_pred': float(row['solar_pred']) if pd.notna(row['solar_pred']) else None,
+                'solar_delta': float(row['solar_delta']) if pd.notna(row['solar_delta']) else None,
+            })
+        
+        # Summary row (totals - exclude mcp from sum)
+        numeric_cols = ['capacity_delta', 'demand_gen', 'demand_pred', 'demand_delta',
+                       'dam_gen', 'dam_pred', 'dam_delta', 'river_gen', 'river_pred', 'river_delta',
+                       'wind_gen', 'wind_pred', 'wind_delta', 'solar_gen', 'solar_pred', 'solar_delta']
+        
+        summary_row = {}
+        for col in numeric_cols:
+            summary_row[col] = float(df_diff[col].sum()) if col in df_diff.columns else None
+        
+        return jsonify({
+            'code': 200,
+            'data': {
+                'gen_date': gen_date,
+                'pred_date': pred_date,
+                'columns': numeric_cols,
+                'rows': result_rows,
+                'summary_row': summary_row
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error in get_merit_order_data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'code': 500, 'error': f'Error fetching merit order data: {str(e)}'}), 500
+
+
+@main.route('/merit-order-aic-data')
+def get_merit_order_aic_data():
+    """Get AIC data for tracked power plants"""
+    try:
+        # Read the uevcb plant list
+        uevcb_path = os.path.join(current_app.static_folder, 'data', 'uevcb.xlsx')
+        if not os.path.exists(uevcb_path):
+            return jsonify({'code': 404, 'error': 'UEVCB plant list file not found'}), 404
+        
+        uevcb = pd.read_excel(uevcb_path, sheet_name='Sheet2')
+        
+        # Get TGT token
+        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+        
+        # Use today's date for AIC
+        tz = pytz.timezone('Europe/Istanbul')
+        today_start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # First get organization list to match names
+        session = Session()
+        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+        
+        org_response = session.post(
+            'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/organization-list',
+            json={
+                "startDate": today_start.isoformat(),
+                "endDate": today_start.isoformat()
+            },
+            headers={
+                "Accept-Language": "en",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "TGT": tgt_token
+            },
+            timeout=30
+        )
+        
+        if org_response.status_code == 200:
+            org_df = pd.DataFrame.from_records(org_response.json().get('items', []))
+            if not org_df.empty:
+                uevcb = uevcb.merge(
+                    org_df[['organizationId', 'organizationName']], 
+                    left_on="organizationId", right_on="organizationId", how="left"
+                )
+        
+        # Fetch AIC data for each plant
+        all_response = []
+        aic_url = 'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/aic'
+        
+        for _, row in uevcb.iterrows():
+            try:
+                aic_response = session.post(
+                    aic_url,
+                    json={
+                        "startDate": today_start.isoformat(),
+                        "endDate": today_start.isoformat(),
+                        "region": "TR1",
+                        "organizationId": int(row['organizationId']),
+                        "uevcbId": int(row['id'])
+                    },
+                    headers={
+                        "Accept-Language": "en",
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                        "TGT": tgt_token
+                    },
+                    timeout=15
+                )
+                
+                if aic_response.status_code == 200:
+                    response_data = aic_response.json()
+                    for item in response_data.get("items", []):
+                        item["uevcbId"] = int(row['id'])
+                    all_response.extend(response_data.get("items", []))
+            except Exception as e:
+                print(f"Error fetching AIC for {row['name']}: {str(e)}")
+                continue
+        
+        if not all_response:
+            return jsonify({'code': 404, 'message': 'No AIC data available'}), 404
+        
+        # Process AIC data into pivot table
+        eak_df = pd.DataFrame.from_records(all_response)
+        eak_df = eak_df[['date', 'uevcbId', 'toplam']].copy()
+        eak_df = eak_df.merge(uevcb[["id", "name"]], left_on="uevcbId", right_on="id", how="left").drop(columns=['id', 'uevcbId'])
+        
+        eak_df['date'] = pd.to_datetime(eak_df['date'])
+        eak_df['hour'] = eak_df['date'].dt.strftime('%H:%M')
+        pivot_df = eak_df.pivot(index="name", columns="hour", values="toplam")
+        pivot_df = pivot_df.fillna(0)
+        
+        return jsonify({
+            'code': 200,
+            'data': {
+                'plants': pivot_df.index.tolist(),
+                'hours': pivot_df.columns.tolist(),
+                'values': pivot_df.values.tolist()
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error in get_merit_order_aic_data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'code': 500, 'error': f'Error fetching AIC data: {str(e)}'}), 500
+
+
+@main.route('/merit-order-failure-data')
+def get_merit_order_failure_data():
+    """Get current power plant failure data from market messages"""
+    try:
+        # Database connection
+        user = os.getenv("SUPABASE_USER")
+        password = os.getenv("SUPABASE_PASSWORD")
+        
+        if not user or not password:
+            return jsonify({'code': 500, 'error': 'Database credentials not configured'}), 500
+        
+        connection_str = f"postgresql+psycopg2://{user}:{password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
+        engine = create_engine(connection_str)
+        
+        failure_query = """
+        SELECT 
+            "uevcbName", 
+            "caseStartDate", 
+            "caseEndDate", 
+            "operatorPower", 
+            "capacityAtCaseTime",
+            ROUND("operatorPower" - "capacityAtCaseTime") AS "failureAmount"
+        FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY "uevcbName"
+                       ORDER BY "caseEndDate" ASC
+                   ) as row_num
+            FROM epias.market_messages
+            WHERE "caseEndDate" >= (CURRENT_TIMESTAMP + INTERVAL '3' HOUR)
+        ) t
+        WHERE t.row_num = 1
+        ORDER BY "failureAmount" DESC
+        """
+        
+        with engine.connect() as conn:
+            failure_df = pd.read_sql(failure_query, con=conn)
+        
+        if failure_df.empty:
+            return jsonify({'code': 200, 'data': {'rows': []}})
+        
+        # Convert to JSON-safe format
+        rows = []
+        for _, row in failure_df.iterrows():
+            rows.append({
+                'uevcbName': str(row['uevcbName']) if pd.notna(row['uevcbName']) else '',
+                'caseStartDate': row['caseStartDate'].isoformat() if pd.notna(row['caseStartDate']) else None,
+                'caseEndDate': row['caseEndDate'].isoformat() if pd.notna(row['caseEndDate']) else None,
+                'operatorPower': float(row['operatorPower']) if pd.notna(row['operatorPower']) else None,
+                'capacityAtCaseTime': float(row['capacityAtCaseTime']) if pd.notna(row['capacityAtCaseTime']) else None,
+                'failureAmount': float(row['failureAmount']) if pd.notna(row['failureAmount']) else None,
+            })
+        
+        return jsonify({
+            'code': 200,
+            'data': {
+                'rows': rows
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error in get_merit_order_failure_data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'code': 500, 'error': f'Error fetching failure data: {str(e)}'}), 500
+
+
+@main.route('/download-merit-order-excel')
+def download_merit_order_excel():
+    """Download merit order data as a multi-sheet Excel file"""
+    try:
+        from io import BytesIO
+        
+        gen_date = request.args.get('gen_date')
+        pred_date = request.args.get('pred_date')
+        
+        if not gen_date or not pred_date:
+            return jsonify({'error': 'Both gen_date and pred_date are required'}), 400
+        
+        # Database connection
+        user = os.getenv("SUPABASE_USER")
+        password_db = os.getenv("SUPABASE_PASSWORD")
+        
+        if not user or not password_db:
+            return jsonify({'error': 'Database credentials not configured'}), 500
+        
+        connection_str = f"postgresql+psycopg2://{user}:{password_db}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
+        engine = create_engine(connection_str)
+        
+        # --- Sheet 1: Results ---
+        gen_query = f"""
+        SELECT
+            rg.date AS date,
+            DATE(rg.date) AS day,
+            TO_CHAR(rg.date, 'HH24:MI') AS hour,
+            CAST(rc.consumption AS INT) AS demand,
+            CAST(rg."dammedHydro" AS INT) AS dam,
+            CAST(rg.river AS INT) AS river,
+            CAST(rg.wind AS INT) AS wind,
+            CAST(rg.sun + us.unlicensed_forecast AS INT) AS solar
+        FROM epias.realtime_generation rg
+        JOIN epias.realtime_consumption rc ON rg.date = rc.date
+        LEFT JOIN meteologica.unlicensed_solar us ON rg.date = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        WHERE DATE(rg.date) = '{gen_date}'
+        ORDER BY rg.date
+        """
+        
+        pred_query = f"""
+        SELECT
+            CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP) AS date,
+            DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) AS day,
+            TO_CHAR(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP), 'HH24:MI') AS hour,
+            mf.avg_price AS mcp,
+            d.demand_forecast AS demand,
+            w.wind_forecast AS wind,
+            ls.licensed_forecast + us.unlicensed_forecast AS solar,
+            dam.conventional_forecast AS dam,
+            ror.runofriver_forecast AS river
+        FROM meteologica.demand d
+        JOIN public.meteologica_forecast mf ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(mf.date, 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.wind w ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(w."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.licensed_solar ls ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ls."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.unlicensed_solar us ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.dam_hydro dam ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(dam."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.runofriver_hydro ror ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ror."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        WHERE DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) = '{pred_date}'
+        ORDER BY date
+        """
+        
+        with engine.connect() as conn:
+            gen_df = pd.read_sql(gen_query, con=conn)
+            pred_df = pd.read_sql(pred_query, con=conn)
+            pred_df['mcp'] = pred_df['mcp'].round(2)
+        
+        # Merge and calculate deltas
+        cols = ['demand', 'dam', 'river', 'wind', 'solar']
+        df_diff = pd.merge(gen_df, pred_df, on='hour', suffixes=('_gen', '_pred'))
+        
+        for col in cols:
+            df_diff[f'{col}(Δ)'] = df_diff[f'{col}_pred'] - df_diff[f'{col}_gen']
+        
+        df_diff['capacity(Δ)'] = (df_diff['demand(Δ)'] - df_diff['dam(Δ)'] 
+                                   - df_diff['river(Δ)'] - df_diff['wind(Δ)'] 
+                                   - df_diff['solar(Δ)'])
+        
+        # Organize columns like the notebook (include mcp)
+        new_order = ['date_gen', 'date_pred', 'mcp', 'capacity(Δ)']
+        for col in cols:
+            new_order.extend([f'{col}_gen', f'{col}_pred', f'{col}(Δ)'])
+        
+        df_diff.drop(columns=['hour', 'day_gen', 'day_pred'], inplace=True, errors='ignore')
+        df_diff = df_diff[new_order]
+        
+        # Add totals row (exclude mcp from sum)
+        df_diff.loc[len(df_diff)] = df_diff.drop(columns='mcp').sum(numeric_only=True)
+        df_diff.set_index(['date_gen', 'date_pred', 'mcp'], inplace=True)
+        
+        # --- Sheet 3: Failure ---
+        failure_query = """
+        SELECT 
+            "uevcbName", 
+            "caseStartDate", 
+            "caseEndDate", 
+            "operatorPower", 
+            "capacityAtCaseTime",
+            ROUND("operatorPower" - "capacityAtCaseTime") AS "failureAmount"
+        FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY "uevcbName"
+                       ORDER BY "caseEndDate" ASC
+                   ) as row_num
+            FROM epias.market_messages
+            WHERE "caseEndDate" >= (CURRENT_TIMESTAMP + INTERVAL '3' HOUR)
+        ) t
+        WHERE t.row_num = 1
+        ORDER BY "failureAmount" DESC
+        """
+        
+        with engine.connect() as conn:
+            failure_df = pd.read_sql(failure_query, con=conn)
+        
+        if not failure_df.empty:
+            failure_df.set_index('uevcbName', inplace=True)
+        
+        # --- Sheet 2: AIC ---
+        uevcb_path = os.path.join(current_app.static_folder, 'data', 'uevcb.xlsx')
+        aic_pivot_df = pd.DataFrame()
+        
+        if os.path.exists(uevcb_path):
+            try:
+                uevcb = pd.read_excel(uevcb_path, sheet_name='Sheet2')
+                tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+                
+                tz = pytz.timezone('Europe/Istanbul')
+                today_start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+                
+                session_api = Session()
+                retries_api = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
+                session_api.mount('https://', HTTPAdapter(max_retries=retries_api))
+                
+                all_aic = []
+                aic_url = 'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/aic'
+                
+                for _, row in uevcb.iterrows():
+                    try:
+                        aic_response = session_api.post(
+                            aic_url,
+                            json={
+                                "startDate": today_start.isoformat(),
+                                "endDate": today_start.isoformat(),
+                                "region": "TR1",
+                                "organizationId": int(row['organizationId']),
+                                "uevcbId": int(row['id'])
+                            },
+                            headers={
+                                "Accept-Language": "en",
+                                "Accept": "application/json",
+                                "Content-Type": "application/json",
+                                "TGT": tgt_token
+                            },
+                            timeout=15
+                        )
+                        
+                        if aic_response.status_code == 200:
+                            response_data = aic_response.json()
+                            for item in response_data.get("items", []):
+                                item["uevcbId"] = int(row['id'])
+                            all_aic.extend(response_data.get("items", []))
+                    except Exception as e:
+                        print(f"AIC fetch error for {row['name']}: {str(e)}")
+                        continue
+                
+                if all_aic:
+                    eak_df = pd.DataFrame.from_records(all_aic)
+                    eak_df = eak_df[['date', 'uevcbId', 'toplam']].copy()
+                    eak_df = eak_df.merge(uevcb[["id", "name"]], left_on="uevcbId", right_on="id", how="left").drop(columns=['id', 'uevcbId'])
+                    eak_df['date'] = pd.to_datetime(eak_df['date'])
+                    eak_df['hour'] = eak_df['date'].dt.strftime('%H:%M')
+                    aic_pivot_df = eak_df.pivot(index="name", columns="hour", values="toplam")
+            except Exception as e:
+                print(f"AIC processing error: {str(e)}")
+        
+        # --- Write Excel ---
+        output = BytesIO()
+        writer = pd.ExcelWriter(output, engine='xlsxwriter')
+        
+        # Sheet 1: Results
+        df_diff.to_excel(writer, sheet_name='Results')
+        workbook = writer.book
+        worksheet = writer.sheets['Results']
+        bold_format = workbook.add_format({'bold': True})
+        
+        # Conditional formatting for capacity delta column
+        num_rows = len(df_diff) - 1
+        if 'capacity(Δ)' in df_diff.columns:
+            capacity_col_idx = df_diff.columns.get_loc('capacity(Δ)') + 3
+            col_letter = chr(64 + capacity_col_idx + 1)
+            
+            worksheet.conditional_format(f'{col_letter}2:{col_letter}{num_rows + 1}', {
+                'type': '3_color_scale',
+                'min_color': "#F8696B",
+                'mid_color': "#FFEB84",
+                'max_color': "#63BE7B"
+            })
+        
+        # Bold total row
+        worksheet.set_row(num_rows + 1, None, bold_format)
+        
+        # Auto-adjust column widths
+        for i, col in enumerate(df_diff.columns):
+            max_len = max(df_diff[col].astype(str).map(len).max(), len(str(col))) + 2
+            worksheet.set_column(i + 3, i + 3, max_len)
+        
+        # Bold values in total row
+        num_cols = len(df_diff.columns)
+        for col_num in range(3, num_cols + 3):
+            cell_value = df_diff.iloc[-1, col_num - 3]
+            worksheet.write(num_rows + 1, col_num, cell_value, bold_format)
+        
+        worksheet.set_column(0, 1, 20)
+        
+        # Sheet 2: AIC
+        if not aic_pivot_df.empty:
+            aic_pivot_df.to_excel(writer, sheet_name='AIC')
+            aic_worksheet = writer.sheets['AIC']
+            aic_worksheet.set_column(0, 0, 40)
+        
+        # Sheet 3: Failure
+        if not failure_df.empty:
+            failure_df.to_excel(writer, sheet_name='Failure')
+            failure_worksheet = writer.sheets['Failure']
+            failure_worksheet.set_column(0, 0, 55)
+            failure_worksheet.set_column(1, 1, 18)
+            failure_worksheet.set_column(2, 2, 18)
+            failure_worksheet.set_column(3, 3, 13)
+            failure_worksheet.set_column(4, 4, 17)
+            failure_worksheet.set_column(5, 5, 12.5)
+        
+        writer.close()
+        output.seek(0)
+        
+        filename = f"merit_order_{gen_date}_vs_{pred_date}.xlsx"
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        print(f"Error in download_merit_order_excel: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Error downloading merit order data: {str(e)}'}), 500
