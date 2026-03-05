@@ -185,6 +185,9 @@ def prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=None):
     # Merge with DGP (system direction) data
     df = pd.merge(new_df, dgp_df, on='date', how='left')
     df.set_index('date', inplace=True)
+    # Ensure we don't have duplicate timestamps (Prophet can't handle them)
+    if df.index.has_duplicates:
+        df = df[~df.index.duplicated(keep='last')]
     
     # Create time series without holidays first
     ts_df = TimeSeries.from_dataframe(df)
