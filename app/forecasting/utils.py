@@ -176,6 +176,12 @@ def prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=None):
         dgp_df = pd.concat([dgp_df, updated_yal_yat])
         dgp_df = dgp_df.drop_duplicates(subset='date', keep='last').sort_values('date').reset_index(drop=True)
     
+    # Deduplicate raw inputs on date to avoid any duplicate timestamps
+    generation_df = generation_df.drop_duplicates(subset='date', keep='last')
+    dgp_df = dgp_df.drop_duplicates(subset='date', keep='last')
+    if smf_df is not None:
+        smf_df = smf_df.drop_duplicates(subset='date', keep='last')
+    
     # Merge generation data with SMF data first (if available)
     if smf_df is not None:
         new_df = pd.merge(generation_df, smf_df, on='date', how='left')
@@ -185,9 +191,11 @@ def prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=None):
     # Merge with DGP (system direction) data
     df = pd.merge(new_df, dgp_df, on='date', how='left')
     df.set_index('date', inplace=True)
-    # Ensure we don't have duplicate timestamps (Prophet can't handle them)
+    # Ensure we don't have duplicate timestamps or duplicate columns
     if df.index.has_duplicates:
         df = df[~df.index.duplicated(keep='last')]
+    if df.columns.duplicated().any():
+        df = df.loc[:, ~df.columns.duplicated()]
     
     # Create time series without holidays first
     ts_df = TimeSeries.from_dataframe(df)
