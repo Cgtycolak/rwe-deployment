@@ -112,7 +112,6 @@ def fetch_smf_data(engine):
     
     smf_df = fetch_with_retry(query, engine)
     smf_df['date'] = pd.to_datetime(smf_df['date']).dt.tz_localize(None)
-    smf_df = smf_df.drop_duplicates(subset='date', keep='last')
     return smf_df
 
 def fetch_dgp_data(engine):
@@ -135,8 +134,8 @@ def process_excel_data(excel_data):
     # Get the current hour in Turkey time (0-23)
     current_hour = now_tr.hour
     
-    # Set start time to midnight today (timezone-naive for pd.date_range compatibility)
-    start_time = now_tr.replace(hour=0, minute=0, second=0, microsecond=0).replace(tzinfo=None)
+    # Set start time to midnight today (timezone-naive to avoid pandas tz issues)
+    start_time = now_tr.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
     
     # Create time range from midnight to the hour BEFORE current hour (exclusive of current hour)
     # This ensures we don't include incomplete data for the current hour
@@ -176,13 +175,6 @@ def prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=None):
     if excel_data is not None:
         updated_yal_yat = process_excel_data(excel_data)
         dgp_df = pd.concat([dgp_df, updated_yal_yat])
-        dgp_df = dgp_df.drop_duplicates(subset='date', keep='last').sort_values('date').reset_index(drop=True)
-    
-    # Deduplicate raw inputs on date to avoid any duplicate timestamps
-    generation_df = generation_df.drop_duplicates(subset='date', keep='last')
-    dgp_df = dgp_df.drop_duplicates(subset='date', keep='last')
-    if smf_df is not None:
-        smf_df = smf_df.drop_duplicates(subset='date', keep='last')
     
     # Merge generation data with SMF data first (if available)
     if smf_df is not None:
@@ -193,11 +185,6 @@ def prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=None):
     # Merge with DGP (system direction) data
     df = pd.merge(new_df, dgp_df, on='date', how='left')
     df.set_index('date', inplace=True)
-    # Ensure we don't have duplicate timestamps or duplicate columns
-    if df.index.has_duplicates:
-        df = df[~df.index.duplicated(keep='last')]
-    if df.columns.duplicated().any():
-        df = df.loc[:, ~df.columns.duplicated()]
     
     # Create time series without holidays first
     ts_df = TimeSeries.from_dataframe(df)
@@ -233,12 +220,6 @@ def prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=None):
     
     # Skip first 168 rows (needed for the 168-hour lag)
     df = df.iloc[168:].copy()
-    
-    # Final safety: remove any duplicate index entries and duplicate columns
-    if df.index.has_duplicates:
-        df = df[~df.index.duplicated(keep='last')]
-    if df.columns.duplicated().any():
-        df = df.loc[:, ~df.columns.duplicated()]
     
     # Convert back to TimeSeries
     ts_df = TimeSeries.from_dataframe(df)
