@@ -133,8 +133,8 @@ def process_excel_data(excel_data):
     # Get the current hour in Turkey time (0-23)
     current_hour = now_tr.hour
     
-    # Set start time to midnight today
-    start_time = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Set start time to midnight today (timezone-naive for pd.date_range compatibility)
+    start_time = now_tr.replace(hour=0, minute=0, second=0, microsecond=0).replace(tzinfo=None)
     
     # Create time range from midnight to the hour BEFORE current hour (exclusive of current hour)
     # This ensures we don't include incomplete data for the current hour
