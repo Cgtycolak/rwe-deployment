@@ -457,6 +457,13 @@ export const forecasting = {
                 // Create the plot
                 Plotly.newPlot('evaluation_chart', plotData, layout, {responsive: true});
                 
+                // Render confusion matrix heatmap if available
+                if (result.confusion_matrix) {
+                    this.displayConfusionMatrix(result.confusion_matrix);
+                } else {
+                    Plotly.purge('confusion_matrix_chart');
+                }
+                
                 this.displayMessage('Model evaluation completed successfully', 'success');
             } else {
                 throw new Error(evalResult.error || 'Failed to evaluate model');
@@ -466,6 +473,7 @@ export const forecasting = {
             this.displayMessage(`Error: ${error.message}`, 'danger');
             // Clear any existing chart on error
             Plotly.purge('evaluation_chart');
+            Plotly.purge('confusion_matrix_chart');
             // Hide results section
             document.getElementById('evaluation_results').classList.add('d-none');
         } finally {
@@ -546,6 +554,10 @@ export const forecasting = {
                     
                     // Display the chart
                     this.displayForecastChart(chartData);
+                    
+                    // Display SHAP plot if available
+                    this.displayShapPlot(predictResult.shap_image);
+                    
                     this.displayMessage('Forecast generated successfully', 'success');
                 } else {
                     console.warn("No forecast data available in the response");
@@ -662,6 +674,54 @@ export const forecasting = {
         }
     },
     
+    displayConfusionMatrix(confusionData) {
+        if (!confusionData || !confusionData.z) {
+            console.warn('No confusion matrix data available');
+            return;
+        }
+        
+        // Format text annotations for the heatmap cells
+        const textAnnotations = confusionData.z.map(row => 
+            row.map(v => v.toFixed(2))
+        );
+        
+        const heatmapTrace = {
+            z: confusionData.z,
+            x: confusionData.x_labels,
+            y: confusionData.y_labels,
+            type: 'heatmap',
+            colorscale: 'Reds',
+            text: textAnnotations,
+            texttemplate: '%{text}',
+            showscale: true,
+            hoverongaps: false
+        };
+        
+        const layout = {
+            title: '<b>YAL-YAT Prediction Heatmap</b>',
+            xaxis: {
+                title: '<b>Predicted</b>',
+                tickfont: { size: 11 },
+                side: 'bottom'
+            },
+            yaxis: {
+                title: '<b>Actual</b>',
+                tickfont: { size: 11 },
+                autorange: 'reversed'
+            },
+            margin: {
+                l: 150,
+                r: 50,
+                t: 60,
+                b: 150
+            },
+            plot_bgcolor: 'white',
+            paper_bgcolor: 'white'
+        };
+        
+        Plotly.newPlot('confusion_matrix_chart', [heatmapTrace], layout, {responsive: true});
+    },
+    
     async downloadForecast() {
         if (!this.uploadedFile) {
             this.displayMessage('Please upload an Excel file first', 'warning');
@@ -733,6 +793,21 @@ export const forecasting = {
             this.displayMessage(`Error: ${error.message}`, 'danger');
         } finally {
             this.toggleButtonLoading(button, false);
+        }
+    },
+    
+    displayShapPlot(shapImageBase64) {
+        const container = document.getElementById('shap_plot_container');
+        const img = document.getElementById('shap_plot_image');
+        
+        if (!container || !img) return;
+        
+        if (shapImageBase64) {
+            img.src = `data:image/png;base64,${shapImageBase64}`;
+            container.classList.remove('d-none');
+        } else {
+            container.classList.add('d-none');
+            img.src = '';
         }
     },
     

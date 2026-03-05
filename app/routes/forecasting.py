@@ -3,9 +3,9 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 import traceback
-from ..forecasting.utils import get_database_connection, fetch_generation_data, fetch_dgp_data, prepare_data_for_modeling, ts_to_df
+from ..forecasting.utils import get_database_connection, fetch_generation_data, fetch_dgp_data, fetch_smf_data, prepare_data_for_modeling, ts_to_df
 from ..forecasting.model_testing import evaluate_model, evaluate_and_find_best
-from ..forecasting.model_forecast import make_forecast, to_excel_bytes
+from ..forecasting.model_forecast import make_forecast, to_excel_bytes, generate_shap_plot
 from ..forecasting.models import get_models
 import uuid
 from datetime import datetime
@@ -36,9 +36,10 @@ def get_recent_data():
         # Fetch data from database
         generation_df = fetch_generation_data(engine)
         dgp_df = fetch_dgp_data(engine)
+        smf_df = fetch_smf_data(engine)
         
         # Prepare data
-        ts_df = prepare_data_for_modeling(generation_df, dgp_df, excel_data)
+        ts_df = prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=smf_df)
         
         # Get recent hours data
         hours = int(request.form.get('hours', 24))
@@ -90,9 +91,10 @@ def evaluate():
         # Fetch data from database
         generation_df = fetch_generation_data(engine)
         dgp_df = fetch_dgp_data(engine)
+        smf_df = fetch_smf_data(engine)
         
         # Prepare data
-        ts_df = prepare_data_for_modeling(generation_df, dgp_df, excel_data)
+        ts_df = prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=smf_df)
         
         # Split data
         covariates = ts_df.drop_columns(['system_direction'])
@@ -169,9 +171,10 @@ def predict():
         # Fetch data from database
         generation_df = fetch_generation_data(engine)
         dgp_df = fetch_dgp_data(engine)
+        smf_df = fetch_smf_data(engine)
         
         # Prepare data
-        ts_df = prepare_data_for_modeling(generation_df, dgp_df, excel_data)
+        ts_df = prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=smf_df)
         
         # Split data
         covariates = ts_df.drop_columns(['system_direction'])
@@ -204,8 +207,17 @@ def predict():
             return jsonify({'error': f'Model {model_name} not found'}), 400
         
         # Fit model and make forecast with fixed covariates
+        # Pass df_history for rolling average computation in the forecast loop
+        df_history = ts_df_pd
         model = models[model_name].fit(train_val['system_direction'], future_covariates=covariates)
-        forecast_result = make_forecast(model, forecast_period, covariates_data=covariates)
+        forecast_result = make_forecast(model, forecast_period, covariates_data=covariates, df_history=df_history)
+        
+        # Generate SHAP explainer plot
+        shap_image = None
+        try:
+            shap_image = generate_shap_plot(model)
+        except Exception as e:
+            current_app.logger.warning(f"SHAP generation failed: {str(e)}")
         
         # Generate a unique ID for this forecast and store in cache
         forecast_id = str(uuid.uuid4())
@@ -227,12 +239,17 @@ def predict():
         for key in keys_to_remove:
             del forecast_cache[key]
         
-        return jsonify({
+        response_data = {
             'success': True,
             'model_name': model_name,
             'forecast_data': forecast_result['forecast_data'],
-            'forecast_id': forecast_id  # Send the forecast ID to the client
-        })
+            'forecast_id': forecast_id
+        }
+        
+        if shap_image:
+            response_data['shap_image'] = shap_image
+        
+        return jsonify(response_data)
     
     except Exception as e:
         current_app.logger.error(f"Error in predict: {str(e)}")
@@ -293,9 +310,10 @@ def download_forecast():
         # Fetch data from database
         generation_df = fetch_generation_data(engine)
         dgp_df = fetch_dgp_data(engine)
+        smf_df = fetch_smf_data(engine)
         
-        # Prepare data - pass excel_data instead of file
-        ts_df = prepare_data_for_modeling(generation_df, dgp_df, excel_data)
+        # Prepare data - pass excel_data and smf_df
+        ts_df = prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=smf_df)
         
         # Split data
         covariates = ts_df.drop_columns(['system_direction'])
@@ -328,8 +346,9 @@ def download_forecast():
             return jsonify({'error': f'Model {model_name} not found'}), 400
         
         # Fit model and make forecast
+        df_history = ts_df_pd
         model = models[model_name].fit(train_val['system_direction'], future_covariates=covariates)
-        forecast_result = make_forecast(model, forecast_period, covariates_data=covariates)
+        forecast_result = make_forecast(model, forecast_period, covariates_data=covariates, df_history=df_history)
         
         # Convert forecast to Excel
         excel_bytes = to_excel_bytes(forecast_result['forecast_df'])

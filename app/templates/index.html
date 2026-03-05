@@ -1904,6 +1904,13 @@
                     <h5 class="mb-0">Upload Excel Report</h5>
                 </div>
                 <div class="card-body">
+                    <div class="alert alert-info mb-3" role="alert">
+                        <i class="fas fa-info-circle"></i> Download <strong>Günlük Rapor</strong> through 
+                        <a href="https://tpys.teias.gov.tr/tpys/app/report.htm" target="_blank" rel="noopener noreferrer">
+                            tpys.teias.gov.tr/tpys/app/report.htm
+                        </a> 
+                        selecting <strong>tarih aralığı</strong> from yesterday to today.
+                    </div>
                     <div class="row">
                         <div class="col-md-4">
                             <div class="upload-area" id="forecast_upload_area" style="max-width: 300px; min-height: 120px;">
@@ -1985,7 +1992,6 @@
                                     <select class="form-select" id="eval_model">
                                         <option value="Best Model">Best Model</option>
                                         <option value="Prophet">Prophet</option>
-                                        <option value="LinearRegression">Linear Regression</option>
                                         <option value="XGBoost">XGBoost</option>
                                         <option value="LightGBM">LightGBM</option>
                                         <option value="CatBoost">CatBoost</option>
@@ -2030,6 +2036,7 @@
                                 </div>
                             </div>
                             <div id="evaluation_chart" style="height: 500px;"></div>
+                            <div id="confusion_matrix_chart" style="height: 500px; margin-top: 20px;"></div>
                         </div>
                     </div>
                 </div>
@@ -2045,7 +2052,6 @@
                                     <select class="form-select" id="forecast_model">
                                         <option value="Best Model">Best Model</option>
                                         <option value="Prophet">Prophet</option>
-                                        <option value="LinearRegression">Linear Regression</option>
                                         <option value="XGBoost">XGBoost</option>
                                         <option value="LightGBM">LightGBM</option>
                                         <option value="CatBoost">CatBoost</option>
@@ -2061,6 +2067,13 @@
                         </div>
                         <div class="card-body">
                             <div id="forecast_chart" style="height: 500px;"></div>
+                            <!-- SHAP Explainer Plot -->
+                            <div id="shap_plot_container" class="mt-4 d-none">
+                                <h6 class="text-center mb-3"><i class="fas fa-chart-bar"></i> SHAP Feature Importance</h6>
+                                <div class="text-center">
+                                    <img id="shap_plot_image" src="" alt="SHAP Summary Plot" class="border rounded" style="max-width: 100%; height: auto;">
+                                </div>
+                            </div>
                             <div class="text-center mt-3">
                                 <button id="download_forecast" class="btn btn-success" disabled>
                                     <i class="fas fa-download"></i> Download Excel

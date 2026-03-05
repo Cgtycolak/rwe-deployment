@@ -96,18 +96,28 @@ def fetch_generation_data(engine):
     JOIN meteologica.wind w on u."From-yyyy-mm-dd-hh-mm" = w."From-yyyy-mm-dd-hh-mm"
     JOIN meteologica.dam_hydro d on u."From-yyyy-mm-dd-hh-mm" = d."From-yyyy-mm-dd-hh-mm"
     JOIN meteologica.runofriver_hydro r on u."From-yyyy-mm-dd-hh-mm" = r."From-yyyy-mm-dd-hh-mm"
-    WHERE u."From-yyyy-mm-dd-hh-mm" > '2025-01-01 00:00:00'
+    WHERE u."From-yyyy-mm-dd-hh-mm" > '2025'
     """
     
     generation_df = fetch_with_retry(query, engine)
     generation_df['date'] = pd.to_datetime(generation_df['date']).dt.tz_localize(None)
     return generation_df
 
+def fetch_smf_data(engine):
+    """Fetch System Marginal Price (SMF) data from the database with retry logic."""
+    query = """
+    SELECT * FROM epias.smf
+    WHERE date >= '2025-01-01'
+    """
+    
+    smf_df = fetch_with_retry(query, engine)
+    return smf_df
+
 def fetch_dgp_data(engine):
     """Fetch DGP data from the database with retry logic."""
     query = """
     SELECT date, net AS system_direction FROM epias.yal
-    WHERE date > '2025-01-01 00:00:00'
+    WHERE date >= '2025-01-01'
     """
     
     dgp_df = fetch_with_retry(query, engine)
@@ -159,13 +169,20 @@ def process_excel_data(excel_data):
     
     return updated_yal_yat
 
-def prepare_data_for_modeling(generation_df, dgp_df, excel_data):
-    """Prepare data for modeling by combining database and Excel data."""
+def prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=None):
+    """Prepare data for modeling by combining database, SMF, and Excel data."""
     if excel_data is not None:
         updated_yal_yat = process_excel_data(excel_data)
         dgp_df = pd.concat([dgp_df, updated_yal_yat])
     
-    df = pd.merge(generation_df, dgp_df, on='date', how='left')
+    # Merge generation data with SMF data first (if available)
+    if smf_df is not None:
+        new_df = pd.merge(generation_df, smf_df, on='date', how='left')
+    else:
+        new_df = generation_df.copy()
+    
+    # Merge with DGP (system direction) data
+    df = pd.merge(new_df, dgp_df, on='date', how='left')
     df.set_index('date', inplace=True)
     
     # Create time series without holidays first
@@ -182,8 +199,26 @@ def prepare_data_for_modeling(generation_df, dgp_df, excel_data):
     df['week_part'] = df.index.day_name().map(day_map)
     df['is_last_week'] = (df.index.day > (df.index.to_period('M').days_in_month - 7)).astype(float)
     df = pd.get_dummies(df, dtype='float')
+    
+    # Lag and rolling features
     df['system_direction_lag1'] = df['system_direction'].shift(1)
-    df = df.iloc[1:]
+    
+    # SMF lag feature (1 week = 168 hours)
+    if 'systemMarginalPrice' in df.columns:
+        df['systemMarginalPrice_lag168'] = df['systemMarginalPrice'].shift(24 * 7)
+    
+    # Moving average features for system_direction
+    df['system_direction_ma2'] = df['system_direction'].rolling(window=2).mean().shift(1)
+    df['system_direction_ma3'] = df['system_direction'].rolling(window=3).mean().shift(1)
+    df['system_direction_ma6'] = df['system_direction'].rolling(window=6).mean().shift(1)
+    df['system_direction_ma12'] = df['system_direction'].rolling(window=12).mean().shift(1)
+    
+    # Drop raw systemMarginalPrice (we only use the lag168 version)
+    if 'systemMarginalPrice' in df.columns:
+        df.drop(columns='systemMarginalPrice', inplace=True)
+    
+    # Skip first 168 rows (needed for the 168-hour lag)
+    df = df.iloc[168:].copy()
     
     # Convert back to TimeSeries
     ts_df = TimeSeries.from_dataframe(df)
