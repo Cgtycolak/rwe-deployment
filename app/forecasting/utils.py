@@ -174,6 +174,7 @@ def prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=None):
     if excel_data is not None:
         updated_yal_yat = process_excel_data(excel_data)
         dgp_df = pd.concat([dgp_df, updated_yal_yat])
+        dgp_df = dgp_df.drop_duplicates(subset='date', keep='last').sort_values('date').reset_index(drop=True)
     
     # Merge generation data with SMF data first (if available)
     if smf_df is not None:
