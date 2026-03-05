@@ -106,11 +106,13 @@ def fetch_generation_data(engine):
 def fetch_smf_data(engine):
     """Fetch System Marginal Price (SMF) data from the database with retry logic."""
     query = """
-    SELECT * FROM epias.smf
+    SELECT date, "systemMarginalPrice" FROM epias.smf
     WHERE date >= '2025-01-01'
     """
     
     smf_df = fetch_with_retry(query, engine)
+    smf_df['date'] = pd.to_datetime(smf_df['date']).dt.tz_localize(None)
+    smf_df = smf_df.drop_duplicates(subset='date', keep='last')
     return smf_df
 
 def fetch_dgp_data(engine):
@@ -231,6 +233,12 @@ def prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=None):
     
     # Skip first 168 rows (needed for the 168-hour lag)
     df = df.iloc[168:].copy()
+    
+    # Final safety: remove any duplicate index entries and duplicate columns
+    if df.index.has_duplicates:
+        df = df[~df.index.duplicated(keep='last')]
+    if df.columns.duplicated().any():
+        df = df.loc[:, ~df.columns.duplicated()]
     
     # Convert back to TimeSeries
     ts_df = TimeSeries.from_dataframe(df)
