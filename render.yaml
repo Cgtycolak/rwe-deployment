@@ -4,7 +4,7 @@ services:
     name: flask-energy-app
     env: python
     buildCommand: |
-      pip install -r requirements.txt
+      pip install --no-cache-dir -r requirements.txt
       export FLASK_APP=app
       flask db upgrade
     startCommand: gunicorn --config gunicorn_config.py app:app
@@ -32,7 +32,7 @@ services:
   - type: worker
     name: flask-energy-scheduler
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --no-cache-dir -r requirements.txt
     startCommand: python scheduler_service.py
     envVars:
       - key: PYTHON_VERSION
