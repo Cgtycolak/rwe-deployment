@@ -176,6 +176,16 @@ export const meritOrder = {
                             return `<th class="text-center" style="white-space:nowrap;">${label}</th>`;
                         }).join('')}
                     </tr>
+                    <tr class="table-secondary">
+                        <td class="text-center" style="font-size:0.7rem; color:#6c757d;">↓ row / col →</td>
+                        ${hours.map((h, hIdx) => `
+                            <td class="text-center p-1">
+                                <button class="aic-col-toggle-btn" data-hour-idx="${hIdx}" data-hour="${h}" title="Toggle all plants for ${h}">
+                                    <i class="fas fa-power-off"></i> ON
+                                </button>
+                            </td>
+                        `).join('')}
+                    </tr>
                 </thead>
                 <tbody>`;
 
@@ -239,13 +249,31 @@ export const meritOrder = {
                 const isActive = btn.classList.contains('active');
 
                 if (isActive) {
-                    // Turn off: set all hours to 0
                     btn.classList.remove('active');
                     this.setPlantAicValues(plantIdx, 0);
                 } else {
-                    // Turn on: set all hours to original AIC values
                     btn.classList.add('active');
                     this.setPlantAicValues(plantIdx, null); // null = use original
+                }
+
+                this.recalculateFromAic();
+            });
+        });
+
+        // Toggle buttons per hour column
+        container.querySelectorAll('.aic-col-toggle-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const hourIdx = parseInt(btn.dataset.hourIdx);
+                const hour = btn.dataset.hour;
+                const isActive = btn.classList.contains('active');
+
+                if (isActive) {
+                    btn.classList.remove('active');
+                    this.setHourAicValues(hourIdx, hour, 0);
+                } else {
+                    btn.classList.add('active');
+                    this.setHourAicValues(hourIdx, hour, null); // null = use original
                 }
 
                 this.recalculateFromAic();
@@ -273,6 +301,26 @@ export const meritOrder = {
         });
     },
 
+    setHourAicValues(hourIdx, hour, value) {
+        const inputs = document.querySelectorAll(`.aic-editable-input[data-hour-idx="${hourIdx}"]`);
+
+        inputs.forEach((input) => {
+            const plantIdx = parseInt(input.dataset.plantIdx);
+            if (value === null) {
+                const origVal = this.originalAicValues?.values[plantIdx]?.[hourIdx] ?? 0;
+                input.value = Math.round(origVal);
+            } else {
+                input.value = value;
+            }
+
+            if (parseFloat(input.value) !== 0) {
+                input.classList.add('aic-nonzero');
+            } else {
+                input.classList.remove('aic-nonzero');
+            }
+        });
+    },
+
     resetAicToZero() {
         const inputs = document.querySelectorAll('.aic-editable-input');
         inputs.forEach(input => {
@@ -280,8 +328,8 @@ export const meritOrder = {
             input.classList.remove('aic-nonzero');
         });
 
-        // Reset all toggle buttons
-        document.querySelectorAll('.aic-toggle-btn').forEach(btn => {
+        // Reset all row and column toggle buttons
+        document.querySelectorAll('.aic-toggle-btn, .aic-col-toggle-btn').forEach(btn => {
             btn.classList.remove('active');
         });
 
@@ -413,6 +461,14 @@ export const meritOrder = {
 
         const { rows, summary_row } = data;
 
+        // Compute min/max for each MCP column across all data rows (excluding nulls)
+        const mcpCols = ['mcp_ref', 'mcp_merit', 'mcp_pred'];
+        const mcpRange = {};
+        mcpCols.forEach(col => {
+            const vals = rows.map(r => r[col]).filter(v => v !== null && v !== undefined);
+            mcpRange[col] = { min: Math.min(...vals), max: Math.max(...vals) };
+        });
+
         let html = `
         <div class="table-responsive">
             <table class="table table-sm table-bordered table-hover merit-order-table">
@@ -448,14 +504,17 @@ export const meritOrder = {
                 <tbody>`;
 
         rows.forEach(row => {
-            const refTime = this.extractTime(row.date_ref);
-            const predTime = this.extractTime(row.date_pred);
+            const refDatetime = this.formatDatetime(row.date_ref);
+            const predDatetime = this.formatDatetime(row.date_pred);
+            const refBg  = this.heatmapColor(row.mcp_ref,   mcpRange.mcp_ref.min,   mcpRange.mcp_ref.max);
+            const mertBg = this.heatmapColor(row.mcp_merit, mcpRange.mcp_merit.min, mcpRange.mcp_merit.max);
+            const predBg = this.heatmapColor(row.mcp_pred,  mcpRange.mcp_pred.min,  mcpRange.mcp_pred.max);
             html += `<tr>
-                <td class="text-center fw-bold">${refTime}</td>
-                <td class="text-center fw-bold">${predTime}</td>
-                <td class="text-center" style="background: #ffebee;">${row.mcp_ref !== null && row.mcp_ref !== undefined ? Number(row.mcp_ref).toFixed(2) : '-'}</td>
-                <td class="text-center" style="background: #fff3e0;">${row.mcp_merit !== null && row.mcp_merit !== undefined ? Number(row.mcp_merit).toFixed(2) : '-'}</td>
-                <td class="text-center" style="background: #fbe9e7;">${row.mcp_pred !== null && row.mcp_pred !== undefined ? Number(row.mcp_pred).toFixed(2) : '-'}</td>
+                <td class="text-center fw-bold" style="white-space:nowrap;">${refDatetime}</td>
+                <td class="text-center fw-bold" style="white-space:nowrap;">${predDatetime}</td>
+                <td class="text-center" style="background:${refBg};">${row.mcp_ref !== null && row.mcp_ref !== undefined ? Number(row.mcp_ref).toFixed(2) : '-'}</td>
+                <td class="text-center" style="background:${mertBg};">${row.mcp_merit !== null && row.mcp_merit !== undefined ? Number(row.mcp_merit).toFixed(2) : '-'}</td>
+                <td class="text-center" style="background:${predBg};">${row.mcp_pred !== null && row.mcp_pred !== undefined ? Number(row.mcp_pred).toFixed(2) : '-'}</td>
                 <td class="text-center ${this.getDeltaClass(row['capacity_delta'])}" style="font-weight: 600;">${this.formatNumber(row['capacity_delta'])}</td>
                 <td class="text-center">${this.formatNumber(row.demand_ref)}</td>
                 <td class="text-center">${this.formatNumber(row.demand_pred)}</td>
@@ -534,14 +593,41 @@ export const meritOrder = {
         container.innerHTML = html;
     },
 
+    heatmapColor(value, min, max) {
+        // 3-color scale: low → #F8696B (red), mid → #FFEB84 (yellow), high → #63BE7B (green)
+        if (value === null || value === undefined || min === max) return '#ffffff';
+        const t = (value - min) / (max - min); // 0 = min (red), 1 = max (green)
+
+        const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+        let r, g, b;
+        if (t <= 0.5) {
+            const t2 = t / 0.5;
+            r = lerp(0xF8, 0xFF, t2); g = lerp(0x69, 0xEB, t2); b = lerp(0x6B, 0x84, t2);
+        } else {
+            const t2 = (t - 0.5) / 0.5;
+            r = lerp(0xFF, 0x63, t2); g = lerp(0xEB, 0xBE, t2); b = lerp(0x84, 0x7B, t2);
+        }
+        return `rgb(${r},${g},${b})`;
+    },
+
     extractTime(dateStr) {
         if (!dateStr) return '-';
         try {
             const parts = dateStr.split(' ');
-            if (parts.length >= 2) {
-                return parts[1].substring(0, 5);
-            }
+            return parts.length >= 2 ? parts[1].substring(0, 5) : dateStr;
+        } catch {
             return dateStr;
+        }
+    },
+
+    formatDatetime(dateStr) {
+        if (!dateStr) return '-';
+        try {
+            // Input is "YYYY-MM-DD HH:MM:SS" — keep date and HH:MM
+            const parts = dateStr.split(' ');
+            const date = parts[0];
+            const time = parts.length >= 2 ? parts[1].substring(0, 5) : '';
+            return time ? `${date} ${time}` : date;
         } catch {
             return dateStr;
         }
