@@ -3990,9 +3990,48 @@ def download_forecast_performance_excel():
         }), 500
 
 
+def _calculate_merit_order_price(supply_demand_df, capacity_deltas):
+    """Calculate merit order prices by shifting supply/demand intersection by capacity deltas.
+    
+    Args:
+        supply_demand_df: DataFrame with columns [date, hour, price, supply, demand, capacity(Δ)]
+        capacity_deltas: list of capacity delta values, one per hour
+    
+    Returns:
+        list of forecast price points
+    """
+    forecast_data = []
+    hours_unique = supply_demand_df['hour'].unique()
+    
+    for hour_code, hour_idx in zip(hours_unique, range(len(hours_unique))):
+        if hour_idx >= len(capacity_deltas):
+            break
+            
+        hourly_data = supply_demand_df[supply_demand_df['hour'] == hour_code].sort_values(by='price')
+        
+        if hourly_data.empty:
+            continue
+        
+        trade_capacity = hourly_data.loc[hourly_data['capacity(Δ)'].abs().idxmin(), 'capacity(Δ)']
+        required_capacity = capacity_deltas[hour_idx]
+        
+        try:
+            if (trade_capacity - required_capacity) < hourly_data['capacity(Δ)'].min():
+                new_price_point = hourly_data[hourly_data['capacity(Δ)'] >= (trade_capacity - required_capacity)].iloc[-1]
+            else:
+                new_price_point = hourly_data[hourly_data['capacity(Δ)'] <= (trade_capacity - required_capacity)].iloc[0]
+            
+            forecast_data.append(new_price_point)
+        except (IndexError, KeyError):
+            # If no matching price point found, use the closest one
+            forecast_data.append(hourly_data.iloc[hourly_data['capacity(Δ)'].sub(trade_capacity - required_capacity).abs().idxmin()])
+    
+    return forecast_data
+
+
 @main.route('/merit-order-data')
 def get_merit_order_data():
-    """Get merit order comparison data between a generation date and a prediction date"""
+    """Get merit order comparison data between a reference date and a prediction date"""
     try:
         gen_date = request.args.get('gen_date')
         pred_date = request.args.get('pred_date')
@@ -4010,106 +4049,138 @@ def get_merit_order_data():
         connection_str = f"postgresql+psycopg2://{user}:{password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
         engine = create_engine(connection_str)
         
-        # Query actual generation data for the gen_date (sun + unlicensed solar)
-        gen_query = f"""
+        # Reference query — historical forecast data
+        ref_query = f"""
         SELECT
-            rg.date AS date,
-            DATE(rg.date) AS day,
-            TO_CHAR(rg.date, 'HH24:MI') AS hour,
-            CAST(rc.consumption AS INT) AS demand,
-            CAST(rg."dammedHydro" AS INT) AS dam,
-            CAST(rg.river AS INT) AS river,
-            CAST(rg.wind AS INT) AS wind,
-            CAST(rg.sun + us.unlicensed_forecast AS INT) AS solar
-        FROM epias.realtime_generation rg
-        JOIN epias.realtime_consumption rc ON rg.date = rc.date
-        LEFT JOIN meteologica.unlicensed_solar us ON rg.date = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
-        WHERE DATE(rg.date) = '{gen_date}'
-        ORDER BY rg.date
+            hf.date AS date,
+            DATE(hf.date) AS day,
+            TO_CHAR(hf.date, 'HH24:MI') AS hour,
+            p.price_forecast AS mcp_ref,
+            hf.demand_forecast AS demand,
+            hf.wind_forecast AS wind,
+            hf.licensed_solar_forecast + hf.unlicensed_solar_forecast AS solar,
+            hf.runofriver_forecast AS river
+        FROM meteologica.historical_forecast hf
+        JOIN meteologica.price p ON TO_TIMESTAMP(p."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI:SI') = hf.date
+        WHERE DATE(hf.date) = '{gen_date}'
+        ORDER BY hf.date
         """
         
-        # Query prediction data for the pred_date (includes MCP forecast)
+        # Prediction query — current forecast data
         pred_query = f"""
         SELECT
             CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP) AS date,
             DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) AS day,
             TO_CHAR(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP), 'HH24:MI') AS hour,
-            mf.avg_price AS mcp,
+            p.price_forecast AS mcp_pred,
             d.demand_forecast AS demand,
             w.wind_forecast AS wind,
             ls.licensed_forecast + us.unlicensed_forecast AS solar,
-            dam.conventional_forecast AS dam,
             ror.runofriver_forecast AS river
         FROM meteologica.demand d
-        JOIN public.meteologica_forecast mf ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(mf.date, 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.price p ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(p."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.wind w ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(w."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.licensed_solar ls ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ls."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.unlicensed_solar us ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
-        JOIN meteologica.dam_hydro dam ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(dam."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.runofriver_hydro ror ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ror."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         WHERE DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) = '{pred_date}'
         ORDER BY date
         """
         
+        # Supply/demand curve for reference date (for merit order price calculation)
+        supply_demand_query = f"""
+        SELECT date, TO_CHAR(date, 'HH24:MI') AS hour, price, supply, demand
+        FROM epias.supply_demand
+        WHERE DATE(date) = '{gen_date}'
+        ORDER BY date, price
+        """
+        
         with engine.connect() as conn:
-            gen_df = pd.read_sql(gen_query, con=conn)
+            ref_df = pd.read_sql(ref_query, con=conn)
             pred_df = pd.read_sql(pred_query, con=conn)
             pred_df['day'] = pd.to_datetime(pred_df['day'])
-            pred_df['mcp'] = pred_df['mcp'].round(2)
+            pred_df['mcp_pred'] = pred_df['mcp_pred'].round(2)
+            supply_demand_df = pd.read_sql(supply_demand_query, con=conn)
         
-        if gen_df.empty:
-            return jsonify({'code': 404, 'message': f'No generation data found for {gen_date}'}), 404
+        if ref_df.empty:
+            return jsonify({'code': 404, 'message': f'No reference data found for {gen_date}'}), 404
         
         if pred_df.empty:
             return jsonify({'code': 404, 'message': f'No prediction data found for {pred_date}'}), 404
         
         # Merge on hour
-        cols = ['demand', 'dam', 'river', 'wind', 'solar']
-        df_diff = pd.merge(gen_df, pred_df, on='hour', suffixes=('_gen', '_pred'))
+        cols = ['demand', 'river', 'wind', 'solar']
+        df_diff = pd.merge(ref_df, pred_df, on='hour', suffixes=('_ref', '_pred'))
         
         # Calculate deltas
         for col in cols:
-            df_diff[f'{col}_delta'] = df_diff[f'{col}_pred'] - df_diff[f'{col}_gen']
+            df_diff[f'{col}_delta'] = df_diff[f'{col}_pred'] - df_diff[f'{col}_ref']
         
         # Calculate capacity delta
-        df_diff['capacity_delta'] = (df_diff['demand_delta'] - df_diff['dam_delta'] 
+        df_diff['capacity_delta'] = (df_diff['demand_delta'] 
                                      - df_diff['river_delta'] - df_diff['wind_delta'] 
                                      - df_diff['solar_delta'])
         
-        # Build result rows (include mcp from prediction)
+        # Calculate merit order price from supply/demand curves
+        mcp_merit_values = []
+        if not supply_demand_df.empty:
+            supply_demand_df['capacity(Δ)'] = supply_demand_df['demand'] + supply_demand_df['supply']
+            capacity_deltas = df_diff['capacity_delta'].tolist()
+            forecast_points = _calculate_merit_order_price(supply_demand_df, capacity_deltas)
+            
+            if len(forecast_points) == len(df_diff):
+                forecast_prices_df = pd.concat(forecast_points, axis=1).T
+                mcp_merit_values = forecast_prices_df['price'].tolist()
+            
+        # Build result rows
         result_rows = []
-        for _, row in df_diff.iterrows():
+        for idx, row in df_diff.iterrows():
             result_rows.append({
-                'date_gen': str(row['date_gen']),
+                'date_ref': str(row['date_ref']),
                 'date_pred': str(row['date_pred']),
-                'mcp': float(row['mcp']) if pd.notna(row['mcp']) else None,
+                'mcp_ref': float(row['mcp_ref']) if pd.notna(row.get('mcp_ref')) else None,
+                'mcp_merit': float(mcp_merit_values[idx]) if idx < len(mcp_merit_values) else None,
+                'mcp_pred': float(row['mcp_pred']) if pd.notna(row.get('mcp_pred')) else None,
                 'capacity_delta': float(row['capacity_delta']) if pd.notna(row['capacity_delta']) else None,
-                'demand_gen': float(row['demand_gen']) if pd.notna(row['demand_gen']) else None,
+                'demand_ref': float(row['demand_ref']) if pd.notna(row['demand_ref']) else None,
                 'demand_pred': float(row['demand_pred']) if pd.notna(row['demand_pred']) else None,
                 'demand_delta': float(row['demand_delta']) if pd.notna(row['demand_delta']) else None,
-                'dam_gen': float(row['dam_gen']) if pd.notna(row['dam_gen']) else None,
-                'dam_pred': float(row['dam_pred']) if pd.notna(row['dam_pred']) else None,
-                'dam_delta': float(row['dam_delta']) if pd.notna(row['dam_delta']) else None,
-                'river_gen': float(row['river_gen']) if pd.notna(row['river_gen']) else None,
+                'river_ref': float(row['river_ref']) if pd.notna(row['river_ref']) else None,
                 'river_pred': float(row['river_pred']) if pd.notna(row['river_pred']) else None,
                 'river_delta': float(row['river_delta']) if pd.notna(row['river_delta']) else None,
-                'wind_gen': float(row['wind_gen']) if pd.notna(row['wind_gen']) else None,
+                'wind_ref': float(row['wind_ref']) if pd.notna(row['wind_ref']) else None,
                 'wind_pred': float(row['wind_pred']) if pd.notna(row['wind_pred']) else None,
                 'wind_delta': float(row['wind_delta']) if pd.notna(row['wind_delta']) else None,
-                'solar_gen': float(row['solar_gen']) if pd.notna(row['solar_gen']) else None,
+                'solar_ref': float(row['solar_ref']) if pd.notna(row['solar_ref']) else None,
                 'solar_pred': float(row['solar_pred']) if pd.notna(row['solar_pred']) else None,
                 'solar_delta': float(row['solar_delta']) if pd.notna(row['solar_delta']) else None,
             })
         
-        # Summary row (totals - exclude mcp from sum)
-        numeric_cols = ['capacity_delta', 'demand_gen', 'demand_pred', 'demand_delta',
-                       'dam_gen', 'dam_pred', 'dam_delta', 'river_gen', 'river_pred', 'river_delta',
-                       'wind_gen', 'wind_pred', 'wind_delta', 'solar_gen', 'solar_pred', 'solar_delta']
+        # Summary row (totals - exclude mcp columns from sum)
+        numeric_cols = ['capacity_delta', 'demand_ref', 'demand_pred', 'demand_delta',
+                       'river_ref', 'river_pred', 'river_delta',
+                       'wind_ref', 'wind_pred', 'wind_delta', 
+                       'solar_ref', 'solar_pred', 'solar_delta']
         
         summary_row = {}
         for col in numeric_cols:
             summary_row[col] = float(df_diff[col].sum()) if col in df_diff.columns else None
         
+        # Build supply/demand curve data for client-side MCP recalculation
+        supply_demand_curves = {}
+        if not supply_demand_df.empty:
+            for hour_code in supply_demand_df['hour'].unique():
+                hourly = supply_demand_df[supply_demand_df['hour'] == hour_code].sort_values(by='price')
+                supply_demand_curves[hour_code] = {
+                    'prices': hourly['price'].tolist(),
+                    'capacities': hourly['capacity(Δ)'].tolist()
+                }
+
+        # Base capacity deltas (before any AIC adjustments)
+        base_capacity_deltas = {}
+        for _, row in df_diff.iterrows():
+            base_capacity_deltas[row['hour']] = float(row['capacity_delta']) if pd.notna(row['capacity_delta']) else 0
+
         return jsonify({
             'code': 200,
             'data': {
@@ -4117,15 +4188,248 @@ def get_merit_order_data():
                 'pred_date': pred_date,
                 'columns': numeric_cols,
                 'rows': result_rows,
-                'summary_row': summary_row
+                'summary_row': summary_row,
+                'supply_demand_curves': supply_demand_curves,
+                'base_capacity_deltas': base_capacity_deltas
             }
         })
-        
+
     except Exception as e:
         print(f"Error in get_merit_order_data: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'code': 500, 'error': f'Error fetching merit order data: {str(e)}'}), 500
+
+
+@main.route('/merit-order-power-plant-results')
+def get_merit_order_power_plant_results():
+    """Recalculate merit order results after subtracting a power plant's AIC from capacity"""
+    try:
+        gen_date = request.args.get('gen_date')
+        pred_date = request.args.get('pred_date')
+        plant_name = request.args.get('plant_name')
+        
+        if not gen_date or not pred_date or not plant_name:
+            return jsonify({'code': 400, 'message': 'gen_date, pred_date, and plant_name are required'}), 400
+        
+        user = os.getenv("SUPABASE_USER")
+        password = os.getenv("SUPABASE_PASSWORD")
+        
+        if not user or not password:
+            return jsonify({'code': 500, 'error': 'Database credentials not configured'}), 500
+        
+        connection_str = f"postgresql+psycopg2://{user}:{password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
+        engine = create_engine(connection_str)
+        
+        # Reference query
+        ref_query = f"""
+        SELECT
+            hf.date AS date,
+            DATE(hf.date) AS day,
+            TO_CHAR(hf.date, 'HH24:MI') AS hour,
+            p.price_forecast AS mcp_ref,
+            hf.demand_forecast AS demand,
+            hf.wind_forecast AS wind,
+            hf.licensed_solar_forecast + hf.unlicensed_solar_forecast AS solar,
+            hf.runofriver_forecast AS river
+        FROM meteologica.historical_forecast hf
+        JOIN meteologica.price p ON TO_TIMESTAMP(p."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI:SI') = hf.date
+        WHERE DATE(hf.date) = '{gen_date}'
+        ORDER BY hf.date
+        """
+        
+        # Prediction query
+        pred_query = f"""
+        SELECT
+            CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP) AS date,
+            DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) AS day,
+            TO_CHAR(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP), 'HH24:MI') AS hour,
+            p.price_forecast AS mcp_pred,
+            d.demand_forecast AS demand,
+            w.wind_forecast AS wind,
+            ls.licensed_forecast + us.unlicensed_forecast AS solar,
+            ror.runofriver_forecast AS river
+        FROM meteologica.demand d
+        JOIN meteologica.price p ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(p."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.wind w ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(w."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.licensed_solar ls ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ls."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.unlicensed_solar us ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.runofriver_hydro ror ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ror."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        WHERE DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) = '{pred_date}'
+        ORDER BY date
+        """
+        
+        supply_demand_query = f"""
+        SELECT date, TO_CHAR(date, 'HH24:MI') AS hour, price, supply, demand
+        FROM epias.supply_demand
+        WHERE DATE(date) = '{gen_date}'
+        ORDER BY date, price
+        """
+        
+        with engine.connect() as conn:
+            ref_df = pd.read_sql(ref_query, con=conn)
+            pred_df = pd.read_sql(pred_query, con=conn)
+            pred_df['mcp_pred'] = pred_df['mcp_pred'].round(2)
+            supply_demand_df = pd.read_sql(supply_demand_query, con=conn)
+        
+        if ref_df.empty or pred_df.empty or supply_demand_df.empty:
+            return jsonify({'code': 404, 'message': 'Insufficient data for calculation'}), 404
+        
+        # Calculate base deltas
+        cols = ['demand', 'river', 'wind', 'solar']
+        df_diff = pd.merge(ref_df, pred_df, on='hour', suffixes=('_ref', '_pred'))
+        
+        for col in cols:
+            df_diff[f'{col}_delta'] = df_diff[f'{col}_pred'] - df_diff[f'{col}_ref']
+        
+        df_diff['capacity_delta'] = (df_diff['demand_delta'] 
+                                     - df_diff['river_delta'] - df_diff['wind_delta'] 
+                                     - df_diff['solar_delta'])
+        
+        supply_demand_df['capacity(Δ)'] = supply_demand_df['demand'] + supply_demand_df['supply']
+        
+        # First calculate base mcp_merit (without plant removal)
+        base_capacity_deltas = df_diff['capacity_delta'].tolist()
+        base_forecast_points = _calculate_merit_order_price(supply_demand_df, base_capacity_deltas)
+        
+        # Get AIC data for the selected plant
+        uevcb_path = os.path.join(current_app.static_folder, 'data', 'uevcb.xlsx')
+        if not os.path.exists(uevcb_path):
+            return jsonify({'code': 404, 'error': 'UEVCB plant list file not found'}), 404
+        
+        uevcb = pd.read_excel(uevcb_path, sheet_name='Sheet2')
+        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+        
+        tz = pytz.timezone('Europe/Istanbul')
+        today_start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        session_api = Session()
+        retries_api = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
+        session_api.mount('https://', HTTPAdapter(max_retries=retries_api))
+        
+        # Fetch AIC data for all plants
+        all_aic = []
+        aic_url = 'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/aic'
+        
+        for _, row in uevcb.iterrows():
+            try:
+                aic_response = session_api.post(
+                    aic_url,
+                    json={
+                        "startDate": today_start.isoformat(),
+                        "endDate": today_start.isoformat(),
+                        "region": "TR1",
+                        "organizationId": int(row['organizationId']),
+                        "uevcbId": int(row['id'])
+                    },
+                    headers={
+                        "Accept-Language": "en",
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                        "TGT": tgt_token
+                    },
+                    timeout=15
+                )
+                
+                if aic_response.status_code == 200:
+                    response_data = aic_response.json()
+                    for item in response_data.get("items", []):
+                        item["uevcbId"] = int(row['id'])
+                    all_aic.extend(response_data.get("items", []))
+            except Exception as e:
+                print(f"AIC fetch error for {row['name']}: {str(e)}")
+                continue
+        
+        if not all_aic:
+            return jsonify({'code': 404, 'message': 'No AIC data available to subtract'}), 404
+        
+        # Build pivot table
+        eak_df = pd.DataFrame.from_records(all_aic)
+        eak_df = eak_df[['date', 'uevcbId', 'toplam']].copy()
+        eak_df = eak_df.merge(uevcb[["id", "name"]], left_on="uevcbId", right_on="id", how="left").drop(columns=['id', 'uevcbId'])
+        eak_df['date'] = pd.to_datetime(eak_df['date'])
+        eak_df['hour'] = eak_df['date'].dt.strftime('%H:%M')
+        pivot_df = eak_df.pivot(index="name", columns="hour", values="toplam").fillna(0)
+        
+        if plant_name not in pivot_df.index:
+            return jsonify({'code': 404, 'message': f'Power plant "{plant_name}" not found in AIC data'}), 404
+        
+        # Subtract plant's AIC from capacity delta (matching notebook logic)
+        pp_results = df_diff[['capacity_delta']].copy()
+        pp_results['hour'] = df_diff['hour']
+        pp_results.set_index('hour', inplace=True)
+        
+        # Only subtract for hours that exist in both datasets
+        plant_aic = pivot_df.loc[plant_name]
+        for hour in pp_results.index:
+            if hour in plant_aic.index:
+                pp_results.loc[hour, 'capacity_delta'] = pp_results.loc[hour, 'capacity_delta'] - plant_aic[hour]
+        
+        adjusted_capacity_deltas = pp_results['capacity_delta'].tolist()
+        
+        # Recalculate merit order price with adjusted capacity
+        adjusted_forecast_points = _calculate_merit_order_price(supply_demand_df, adjusted_capacity_deltas)
+        
+        # Build response with adjusted results
+        result_rows = []
+        for idx, (_, row) in enumerate(df_diff.iterrows()):
+            base_mcp_merit = float(base_forecast_points[idx]['price']) if idx < len(base_forecast_points) else None
+            adjusted_mcp_merit = float(adjusted_forecast_points[idx]['price']) if idx < len(adjusted_forecast_points) else None
+            
+            result_rows.append({
+                'date_ref': str(row['date_ref']),
+                'date_pred': str(row['date_pred']),
+                'mcp_ref': float(row['mcp_ref']) if pd.notna(row.get('mcp_ref')) else None,
+                'mcp_merit': adjusted_mcp_merit,
+                'mcp_merit_base': base_mcp_merit,
+                'mcp_pred': float(row['mcp_pred']) if pd.notna(row.get('mcp_pred')) else None,
+                'capacity_delta': float(adjusted_capacity_deltas[idx]) if idx < len(adjusted_capacity_deltas) else None,
+                'capacity_delta_base': float(base_capacity_deltas[idx]) if idx < len(base_capacity_deltas) else None,
+                'demand_ref': float(row['demand_ref']) if pd.notna(row['demand_ref']) else None,
+                'demand_pred': float(row['demand_pred']) if pd.notna(row['demand_pred']) else None,
+                'demand_delta': float(row['demand_delta']) if pd.notna(row['demand_delta']) else None,
+                'river_ref': float(row['river_ref']) if pd.notna(row['river_ref']) else None,
+                'river_pred': float(row['river_pred']) if pd.notna(row['river_pred']) else None,
+                'river_delta': float(row['river_delta']) if pd.notna(row['river_delta']) else None,
+                'wind_ref': float(row['wind_ref']) if pd.notna(row['wind_ref']) else None,
+                'wind_pred': float(row['wind_pred']) if pd.notna(row['wind_pred']) else None,
+                'wind_delta': float(row['wind_delta']) if pd.notna(row['wind_delta']) else None,
+                'solar_ref': float(row['solar_ref']) if pd.notna(row['solar_ref']) else None,
+                'solar_pred': float(row['solar_pred']) if pd.notna(row['solar_pred']) else None,
+                'solar_delta': float(row['solar_delta']) if pd.notna(row['solar_delta']) else None,
+            })
+        
+        # Summary row
+        numeric_cols = ['capacity_delta', 'demand_ref', 'demand_pred', 'demand_delta',
+                       'river_ref', 'river_pred', 'river_delta',
+                       'wind_ref', 'wind_pred', 'wind_delta',
+                       'solar_ref', 'solar_pred', 'solar_delta']
+        
+        summary_row = {}
+        for col in numeric_cols:
+            if col == 'capacity_delta':
+                summary_row[col] = sum(adjusted_capacity_deltas)
+            elif col in df_diff.columns:
+                summary_row[col] = float(df_diff[col].sum())
+            else:
+                summary_row[col] = None
+        
+        return jsonify({
+            'code': 200,
+            'data': {
+                'gen_date': gen_date,
+                'pred_date': pred_date,
+                'plant_name': plant_name,
+                'rows': result_rows,
+                'summary_row': summary_row
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error in get_merit_order_power_plant_results: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'code': 500, 'error': f'Error: {str(e)}'}), 500
 
 
 @main.route('/merit-order-aic-data')
@@ -4220,12 +4524,15 @@ def get_merit_order_aic_data():
         pivot_df = eak_df.pivot(index="name", columns="hour", values="toplam")
         pivot_df = pivot_df.fillna(0)
         
+        base_date = today_start.strftime('%Y-%m-%d')
+
         return jsonify({
             'code': 200,
             'data': {
                 'plants': pivot_df.index.tolist(),
                 'hours': pivot_df.columns.tolist(),
-                'values': pivot_df.values.tolist()
+                'values': pivot_df.values.tolist(),
+                'base_date': base_date
             }
         })
         
@@ -4303,15 +4610,24 @@ def get_merit_order_failure_data():
         return jsonify({'code': 500, 'error': f'Error fetching failure data: {str(e)}'}), 500
 
 
-@main.route('/download-merit-order-excel')
+@main.route('/download-merit-order-excel', methods=['GET', 'POST'])
 def download_merit_order_excel():
-    """Download merit order data as a multi-sheet Excel file"""
+    """Download merit order data as a multi-sheet Excel file.
+    Accepts GET (no custom deltas) or POST with JSON body {gen_date, pred_date, capacity_deltas}.
+    """
     try:
         from io import BytesIO
-        
-        gen_date = request.args.get('gen_date')
-        pred_date = request.args.get('pred_date')
-        
+
+        if request.method == 'POST':
+            body = request.get_json(force=True) or {}
+            gen_date = body.get('gen_date')
+            pred_date = body.get('pred_date')
+            custom_capacity_deltas = body.get('capacity_deltas') or {}
+        else:
+            gen_date = request.args.get('gen_date')
+            pred_date = request.args.get('pred_date')
+            custom_capacity_deltas = {}
+
         if not gen_date or not pred_date:
             return jsonify({'error': 'Both gen_date and pred_date are required'}), 400
         
@@ -4326,21 +4642,20 @@ def download_merit_order_excel():
         engine = create_engine(connection_str)
         
         # --- Sheet 1: Results ---
-        gen_query = f"""
+        ref_query = f"""
         SELECT
-            rg.date AS date,
-            DATE(rg.date) AS day,
-            TO_CHAR(rg.date, 'HH24:MI') AS hour,
-            CAST(rc.consumption AS INT) AS demand,
-            CAST(rg."dammedHydro" AS INT) AS dam,
-            CAST(rg.river AS INT) AS river,
-            CAST(rg.wind AS INT) AS wind,
-            CAST(rg.sun + us.unlicensed_forecast AS INT) AS solar
-        FROM epias.realtime_generation rg
-        JOIN epias.realtime_consumption rc ON rg.date = rc.date
-        LEFT JOIN meteologica.unlicensed_solar us ON rg.date = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
-        WHERE DATE(rg.date) = '{gen_date}'
-        ORDER BY rg.date
+            hf.date AS date,
+            DATE(hf.date) AS day,
+            TO_CHAR(hf.date, 'HH24:MI') AS hour,
+            p.price_forecast AS mcp_ref,
+            hf.demand_forecast AS demand,
+            hf.wind_forecast AS wind,
+            hf.licensed_solar_forecast + hf.unlicensed_solar_forecast AS solar,
+            hf.runofriver_forecast AS river
+        FROM meteologica.historical_forecast hf
+        JOIN meteologica.price p ON TO_TIMESTAMP(p."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI:SI') = hf.date
+        WHERE DATE(hf.date) = '{gen_date}'
+        ORDER BY hf.date
         """
         
         pred_query = f"""
@@ -4348,50 +4663,74 @@ def download_merit_order_excel():
             CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP) AS date,
             DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) AS day,
             TO_CHAR(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP), 'HH24:MI') AS hour,
-            mf.avg_price AS mcp,
+            p.price_forecast AS mcp_pred,
             d.demand_forecast AS demand,
             w.wind_forecast AS wind,
             ls.licensed_forecast + us.unlicensed_forecast AS solar,
-            dam.conventional_forecast AS dam,
             ror.runofriver_forecast AS river
         FROM meteologica.demand d
-        JOIN public.meteologica_forecast mf ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(mf.date, 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.price p ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(p."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.wind w ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(w."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.licensed_solar ls ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ls."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.unlicensed_solar us ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
-        JOIN meteologica.dam_hydro dam ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(dam."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.runofriver_hydro ror ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ror."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         WHERE DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) = '{pred_date}'
         ORDER BY date
         """
         
+        supply_demand_query = f"""
+        SELECT date, TO_CHAR(date, 'HH24:MI') AS hour, price, supply, demand
+        FROM epias.supply_demand
+        WHERE DATE(date) = '{gen_date}'
+        ORDER BY date, price
+        """
+        
         with engine.connect() as conn:
-            gen_df = pd.read_sql(gen_query, con=conn)
+            ref_df = pd.read_sql(ref_query, con=conn)
             pred_df = pd.read_sql(pred_query, con=conn)
-            pred_df['mcp'] = pred_df['mcp'].round(2)
+            pred_df['mcp_pred'] = pred_df['mcp_pred'].round(2)
+            supply_demand_df = pd.read_sql(supply_demand_query, con=conn)
         
         # Merge and calculate deltas
-        cols = ['demand', 'dam', 'river', 'wind', 'solar']
-        df_diff = pd.merge(gen_df, pred_df, on='hour', suffixes=('_gen', '_pred'))
+        cols = ['demand', 'river', 'wind', 'solar']
+        df_diff = pd.merge(ref_df, pred_df, on='hour', suffixes=('_ref', '_pred'))
         
         for col in cols:
-            df_diff[f'{col}(Δ)'] = df_diff[f'{col}_pred'] - df_diff[f'{col}_gen']
+            df_diff[f'{col}(Δ)'] = df_diff[f'{col}_pred'] - df_diff[f'{col}_ref']
         
-        df_diff['capacity(Δ)'] = (df_diff['demand(Δ)'] - df_diff['dam(Δ)'] 
-                                   - df_diff['river(Δ)'] - df_diff['wind(Δ)'] 
-                                   - df_diff['solar(Δ)'])
+        if custom_capacity_deltas:
+            df_diff['capacity(Δ)'] = df_diff['hour'].map(
+                lambda h: float(custom_capacity_deltas.get(h, 0))
+            )
+        else:
+            df_diff['capacity(Δ)'] = (df_diff['demand(Δ)']
+                                       - df_diff['river(Δ)'] - df_diff['wind(Δ)']
+                                       - df_diff['solar(Δ)'])
+
+        # Calculate merit order price
+        mcp_merit_values = [None] * len(df_diff)
+        if not supply_demand_df.empty:
+            supply_demand_df['capacity(Δ)'] = supply_demand_df['demand'] + supply_demand_df['supply']
+            capacity_deltas = df_diff['capacity(Δ)'].tolist()
+            forecast_points = _calculate_merit_order_price(supply_demand_df, capacity_deltas)
+            if len(forecast_points) == len(df_diff):
+                forecast_prices_df = pd.concat(forecast_points, axis=1).T
+                mcp_merit_values = forecast_prices_df['price'].tolist()
         
-        # Organize columns like the notebook (include mcp)
-        new_order = ['date_gen', 'date_pred', 'mcp', 'capacity(Δ)']
+        df_diff['mcp_merit'] = mcp_merit_values
+        
+        # Organize columns (matching notebook: date_ref, date_pred, mcp_ref, mcp_merit, mcp_pred, capacity, ...)
+        new_order = ['date_ref', 'date_pred', 'mcp_ref', 'mcp_merit', 'mcp_pred', 'capacity(Δ)']
         for col in cols:
-            new_order.extend([f'{col}_gen', f'{col}_pred', f'{col}(Δ)'])
+            new_order.extend([f'{col}_ref', f'{col}_pred', f'{col}(Δ)'])
         
-        df_diff.drop(columns=['hour', 'day_gen', 'day_pred'], inplace=True, errors='ignore')
+        df_diff.drop(columns=['hour', 'day_ref', 'day_pred'], inplace=True, errors='ignore')
         df_diff = df_diff[new_order]
         
-        # Add totals row (exclude mcp from sum)
-        df_diff.loc[len(df_diff)] = df_diff.drop(columns='mcp').sum(numeric_only=True)
-        df_diff.set_index(['date_gen', 'date_pred', 'mcp'], inplace=True)
+        # Add totals row (exclude mcp columns from sum)
+        total_row = df_diff.drop(columns=['mcp_ref', 'mcp_merit', 'mcp_pred']).sum(numeric_only=True)
+        df_diff.loc[len(df_diff)] = total_row
+        df_diff.set_index(['date_ref', 'date_pred', 'mcp_ref', 'mcp_merit', 'mcp_pred'], inplace=True)
         
         # --- Sheet 3: Failure ---
         failure_query = """
@@ -4401,7 +4740,7 @@ def download_merit_order_excel():
             "caseEndDate", 
             "operatorPower", 
             "capacityAtCaseTime",
-            ROUND("operatorPower" - "capacityAtCaseTime") AS "failureAmount"
+            ROUND("operatorPower" - "capacityAtCaseTime") AS "outageAmount"
         FROM (
             SELECT *,
                    ROW_NUMBER() OVER (
@@ -4412,7 +4751,7 @@ def download_merit_order_excel():
             WHERE "caseEndDate" >= (CURRENT_TIMESTAMP + INTERVAL '3' HOUR)
         ) t
         WHERE t.row_num = 1
-        ORDER BY "failureAmount" DESC
+        ORDER BY "outageAmount" DESC
         """
         
         with engine.connect() as conn:
@@ -4475,24 +4814,24 @@ def download_merit_order_excel():
                     eak_df = eak_df.merge(uevcb[["id", "name"]], left_on="uevcbId", right_on="id", how="left").drop(columns=['id', 'uevcbId'])
                     eak_df['date'] = pd.to_datetime(eak_df['date'])
                     eak_df['hour'] = eak_df['date'].dt.strftime('%H:%M')
-                    aic_pivot_df = eak_df.pivot(index="name", columns="hour", values="toplam")
+                    aic_pivot_df = eak_df.pivot(index="name", columns="hour", values="toplam").fillna(0)
             except Exception as e:
                 print(f"AIC processing error: {str(e)}")
         
         # --- Write Excel ---
         output = BytesIO()
+
         writer = pd.ExcelWriter(output, engine='xlsxwriter')
-        
-        # Sheet 1: Results
         df_diff.to_excel(writer, sheet_name='Results')
         workbook = writer.book
         worksheet = writer.sheets['Results']
         bold_format = workbook.add_format({'bold': True})
         
-        # Conditional formatting for capacity delta column
+        num_idx_cols = len(df_diff.index.names)  # 5: date_ref, date_pred, mcp_ref, mcp_merit, mcp_pred
         num_rows = len(df_diff) - 1
+        
         if 'capacity(Δ)' in df_diff.columns:
-            capacity_col_idx = df_diff.columns.get_loc('capacity(Δ)') + 3
+            capacity_col_idx = df_diff.columns.get_loc('capacity(Δ)') + num_idx_cols
             col_letter = chr(64 + capacity_col_idx + 1)
             
             worksheet.conditional_format(f'{col_letter}2:{col_letter}{num_rows + 1}', {
@@ -4502,21 +4841,21 @@ def download_merit_order_excel():
                 'max_color': "#63BE7B"
             })
         
-        # Bold total row
         worksheet.set_row(num_rows + 1, None, bold_format)
         
-        # Auto-adjust column widths
         for i, col in enumerate(df_diff.columns):
-            max_len = max(df_diff[col].astype(str).map(len).max(), len(str(col))) + 2
-            worksheet.set_column(i + 3, i + 3, max_len)
+            max_len = max(df_diff[col].astype(str).map(len).max(), len(str(col))) + 3
+            worksheet.set_column(i + num_idx_cols, i + num_idx_cols, max_len)
         
-        # Bold values in total row
         num_cols = len(df_diff.columns)
-        for col_num in range(3, num_cols + 3):
-            cell_value = df_diff.iloc[-1, col_num - 3]
+        for col_num in range(num_idx_cols, num_cols + num_idx_cols):
+            cell_value = df_diff.iloc[-1, col_num - num_idx_cols]
             worksheet.write(num_rows + 1, col_num, cell_value, bold_format)
         
         worksheet.set_column(0, 1, 20)
+        
+        # Reorder sheets: Results first
+        workbook.worksheets_objs.sort(key=lambda x: x.name != 'Results')
         
         # Sheet 2: AIC
         if not aic_pivot_df.empty:
@@ -4524,10 +4863,10 @@ def download_merit_order_excel():
             aic_worksheet = writer.sheets['AIC']
             aic_worksheet.set_column(0, 0, 40)
         
-        # Sheet 3: Failure
+        # Sheet 3: Outages
         if not failure_df.empty:
-            failure_df.to_excel(writer, sheet_name='Failure')
-            failure_worksheet = writer.sheets['Failure']
+            failure_df.to_excel(writer, sheet_name='Outages')
+            failure_worksheet = writer.sheets['Outages']
             failure_worksheet.set_column(0, 0, 55)
             failure_worksheet.set_column(1, 1, 18)
             failure_worksheet.set_column(2, 2, 18)

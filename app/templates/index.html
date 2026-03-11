@@ -712,6 +712,49 @@
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   }
+
+  .aic-editable-input {
+    width: 60px;
+    text-align: center;
+    border: 1px solid #dee2e6;
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-size: 0.8rem;
+    background: #fff;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .aic-editable-input:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.15rem rgba(0, 123, 255, 0.25);
+    outline: none;
+  }
+
+  .aic-editable-input.aic-nonzero {
+    background: #fff3cd;
+    font-weight: 600;
+  }
+
+  .aic-toggle-btn {
+    border: none;
+    background: #e9ecef;
+    color: #6c757d;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+
+  .aic-toggle-btn:hover {
+    background: #dee2e6;
+  }
+
+  .aic-toggle-btn.active {
+    background: #28a745;
+    color: white;
+  }
 </style>
 
 <div class="container-fluid">
@@ -2385,15 +2428,20 @@
                 </div>
                 <div class="card-body">
                     <div class="row">
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold">Generation Date (Actual)</label>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Reference Date</label>
                             <input type="date" id="merit_gen_date" class="form-control">
-                            <small class="text-muted">Select the date for actual generation data</small>
+                            <small class="text-muted">Historical forecast reference date</small>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold">Prediction Date (Forecast)</label>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Prediction Date</label>
                             <input type="date" id="merit_pred_date" class="form-control">
-                            <small class="text-muted">Select the date for forecast/prediction data</small>
+                            <small class="text-muted">Current forecast prediction date</small>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button id="reset_aic_values" class="btn btn-outline-secondary" disabled>
+                                <i class="fas fa-undo"></i> Reset AIC to Zero
+                            </button>
                         </div>
                     </div>
                 </div>
