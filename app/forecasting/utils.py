@@ -74,7 +74,9 @@ def fetch_with_retry(query, engine, max_retries=3):
     """Fetch data with retry logic to handle connection issues."""
     for attempt in range(max_retries):
         try:
-            df = pd.read_sql(query, con=engine)
+            # Use an explicit connection to support both pandas 1.x and SQLAlchemy 2.x
+            with engine.connect() as conn:
+                df = pd.read_sql(query, con=conn)
             return df
         except Exception as e:
             if "max clients reached" in str(e) and attempt < max_retries - 1:
