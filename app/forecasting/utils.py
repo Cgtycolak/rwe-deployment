@@ -3,7 +3,7 @@ import numpy as np
 import pytz
 from datetime import datetime, timedelta
 from darts import TimeSeries
-from sqlalchemy import create_engine, pool
+from sqlalchemy import create_engine, pool, text
 import os
 from dotenv import load_dotenv
 import time
@@ -76,7 +76,7 @@ def fetch_with_retry(query, engine, max_retries=3):
         try:
             # Use an explicit connection to support both pandas 1.x and SQLAlchemy 2.x
             with engine.connect() as conn:
-                df = pd.read_sql(query, con=conn)
+                df = pd.read_sql(text(query), con=conn)
             return df
         except Exception as e:
             if "max clients reached" in str(e) and attempt < max_retries - 1:
