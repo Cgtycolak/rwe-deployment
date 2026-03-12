@@ -4,7 +4,7 @@ import numpy as np
 from io import BytesIO
 import traceback
 from ..forecasting.utils import get_database_connection, fetch_generation_data, fetch_dgp_data, fetch_smf_data, prepare_data_for_modeling, ts_to_df
-from ..forecasting.model_testing import evaluate_model, evaluate_and_find_best
+from ..forecasting.model_testing import evaluate_model, evaluate_and_find_best, compute_confusion_matrix
 from ..forecasting.model_forecast import make_forecast, to_excel_bytes, generate_shap_plot
 from ..forecasting.models import get_models
 import uuid
@@ -184,16 +184,18 @@ def predict():
         # Get models
         models = get_models()
         
-        # Handle NaNs in covariates and training data
+        # Handle NaNs and duplicate timestamps in covariates
         covariates_df = ts_to_df(covariates).copy()
-        covariates_df = covariates_df.fillna(0)  # Fill all NaNs in covariates with 0
+        covariates_df = covariates_df.fillna(0)
+        covariates_df = covariates_df[~covariates_df.index.duplicated(keep='last')]
         covariates = TimeSeries.from_dataframe(covariates_df)
-        
-        # Handle NaNs in training data
+
+        # Handle NaNs and duplicate timestamps in training data
         train_val_df = ts_to_df(train_val).copy()
-        train_val_df = train_val_df.fillna(0)  # Fill NaNs in training data
+        train_val_df = train_val_df.fillna(0)
+        train_val_df = train_val_df[~train_val_df.index.duplicated(keep='last')]
         train_val = TimeSeries.from_dataframe(train_val_df)
-        
+
         # Handle "Best Model" selection
         if model_name == 'Best Model':
             # Split train_val for evaluation
@@ -212,6 +214,21 @@ def predict():
         model = models[model_name].fit(train_val['system_direction'], future_covariates=covariates)
         forecast_result = make_forecast(model, forecast_period, covariates_data=covariates, df_history=df_history)
         
+        # Compute validation confusion matrix
+        confusion_data = None
+        try:
+            val_period = min(forecast_period, len(train_val) // 4)
+            train_cm, val_cm = train_val.split_after(train_val.end_time() - pd.Timedelta(hours=val_period))
+            val_model = models[model_name]
+            val_model.fit(train_cm['system_direction'], future_covariates=covariates)
+            val_forecast = val_model.predict(val_period, future_covariates=covariates)
+            from ..forecasting.utils import ts_to_df as _ts_to_df
+            actual_vals = _ts_to_df(train_val)['system_direction'][-val_period:].values
+            predicted_vals = _ts_to_df(val_forecast)['system_direction'].values[:len(actual_vals)]
+            confusion_data = compute_confusion_matrix(actual_vals, predicted_vals)
+        except Exception as e:
+            current_app.logger.warning(f"Confusion matrix computation failed: {str(e)}")
+
         # Generate SHAP explainer plot
         shap_image = None
         try:
@@ -248,7 +265,10 @@ def predict():
         
         if shap_image:
             response_data['shap_image'] = shap_image
-        
+
+        if confusion_data:
+            response_data['confusion_matrix'] = confusion_data
+
         return jsonify(response_data)
     
     except Exception as e:

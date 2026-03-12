@@ -557,7 +557,17 @@ export const forecasting = {
                     
                     // Display SHAP plot if available
                     this.displayShapPlot(predictResult.shap_image);
-                    
+
+                    // Display confusion matrix if available
+                    const cmContainer = document.getElementById('forecast_confusion_matrix_container');
+                    if (predictResult.confusion_matrix) {
+                        this.displayConfusionMatrix(predictResult.confusion_matrix, 'forecast_confusion_matrix_chart');
+                        if (cmContainer) cmContainer.classList.remove('d-none');
+                    } else {
+                        if (cmContainer) cmContainer.classList.add('d-none');
+                        Plotly.purge('forecast_confusion_matrix_chart');
+                    }
+
                     this.displayMessage('Forecast generated successfully', 'success');
                 } else {
                     console.warn("No forecast data available in the response");
@@ -674,7 +684,7 @@ export const forecasting = {
         }
     },
     
-    displayConfusionMatrix(confusionData) {
+    displayConfusionMatrix(confusionData, chartDivId = 'confusion_matrix_chart') {
         if (!confusionData || !confusionData.z) {
             console.warn('No confusion matrix data available');
             return;
@@ -719,7 +729,7 @@ export const forecasting = {
             paper_bgcolor: 'white'
         };
         
-        Plotly.newPlot('confusion_matrix_chart', [heatmapTrace], layout, {responsive: true});
+        Plotly.newPlot(chartDivId, [heatmapTrace], layout, {responsive: true});
     },
     
     async downloadForecast() {

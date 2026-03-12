@@ -59,22 +59,26 @@ def evaluate_model(model, forecast_period, train_val, train, val, covariates_dat
     if covariates_data is None:
         raise ValueError('covariates_data variable must not be None!')
     
-    # Handle NaNs in train and val data
+    # Handle NaNs and duplicate timestamps in train and val data
     train_df = ts_to_df(train).copy()
     train_df = train_df.fillna(0)
+    train_df = train_df[~train_df.index.duplicated(keep='last')]
     train = TimeSeries.from_dataframe(train_df)
-    
+
     val_df = ts_to_df(val).copy()
     val_df = val_df.fillna(0)
+    val_df = val_df[~val_df.index.duplicated(keep='last')]
     val = TimeSeries.from_dataframe(val_df)
-    
+
     train_val_df = ts_to_df(train_val).copy()
     train_val_df = train_val_df.fillna(0)
+    train_val_df = train_val_df[~train_val_df.index.duplicated(keep='last')]
     train_val = TimeSeries.from_dataframe(train_val_df)
-    
-    # Handle NaNs in covariates
+
+    # Handle NaNs and duplicate timestamps in covariates
     covariates_df = ts_to_df(covariates_data).copy()
     covariates_df = covariates_df.fillna(0)
+    covariates_df = covariates_df[~covariates_df.index.duplicated(keep='last')]
     covariates_data = TimeSeries.from_dataframe(covariates_df)
     
     model.fit(train['system_direction'], future_covariates=covariates_data)
@@ -125,18 +129,21 @@ def evaluate_and_find_best(models, forecast_period, train, val, covariates_data=
     if covariates_data is None:
         raise ValueError('covariates_data variable must not be None!')
     
-    # Handle NaNs in train and val data
+    # Handle NaNs and duplicate timestamps in train and val data
     train_df = ts_to_df(train).copy()
     train_df = train_df.fillna(0)
+    train_df = train_df[~train_df.index.duplicated(keep='last')]
     train = TimeSeries.from_dataframe(train_df)
-    
+
     val_df = ts_to_df(val).copy()
     val_df = val_df.fillna(0)
+    val_df = val_df[~val_df.index.duplicated(keep='last')]
     val = TimeSeries.from_dataframe(val_df)
-    
-    # Handle NaNs in covariates
+
+    # Handle NaNs and duplicate timestamps in covariates
     covariates_df = ts_to_df(covariates_data).copy()
     covariates_df = covariates_df.fillna(0)
+    covariates_df = covariates_df[~covariates_df.index.duplicated(keep='last')]
     covariates_data = TimeSeries.from_dataframe(covariates_df)
     
     evaluation_results = {}
