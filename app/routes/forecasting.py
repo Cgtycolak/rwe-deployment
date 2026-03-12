@@ -187,13 +187,13 @@ def predict():
         # Handle NaNs and duplicate timestamps in covariates
         covariates_df = ts_to_df(covariates).copy()
         covariates_df = covariates_df.fillna(0)
-        covariates_df = covariates_df[~covariates_df.index.duplicated(keep='last')]
+        covariates_df = covariates_df[~covariates_df.index.duplicated(keep='last')].sort_index()
         covariates = TimeSeries.from_dataframe(covariates_df)
 
         # Handle NaNs and duplicate timestamps in training data
         train_val_df = ts_to_df(train_val).copy()
         train_val_df = train_val_df.fillna(0)
-        train_val_df = train_val_df[~train_val_df.index.duplicated(keep='last')]
+        train_val_df = train_val_df[~train_val_df.index.duplicated(keep='last')].sort_index()
         train_val = TimeSeries.from_dataframe(train_val_df)
 
         # Handle "Best Model" selection

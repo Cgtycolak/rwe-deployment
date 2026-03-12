@@ -175,15 +175,20 @@ def prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=None):
     if excel_data is not None:
         updated_yal_yat = process_excel_data(excel_data)
         dgp_df = pd.concat([dgp_df, updated_yal_yat])
-    
+        # Dedup after concat — Excel rows take priority over DB rows for same timestamps
+        dgp_df = dgp_df.drop_duplicates(subset=['date'], keep='last').sort_values('date')
+
     # Merge generation data with SMF data first (if available)
     if smf_df is not None:
         new_df = pd.merge(generation_df, smf_df, on='date', how='left')
+        new_df = new_df.drop_duplicates(subset=['date'], keep='last')
     else:
-        new_df = generation_df.copy()
-    
+        new_df = generation_df.drop_duplicates(subset=['date'], keep='last').copy()
+
     # Merge with DGP (system direction) data
     df = pd.merge(new_df, dgp_df, on='date', how='left')
+    # Guard against any remaining duplicates before setting the index
+    df = df.drop_duplicates(subset=['date'], keep='last').sort_values('date')
     df.set_index('date', inplace=True)
     
     # Create time series without holidays first

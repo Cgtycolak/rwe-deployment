@@ -62,25 +62,25 @@ def evaluate_model(model, forecast_period, train_val, train, val, covariates_dat
     # Handle NaNs and duplicate timestamps in train and val data
     train_df = ts_to_df(train).copy()
     train_df = train_df.fillna(0)
-    train_df = train_df[~train_df.index.duplicated(keep='last')]
+    train_df = train_df[~train_df.index.duplicated(keep='last')].sort_index()
     train = TimeSeries.from_dataframe(train_df)
 
     val_df = ts_to_df(val).copy()
     val_df = val_df.fillna(0)
-    val_df = val_df[~val_df.index.duplicated(keep='last')]
+    val_df = val_df[~val_df.index.duplicated(keep='last')].sort_index()
     val = TimeSeries.from_dataframe(val_df)
 
     train_val_df = ts_to_df(train_val).copy()
     train_val_df = train_val_df.fillna(0)
-    train_val_df = train_val_df[~train_val_df.index.duplicated(keep='last')]
+    train_val_df = train_val_df[~train_val_df.index.duplicated(keep='last')].sort_index()
     train_val = TimeSeries.from_dataframe(train_val_df)
 
     # Handle NaNs and duplicate timestamps in covariates
     covariates_df = ts_to_df(covariates_data).copy()
     covariates_df = covariates_df.fillna(0)
-    covariates_df = covariates_df[~covariates_df.index.duplicated(keep='last')]
+    covariates_df = covariates_df[~covariates_df.index.duplicated(keep='last')].sort_index()
     covariates_data = TimeSeries.from_dataframe(covariates_df)
-    
+
     model.fit(train['system_direction'], future_covariates=covariates_data)
     forecast = model.predict(forecast_period, future_covariates=covariates_data)
     adjusted_forecast = TimeSeries.from_dataframe(ts_to_df(forecast))
@@ -132,20 +132,20 @@ def evaluate_and_find_best(models, forecast_period, train, val, covariates_data=
     # Handle NaNs and duplicate timestamps in train and val data
     train_df = ts_to_df(train).copy()
     train_df = train_df.fillna(0)
-    train_df = train_df[~train_df.index.duplicated(keep='last')]
+    train_df = train_df[~train_df.index.duplicated(keep='last')].sort_index()
     train = TimeSeries.from_dataframe(train_df)
 
     val_df = ts_to_df(val).copy()
     val_df = val_df.fillna(0)
-    val_df = val_df[~val_df.index.duplicated(keep='last')]
+    val_df = val_df[~val_df.index.duplicated(keep='last')].sort_index()
     val = TimeSeries.from_dataframe(val_df)
 
     # Handle NaNs and duplicate timestamps in covariates
     covariates_df = ts_to_df(covariates_data).copy()
     covariates_df = covariates_df.fillna(0)
-    covariates_df = covariates_df[~covariates_df.index.duplicated(keep='last')]
+    covariates_df = covariates_df[~covariates_df.index.duplicated(keep='last')].sort_index()
     covariates_data = TimeSeries.from_dataframe(covariates_df)
-    
+
     evaluation_results = {}
     model_metrics = []
     
