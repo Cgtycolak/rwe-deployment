@@ -762,6 +762,40 @@
     background: #0d6efd;
     color: white;
   }
+
+  .aic-editable-input.aic-selected {
+    outline: 2px solid #0d6efd !important;
+    background: #cfe2ff !important;
+    border-color: #0d6efd !important;
+  }
+
+  /* Suppress text cursor highlight while drag-selecting */
+  .aic-selecting-active {
+    user-select: none;
+  }
+
+  .aic-typing-indicator {
+    position: fixed;
+    background: #212529;
+    color: #fff;
+    padding: 5px 14px;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+    min-width: 60px;
+    text-align: center;
+    border: 2px solid #0d6efd;
+  }
+
+  .aic-typing-indicator.placeholder {
+    opacity: 0.6;
+    font-weight: 400;
+    font-style: italic;
+  }
 </style>
 
 <div class="container-fluid">

@@ -220,62 +220,222 @@ export const meritOrder = {
     },
 
     bindAicEvents(container) {
-        // Debounce timer for recalculation
+        // Abort previous document-level listeners if table was re-rendered
+        if (this._aicController) this._aicController.abort();
+        this._aicController = new AbortController();
+        const { signal } = this._aicController;
+
         let debounceTimer = null;
 
-        // Input change events on AIC cells
-        container.querySelectorAll('.aic-editable-input').forEach(input => {
-            input.addEventListener('input', (e) => {
-                const val = parseFloat(e.target.value) || 0;
-                if (val !== 0) {
-                    e.target.classList.add('aic-nonzero');
-                } else {
-                    e.target.classList.remove('aic-nonzero');
-                }
+        // ── Drag-selection state ─────────────────────────────────────────
+        let mouseIsDown   = false;
+        let hasDragged    = false;
+        let dragStart     = null;   // { plantIdx, hourIdx }
+        let inSelectionMode = false;
+        let selectedKeys  = new Set();  // "pIdx-hIdx"
+        let typingBuffer  = '';
+        let typingIndicator = null;
 
-                // Debounced recalculation
-                clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(() => {
-                    this.recalculateFromAic();
-                }, 300);
-            });
+        const getCoords = el => ({
+            plantIdx: parseInt(el.dataset.plantIdx),
+            hourIdx:  parseInt(el.dataset.hourIdx)
         });
 
-        // Toggle buttons per plant row
+        const extendSelection = (endCoords) => {
+            if (!dragStart) return;
+            selectedKeys.clear();
+            const minP = Math.min(dragStart.plantIdx, endCoords.plantIdx);
+            const maxP = Math.max(dragStart.plantIdx, endCoords.plantIdx);
+            const minH = Math.min(dragStart.hourIdx,  endCoords.hourIdx);
+            const maxH = Math.max(dragStart.hourIdx,  endCoords.hourIdx);
+            container.querySelectorAll('.aic-editable-input').forEach(inp => {
+                const p = parseInt(inp.dataset.plantIdx);
+                const h = parseInt(inp.dataset.hourIdx);
+                const inside = p >= minP && p <= maxP && h >= minH && h <= maxH;
+                inp.classList.toggle('aic-selected', inside);
+                if (inside) selectedKeys.add(`${p}-${h}`);
+            });
+        };
+
+        const clearSelection = () => {
+            selectedKeys.clear();
+            inSelectionMode = false;
+            typingBuffer    = '';
+            container.querySelectorAll('.aic-selected').forEach(el => el.classList.remove('aic-selected'));
+            document.body.classList.remove('aic-selecting-active');
+            if (typingIndicator) { typingIndicator.remove(); typingIndicator = null; }
+        };
+
+        const getSelectionCenter = () => {
+            const rects = [...container.querySelectorAll('.aic-selected')].map(el => el.getBoundingClientRect());
+            if (!rects.length) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+            const left  = Math.min(...rects.map(r => r.left));
+            const right = Math.max(...rects.map(r => r.right));
+            const top   = Math.min(...rects.map(r => r.top));
+            const bot   = Math.max(...rects.map(r => r.bottom));
+            return { x: (left + right) / 2, y: (top + bot) / 2 };
+        };
+
+        const updateTypingIndicator = () => {
+            if (!typingIndicator) {
+                typingIndicator = document.createElement('div');
+                typingIndicator.className = 'aic-typing-indicator';
+                document.body.appendChild(typingIndicator);
+            }
+            const { x, y } = getSelectionCenter();
+            typingIndicator.style.left = `${x}px`;
+            typingIndicator.style.top  = `${y}px`;
+            if (typingBuffer === '') {
+                typingIndicator.textContent = 'Type a value…';
+                typingIndicator.classList.add('placeholder');
+            } else {
+                typingIndicator.textContent = typingBuffer;
+                typingIndicator.classList.remove('placeholder');
+            }
+        };
+
+        const applyBufferToSelection = () => {
+            if (selectedKeys.size === 0 || typingBuffer === '') return;
+            const val = parseFloat(typingBuffer);
+            if (isNaN(val)) return;
+            container.querySelectorAll('.aic-editable-input').forEach(inp => {
+                if (selectedKeys.has(`${inp.dataset.plantIdx}-${inp.dataset.hourIdx}`)) {
+                    inp.value = val;
+                    inp.classList.toggle('aic-nonzero', val !== 0);
+                }
+            });
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => this.recalculateFromAic(), 300);
+            clearSelection();
+        };
+
+        // ── Per-input mouse events ────────────────────────────────────────
+        container.querySelectorAll('.aic-editable-input').forEach(inp => {
+            inp.addEventListener('mousedown', (e) => {
+                const cmdHeld = e.metaKey || e.ctrlKey;
+                const key = `${inp.dataset.plantIdx}-${inp.dataset.hourIdx}`;
+
+                if (cmdHeld) {
+                    // Cmd/Ctrl+click: toggle this cell in/out of existing selection
+                    e.preventDefault();
+                    if (selectedKeys.has(key)) {
+                        selectedKeys.delete(key);
+                        inp.classList.remove('aic-selected');
+                    } else {
+                        selectedKeys.add(key);
+                        inp.classList.add('aic-selected');
+                    }
+                    inSelectionMode = selectedKeys.size > 0;
+                    if (inSelectionMode) updateTypingIndicator();
+                    else if (typingIndicator) { typingIndicator.remove(); typingIndicator = null; }
+                    // Don't start a drag
+                    mouseIsDown = false;
+                    dragStart   = null;
+                    return;
+                }
+
+                clearSelection();
+                mouseIsDown = true;
+                hasDragged  = false;
+                dragStart   = getCoords(inp);
+                inp.classList.add('aic-selected');
+                selectedKeys.add(key);
+            });
+
+            inp.addEventListener('mouseover', (e) => {
+                if (!mouseIsDown || !dragStart) return;
+                const current = getCoords(inp);
+                if (!hasDragged &&
+                    (current.plantIdx !== dragStart.plantIdx || current.hourIdx !== dragStart.hourIdx)) {
+                    hasDragged = true;
+                    document.body.classList.add('aic-selecting-active');
+                }
+                if (hasDragged) extendSelection(current);
+            });
+
+            // Normal single-cell typing (only when not in drag-selection mode)
+            inp.addEventListener('input', (e) => {
+                if (inSelectionMode) { e.target.value = inp.dataset.prevValue || '0'; return; }
+                const val = parseFloat(e.target.value) || 0;
+                inp.classList.toggle('aic-nonzero', val !== 0);
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => this.recalculateFromAic(), 300);
+            });
+
+            inp.addEventListener('focus', (e) => { inp.dataset.prevValue = inp.value; });
+        });
+
+        // ── Document-level mouse events ───────────────────────────────────
+        document.addEventListener('mouseup', (e) => {
+            // Always restore normal cursor/selection as soon as mouse is released
+            document.body.classList.remove('aic-selecting-active');
+
+            if (mouseIsDown) {
+                if (hasDragged && selectedKeys.size > 1) {
+                    inSelectionMode = true;
+                    updateTypingIndicator();
+                } else if (!e.metaKey && !e.ctrlKey) {
+                    // Plain single click — clear selection so the input gets normal focus
+                    clearSelection();
+                }
+            }
+            mouseIsDown = false;
+            hasDragged  = false;
+        }, { signal });
+
+        // Click outside the AIC table clears selection
+        document.addEventListener('mousedown', (e) => {
+            if (inSelectionMode && !container.contains(e.target)) clearSelection();
+        }, { signal });
+
+        // ── Keyboard handler for multi-cell fill ──────────────────────────
+        document.addEventListener('keydown', (e) => {
+            if (!inSelectionMode || selectedKeys.size === 0) return;
+
+            if ((e.key >= '0' && e.key <= '9') ||
+                e.key === '.' ||
+                (e.key === '-' && typingBuffer === '')) {
+                e.preventDefault();
+                typingBuffer += e.key;
+                updateTypingIndicator();
+            } else if (e.key === 'Backspace') {
+                e.preventDefault();
+                typingBuffer = typingBuffer.slice(0, -1);
+                updateTypingIndicator();
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                applyBufferToSelection();
+            } else if (e.key === 'Delete') {
+                e.preventDefault();
+                typingBuffer = '0';
+                applyBufferToSelection();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                clearSelection();
+            }
+        }, { signal });
+
+        // ── Row toggle buttons ────────────────────────────────────────────
         container.querySelectorAll('.aic-toggle-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 const plantIdx = parseInt(btn.dataset.plantIdx);
                 const isActive = btn.classList.contains('active');
-
-                if (isActive) {
-                    btn.classList.remove('active');
-                    this.setPlantAicValues(plantIdx, 0);
-                } else {
-                    btn.classList.add('active');
-                    this.setPlantAicValues(plantIdx, null); // null = use original
-                }
-
+                btn.classList.toggle('active', !isActive);
+                this.setPlantAicValues(plantIdx, isActive ? 0 : null);
                 this.recalculateFromAic();
             });
         });
 
-        // Toggle buttons per hour column
+        // ── Column toggle buttons ─────────────────────────────────────────
         container.querySelectorAll('.aic-col-toggle-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 const hourIdx = parseInt(btn.dataset.hourIdx);
-                const hour = btn.dataset.hour;
+                const hour    = btn.dataset.hour;
                 const isActive = btn.classList.contains('active');
-
-                if (isActive) {
-                    btn.classList.remove('active');
-                    this.setHourAicValues(hourIdx, hour, 0);
-                } else {
-                    btn.classList.add('active');
-                    this.setHourAicValues(hourIdx, hour, null); // null = use original
-                }
-
+                btn.classList.toggle('active', !isActive);
+                this.setHourAicValues(hourIdx, hour, isActive ? 0 : null);
                 this.recalculateFromAic();
             });
         });
@@ -322,16 +482,25 @@ export const meritOrder = {
     },
 
     resetAicToZero() {
-        const inputs = document.querySelectorAll('.aic-editable-input');
-        inputs.forEach(input => {
+        // Abort any active drag selection
+        if (this._aicController) this._aicController.abort();
+        this._aicController = null;
+        document.querySelectorAll('.aic-selected').forEach(el => el.classList.remove('aic-selected'));
+        document.querySelectorAll('.aic-typing-indicator').forEach(el => el.remove());
+        document.body.classList.remove('aic-selecting-active');
+
+        document.querySelectorAll('.aic-editable-input').forEach(input => {
             input.value = 0;
             input.classList.remove('aic-nonzero');
         });
 
-        // Reset all row and column toggle buttons
         document.querySelectorAll('.aic-toggle-btn, .aic-col-toggle-btn').forEach(btn => {
             btn.classList.remove('active');
         });
+
+        // Re-bind events after reset
+        const aicContainer = document.getElementById('merit_order_aic');
+        if (aicContainer) this.bindAicEvents(aicContainer);
 
         this.recalculateFromAic();
     },
