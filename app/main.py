@@ -3545,7 +3545,7 @@ def get_forecast_performance_data():
         ptf_query = "SELECT date, price AS actual_price FROM epias.ptf"
         
         with engine.connect() as conn:
-            ptf_df = pd.read_sql(ptf_query, con=conn)
+            ptf_df = pd.read_sql(text(ptf_query), con=conn)
         
         if ptf_df.empty:
             return jsonify({
@@ -3570,7 +3570,7 @@ def get_forecast_performance_data():
             """
             
             with engine.connect() as conn:
-                meteologica_forecast = pd.read_sql(meteologica_query, con=conn)
+                meteologica_forecast = pd.read_sql(text(meteologica_query), con=conn)
             
             # Handle date parsing - meteologica_forecast_d+2 has date as text
             if not meteologica_forecast.empty:
@@ -3585,12 +3585,12 @@ def get_forecast_performance_data():
             try:
                 model_query = "SELECT date, best_price FROM public.model_forecast_sfc"
                 with engine.connect() as conn:
-                    model_forecast = pd.read_sql(model_query, con=conn)
+                    model_forecast = pd.read_sql(text(model_query), con=conn)
             except Exception:
                 # Fallback: try to get all columns and use the first price column
                 model_query = "SELECT * FROM public.model_forecast_sfc"
                 with engine.connect() as conn:
-                    model_forecast = pd.read_sql(model_query, con=conn)
+                    model_forecast = pd.read_sql(text(model_query), con=conn)
                     # Find price column (best_price, forecasted_price, or price)
                     price_cols = [col for col in model_forecast.columns if 'price' in col.lower() or 'forecast' in col.lower()]
                     if price_cols:
@@ -3615,7 +3615,7 @@ def get_forecast_performance_data():
             """
             
             with engine.connect() as conn:
-                cemre_forecast = pd.read_sql(cemre_query, con=conn)
+                cemre_forecast = pd.read_sql(text(cemre_query), con=conn)
             
             if not cemre_forecast.empty:
                 if not pd.api.types.is_datetime64_any_dtype(cemre_forecast['date']):
@@ -3632,7 +3632,7 @@ def get_forecast_performance_data():
             """
             
             with engine.connect() as conn:
-                meteologica_forecast = pd.read_sql(meteologica_query, con=conn)
+                meteologica_forecast = pd.read_sql(text(meteologica_query), con=conn)
             
             meteologica_forecast['date'] = pd.to_datetime(meteologica_forecast['date'])
             
@@ -3640,7 +3640,7 @@ def get_forecast_performance_data():
             model_query = "SELECT * FROM public.model_forecast_ptf"
             
             with engine.connect() as conn:
-                model_forecast = pd.read_sql(model_query, con=conn)
+                model_forecast = pd.read_sql(text(model_query), con=conn)
             
             model_forecast['date'] = pd.to_datetime(model_forecast['date'])
             
@@ -3651,7 +3651,7 @@ def get_forecast_performance_data():
             """
             
             with engine.connect() as conn:
-                cemre_forecast = pd.read_sql(cemre_query, con=conn)
+                cemre_forecast = pd.read_sql(text(cemre_query), con=conn)
             
             if not cemre_forecast.empty:
                 cemre_forecast['date'] = pd.to_datetime(cemre_forecast['date'])
@@ -3836,7 +3836,7 @@ def download_forecast_performance_excel():
         # Query actual price data
         ptf_query = "SELECT date, price AS actual_price FROM epias.ptf"
         with engine.connect() as conn:
-            ptf_df = pd.read_sql(ptf_query, con=conn)
+            ptf_df = pd.read_sql(text(ptf_query), con=conn)
         
         if ptf_df.empty:
             return jsonify({'error': 'No PTF data available'}), 404
@@ -3854,7 +3854,7 @@ def download_forecast_performance_excel():
             FROM public."meteologica_forecast_d+2"
             """
             with engine.connect() as conn:
-                meteologica_forecast = pd.read_sql(meteologica_query, con=conn)
+                meteologica_forecast = pd.read_sql(text(meteologica_query), con=conn)
             if not meteologica_forecast.empty:
                 if not pd.api.types.is_datetime64_any_dtype(meteologica_forecast['date']):
                     meteologica_forecast['date'] = meteologica_forecast['date'].apply(
@@ -3864,11 +3864,11 @@ def download_forecast_performance_excel():
             try:
                 model_query = "SELECT date, best_price FROM public.model_forecast_sfc"
                 with engine.connect() as conn:
-                    model_forecast = pd.read_sql(model_query, con=conn)
+                    model_forecast = pd.read_sql(text(model_query), con=conn)
             except Exception:
                 model_query = "SELECT * FROM public.model_forecast_sfc"
                 with engine.connect() as conn:
-                    model_forecast = pd.read_sql(model_query, con=conn)
+                    model_forecast = pd.read_sql(text(model_query), con=conn)
                     price_cols = [col for col in model_forecast.columns if 'price' in col.lower() or 'forecast' in col.lower()]
                     if price_cols:
                         model_forecast = model_forecast[['date', price_cols[0]]].rename(columns={price_cols[0]: 'best_price'})
@@ -3881,7 +3881,7 @@ def download_forecast_performance_excel():
             
             cemre_query = """SELECT date, forecasted_price AS cemre_forecast FROM public."cemre_ptf_d+2" """
             with engine.connect() as conn:
-                cemre_forecast = pd.read_sql(cemre_query, con=conn)
+                cemre_forecast = pd.read_sql(text(cemre_query), con=conn)
             if not cemre_forecast.empty:
                 if not pd.api.types.is_datetime64_any_dtype(cemre_forecast['date']):
                     cemre_forecast['date'] = cemre_forecast['date'].apply(
@@ -3893,17 +3893,17 @@ def download_forecast_performance_excel():
             FROM public.meteologica_forecast
             """
             with engine.connect() as conn:
-                meteologica_forecast = pd.read_sql(meteologica_query, con=conn)
+                meteologica_forecast = pd.read_sql(text(meteologica_query), con=conn)
             meteologica_forecast['date'] = pd.to_datetime(meteologica_forecast['date'])
             
             model_query = "SELECT * FROM public.model_forecast_ptf"
             with engine.connect() as conn:
-                model_forecast = pd.read_sql(model_query, con=conn)
+                model_forecast = pd.read_sql(text(model_query), con=conn)
             model_forecast['date'] = pd.to_datetime(model_forecast['date'])
             
             cemre_query = """SELECT date, forecasted_price AS cemre_forecast FROM public."cemre_ptf_d+1" """
             with engine.connect() as conn:
-                cemre_forecast = pd.read_sql(cemre_query, con=conn)
+                cemre_forecast = pd.read_sql(text(cemre_query), con=conn)
             if not cemre_forecast.empty:
                 cemre_forecast['date'] = pd.to_datetime(cemre_forecast['date'])
         
@@ -4096,18 +4096,18 @@ def get_merit_order_data():
         """
         
         with engine.connect() as conn:
-            ref_df = pd.read_sql(ref_query, con=conn)
-            pred_df = pd.read_sql(pred_query, con=conn)
+            ref_df = pd.read_sql(text(ref_query), con=conn)
+            pred_df = pd.read_sql(text(pred_query), con=conn)
             pred_df['day'] = pd.to_datetime(pred_df['day'])
             pred_df['mcp_pred'] = pred_df['mcp_pred'].round(2)
-            supply_demand_df = pd.read_sql(supply_demand_query, con=conn)
-        
+            supply_demand_df = pd.read_sql(text(supply_demand_query), con=conn)
+
         if ref_df.empty:
             return jsonify({'code': 404, 'message': f'No reference data found for {gen_date}'}), 404
-        
+
         if pred_df.empty:
             return jsonify({'code': 404, 'message': f'No prediction data found for {pred_date}'}), 404
-        
+
         # Merge on hour
         cols = ['demand', 'river', 'wind', 'solar']
         df_diff = pd.merge(ref_df, pred_df, on='hour', suffixes=('_ref', '_pred'))
@@ -4267,14 +4267,14 @@ def get_merit_order_power_plant_results():
         """
         
         with engine.connect() as conn:
-            ref_df = pd.read_sql(ref_query, con=conn)
-            pred_df = pd.read_sql(pred_query, con=conn)
+            ref_df = pd.read_sql(text(ref_query), con=conn)
+            pred_df = pd.read_sql(text(pred_query), con=conn)
             pred_df['mcp_pred'] = pred_df['mcp_pred'].round(2)
-            supply_demand_df = pd.read_sql(supply_demand_query, con=conn)
-        
+            supply_demand_df = pd.read_sql(text(supply_demand_query), con=conn)
+
         if ref_df.empty or pred_df.empty or supply_demand_df.empty:
             return jsonify({'code': 404, 'message': 'Insufficient data for calculation'}), 404
-        
+
         # Calculate base deltas
         cols = ['demand', 'river', 'wind', 'solar']
         df_diff = pd.merge(ref_df, pred_df, on='hour', suffixes=('_ref', '_pred'))
@@ -4579,7 +4579,7 @@ def get_merit_order_failure_data():
         """
         
         with engine.connect() as conn:
-            failure_df = pd.read_sql(failure_query, con=conn)
+            failure_df = pd.read_sql(text(failure_query), con=conn)
         
         if failure_df.empty:
             return jsonify({'code': 200, 'data': {'rows': []}})
@@ -4686,11 +4686,11 @@ def download_merit_order_excel():
         """
         
         with engine.connect() as conn:
-            ref_df = pd.read_sql(ref_query, con=conn)
-            pred_df = pd.read_sql(pred_query, con=conn)
+            ref_df = pd.read_sql(text(ref_query), con=conn)
+            pred_df = pd.read_sql(text(pred_query), con=conn)
             pred_df['mcp_pred'] = pred_df['mcp_pred'].round(2)
-            supply_demand_df = pd.read_sql(supply_demand_query, con=conn)
-        
+            supply_demand_df = pd.read_sql(text(supply_demand_query), con=conn)
+
         # Merge and calculate deltas
         cols = ['demand', 'river', 'wind', 'solar']
         df_diff = pd.merge(ref_df, pred_df, on='hour', suffixes=('_ref', '_pred'))
@@ -4755,7 +4755,7 @@ def download_merit_order_excel():
         """
         
         with engine.connect() as conn:
-            failure_df = pd.read_sql(failure_query, con=conn)
+            failure_df = pd.read_sql(text(failure_query), con=conn)
         
         if not failure_df.empty:
             failure_df.set_index('uevcbName', inplace=True)
