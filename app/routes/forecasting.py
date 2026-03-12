@@ -101,16 +101,19 @@ def evaluate():
         ts_df_pd = ts_to_df(ts_df)
         train_val, test = ts_df[:-ts_df_pd['system_direction'].isnull().sum()], ts_df[-ts_df_pd['system_direction'].isnull().sum():]
         
-        # Handle NaNs in covariates
+        # Handle NaNs, duplicate timestamps, and duplicate columns in covariates
         covariates_df = ts_to_df(covariates).copy()
-        covariates_df = covariates_df.fillna(0)  # Fill all NaNs in covariates with 0
+        covariates_df = covariates_df.fillna(0)
+        covariates_df = covariates_df[~covariates_df.index.duplicated(keep='last')].sort_index()
+        covariates_df = covariates_df.loc[:, ~covariates_df.columns.duplicated(keep='last')]
         covariates = TimeSeries.from_dataframe(covariates_df)
-        
-        # Handle NaNs in training data
+
+        # Handle NaNs and duplicate timestamps in training data
         train_val_df = ts_to_df(train_val).copy()
-        train_val_df = train_val_df.fillna(0)  # Fill NaNs in training data
+        train_val_df = train_val_df.fillna(0)
+        train_val_df = train_val_df[~train_val_df.index.duplicated(keep='last')].sort_index()
         train_val = TimeSeries.from_dataframe(train_val_df)
-        
+
         # Create train/validation split for evaluation (last week of training data)
         train, val = train_val.split_after(train_val.end_time() - pd.Timedelta(weeks=1))
         
@@ -184,10 +187,11 @@ def predict():
         # Get models
         models = get_models()
         
-        # Handle NaNs and duplicate timestamps in covariates
+        # Handle NaNs, duplicate timestamps, and duplicate columns in covariates
         covariates_df = ts_to_df(covariates).copy()
         covariates_df = covariates_df.fillna(0)
         covariates_df = covariates_df[~covariates_df.index.duplicated(keep='last')].sort_index()
+        covariates_df = covariates_df.loc[:, ~covariates_df.columns.duplicated(keep='last')]
         covariates = TimeSeries.from_dataframe(covariates_df)
 
         # Handle NaNs and duplicate timestamps in training data

@@ -79,6 +79,7 @@ def evaluate_model(model, forecast_period, train_val, train, val, covariates_dat
     covariates_df = ts_to_df(covariates_data).copy()
     covariates_df = covariates_df.fillna(0)
     covariates_df = covariates_df[~covariates_df.index.duplicated(keep='last')].sort_index()
+    covariates_df = covariates_df.loc[:, ~covariates_df.columns.duplicated(keep='last')]
     covariates_data = TimeSeries.from_dataframe(covariates_df)
 
     model.fit(train['system_direction'], future_covariates=covariates_data)
@@ -144,26 +145,41 @@ def evaluate_and_find_best(models, forecast_period, train, val, covariates_data=
     covariates_df = ts_to_df(covariates_data).copy()
     covariates_df = covariates_df.fillna(0)
     covariates_df = covariates_df[~covariates_df.index.duplicated(keep='last')].sort_index()
+    # Also deduplicate columns (duplicate column names cause Prophet's crosstab to fail)
+    covariates_df = covariates_df.loc[:, ~covariates_df.columns.duplicated(keep='last')]
     covariates_data = TimeSeries.from_dataframe(covariates_df)
+
+    # Debug: log index and column state just before fitting
+    print(f"[evaluate_and_find_best] train index: len={len(train_df)}, duplicates={train_df.index.duplicated().sum()}, dtype={train_df.index.dtype}")
+    print(f"[evaluate_and_find_best] covariates: len={len(covariates_df)}, duplicates={covariates_df.index.duplicated().sum()}, col_duplicates={covariates_df.columns.duplicated().sum()}")
 
     evaluation_results = {}
     model_metrics = []
-    
+
     for model_name, model in models.items():
-        model.fit(train['system_direction'], future_covariates=covariates_data)
-        forecast = model.predict(forecast_period, future_covariates=covariates_data)
-        adjusted_forecast = TimeSeries.from_dataframe(ts_to_df(forecast))
-        mae_score = np.round(mae(val['system_direction'], adjusted_forecast), 2)
-        
-        evaluation_results[model_name] = mae_score
-        model_metrics.append({
-            'model_name': model_name,
-            'mae': mae_score
-        })
-    
+        try:
+            model.fit(train['system_direction'], future_covariates=covariates_data)
+            forecast = model.predict(forecast_period, future_covariates=covariates_data)
+            adjusted_forecast = TimeSeries.from_dataframe(ts_to_df(forecast))
+            mae_score = np.round(mae(val['system_direction'], adjusted_forecast), 2)
+
+            evaluation_results[model_name] = mae_score
+            model_metrics.append({
+                'model_name': model_name,
+                'mae': mae_score
+            })
+        except Exception as e:
+            print(f"[evaluate_and_find_best] Model {model_name} failed: {e}")
+            import traceback
+            traceback.print_exc()
+            continue
+
+    if not evaluation_results:
+        raise RuntimeError("All models failed during evaluation. Check logs for details.")
+
     best_model_name = min(evaluation_results, key=evaluation_results.get)
-    
+
     return {
         'best_model': best_model_name,
         'metrics': model_metrics
-    } 
+    }
