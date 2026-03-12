@@ -95,10 +95,11 @@ def make_forecast(model, forecast_period, covariates_data=None, num_simulations=
     
     model_name = model.__class__.__name__
     
-    # Get current time in Turkey
+    # Get current time in Turkey (strip tzinfo before using in pd.date_range — pytz objects
+    # are incompatible with newer pandas DatetimeTZDtype construction)
     turkey_tz = pytz.timezone("Europe/Istanbul")
     now_tr = datetime.now(tz=turkey_tz)
-    next_hour = now_tr.replace(minute=0, second=0, microsecond=0) + pd.Timedelta(hours=1)
+    next_hour = now_tr.replace(minute=0, second=0, microsecond=0, tzinfo=None) + pd.Timedelta(hours=1)
     
     new_covariates = ts_to_df(covariates_data).copy()
     new_covariates = TimeSeries.from_dataframe(new_covariates)
