@@ -4055,13 +4055,13 @@ def get_merit_order_data():
             hf.date AS date,
             DATE(hf.date) AS day,
             TO_CHAR(hf.date, 'HH24:MI') AS hour,
-            p.price_forecast AS mcp_ref,
+            ptf.price AS mcp_ref,
             hf.demand_forecast AS demand,
             hf.wind_forecast AS wind,
             hf.licensed_solar_forecast + hf.unlicensed_solar_forecast AS solar,
             hf.runofriver_forecast AS river
         FROM meteologica.historical_forecast hf
-        JOIN meteologica.price p ON TO_TIMESTAMP(p."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI:SI') = hf.date
+        JOIN epias.ptf ptf ON ptf.date = hf.date
         WHERE DATE(hf.date) = '{gen_date}'
         ORDER BY hf.date
         """
