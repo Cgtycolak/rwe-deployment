@@ -34,19 +34,32 @@ def get_local_session():
     Session = sessionmaker(bind=engine)
     return Session()
 
-def populate_realtime_data(plant_type: str, start_date: datetime.date, end_date: datetime.date, local_db=True):
+def populate_realtime_data(plant_type: str, start_date: datetime.date, end_date: datetime.date, local_db=True, plants: list = None):
     """
     Populate realtime data for a specific type and date range
-    
+
     Args:
         plant_type: Type of plant data to fetch (hydro or natural_gas)
         start_date: Start date for data collection
         end_date: End date for data collection
         local_db: Whether to also store data in local database
+        plants: Optional list of plant names to filter (default: all plants)
     """
     app = create_app()
     model, mapping = TYPE_MAPPINGS[plant_type]
-    
+
+    if plants:
+        indices = [i for i, name in enumerate(mapping['plant_names']) if name in plants]
+        not_found = [p for p in plants if p not in mapping['plant_names']]
+        if not_found:
+            print(f"Warning: plants not found in {plant_type} mapping: {not_found}")
+        mapping = {
+            'plant_names': [mapping['plant_names'][i] for i in indices],
+            'o_ids': [mapping['o_ids'][i] for i in indices],
+            'uevcb_ids': [mapping['uevcb_ids'][i] for i in indices],
+            'p_ids': [mapping['p_ids'][i] for i in indices],
+        }
+
     print(f"\nPopulating {plant_type} realtime data for period {start_date} to {end_date}")
     
     # Split date range into chunks
@@ -226,20 +239,22 @@ def main():
                       help='Plant types to populate (default: all types)')
     parser.add_argument('--no-local-db', action='store_true',
                       help='Do not store data in local database')
-    
+    parser.add_argument('--plants', nargs='+', default=None,
+                      help='Specific plant names to fetch (default: all plants in type)')
+
     args = parser.parse_args()
-    
+
     try:
         start_date = datetime.strptime(args.start_date, '%Y-%m-%d').date()
         end_date = datetime.strptime(args.end_date, '%Y-%m-%d').date()
-        
+
         if start_date > end_date:
             raise ValueError("End date must be after start date")
-        
+
         # Populate each type
         for plant_type in args.types:
             try:
-                populate_realtime_data(plant_type, start_date, end_date, not args.no_local_db)
+                populate_realtime_data(plant_type, start_date, end_date, not args.no_local_db, plants=args.plants)
             except Exception as e:
                 print(f"Error processing {plant_type}: {str(e)}")
                 with open('realtime_error.log', 'a') as f:

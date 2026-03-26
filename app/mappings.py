@@ -57,31 +57,31 @@ import_coal_mapping = {
 hydro_mapping = {
     'plant_names': [
         "ATATÜRK HES DB", "KARAKAYAHES1-6", "KEBAN HES 1-8", "ILISU BARAJI ve HES", "ALTINKAYA 1-4", 
-        "BİRECİK-NİZİP BARAJI ve HES", "DERİNER HES", "YEDİSU HES", "BEYHAN-1", "YUSUFELI BARAJI VE HES", 
+        "BİRECİK-NİZİP BARAJI ve HES", "DERİNER HES", "YEDİSU HES", "YUKARI KALEKÖY ve HES", "BEYHAN-1", "YUSUFELI BARAJI VE HES",
         "OYMAPINAR HES", "BOYABAT HES", "BERKE HES DB", "AŞAĞI KALEKÖY BARAJI ve HES", "H.UĞURLU 1-4",
         "ÇETİN BARAJI ve HES", "ARTVİN BARAJI ve HES", "YEDİGÖZE HES", "ERMENEK HES1", "BORÇKA HES DB"
     ],
     'o_ids': [
         195, 195, 195, 195, 195, 
-        195, 195, 4872, 8243, 195, 
+        195, 195, 4872, 11074, 8243, 195,
         134, 5634, 195, 12897, 195,
         3834, 9422, 5650, 195, 195
     ],
     'uevcb_ids': [
         733, 736, 744, 3211210, 801,
-        3196807, 335652, 83087, 2454986, 5000860, 
+        3196807, 335652, 83087, 3200809, 2454986, 5000860,
         2415, 111617, 777, 3208350, 807,
         3209498, 3194434, 26648, 111619, 3692
     ],
     'p_ids': [
         641, 986, 979, 2543, 650,
-        978, 1570, 2302, 1849, 3056,
+        978, 1570, 2302, 2262, 1849, 3056,
         878, 864, 1074, 2531, 863,
         2537, 1974, 1185, 947, 1278
     ],
     'capacities': [
         "2.405", "1.800", "1.330", "1.208", "702", 
-        "672", "670", "627", "582", "548", 
+        "672", "670", "627", "627", "582", "548",
         "540", "513", "510",  "500", "500", 
         "420", "332", "311", "302", "301"
     ]

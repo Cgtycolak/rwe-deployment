@@ -709,27 +709,29 @@ export const forecasting = {
         
         const layout = {
             title: '<b>YAL-YAT Prediction Heatmap</b>',
+            autosize: true,
             xaxis: {
                 title: '<b>Predicted</b>',
-                tickfont: { size: 11 },
-                side: 'bottom'
+                tickfont: { size: 12 },
+                side: 'bottom',
+                tickangle: -35
             },
             yaxis: {
                 title: '<b>Actual</b>',
-                tickfont: { size: 11 },
+                tickfont: { size: 12 },
                 autorange: 'reversed'
             },
             margin: {
-                l: 150,
-                r: 50,
-                t: 60,
-                b: 150
+                l: 180,
+                r: 80,
+                t: 80,
+                b: 180
             },
             plot_bgcolor: 'white',
             paper_bgcolor: 'white'
         };
-        
-        Plotly.newPlot(chartDivId, [heatmapTrace], layout, {responsive: true});
+
+        Plotly.newPlot(chartDivId, [heatmapTrace], layout, {responsive: true, displayModeBar: false});
     },
     
     async downloadForecast() {
