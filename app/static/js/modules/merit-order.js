@@ -70,6 +70,9 @@ export const meritOrder = {
             return;
         }
 
+        // Capture any existing AIC edits before wiping the table
+        const savedAicEdits = this._captureAicEdits();
+
         try {
             if (loadButton) {
                 this.helpers.toggleButtonLoading(loadButton, true);
@@ -123,6 +126,10 @@ export const meritOrder = {
 
             if (aicData.code === 200) {
                 this.renderEditableAICTable(aicData.data, aicContainer);
+                if (Object.keys(savedAicEdits).length > 0) {
+                    this._restoreAicEdits(savedAicEdits, aicContainer);
+                    this.recalculateFromAic();
+                }
             } else {
                 aicContainer.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${aicData.error || aicData.message || 'No AIC data available'}</div>`;
             }
@@ -884,6 +891,34 @@ export const meritOrder = {
                 downloadBtn.innerHTML = '<i class="fas fa-file-excel"></i> Download Excel';
             }
         }
+    },
+
+    _captureAicEdits() {
+        // Returns { plantName: { hour: value } } for all currently visible AIC inputs
+        const edits = {};
+        document.querySelectorAll('.aic-editable-input').forEach(input => {
+            const plantIdx = parseInt(input.dataset.plantIdx);
+            const hour = input.dataset.hour;
+            const plantName = this.originalAicValues?.plants[plantIdx];
+            if (plantName) {
+                if (!edits[plantName]) edits[plantName] = {};
+                edits[plantName][hour] = parseFloat(input.value) || 0;
+            }
+        });
+        return edits;
+    },
+
+    _restoreAicEdits(edits, container) {
+        // Re-applies saved edits to the freshly rendered AIC table
+        container.querySelectorAll('.aic-editable-input').forEach(input => {
+            const plantIdx = parseInt(input.dataset.plantIdx);
+            const hour = input.dataset.hour;
+            const plantName = this.originalAicValues?.plants[plantIdx];
+            if (plantName && edits[plantName]?.[hour] !== undefined) {
+                input.value = edits[plantName][hour];
+                input.classList.toggle('aic-nonzero', parseFloat(input.value) !== 0);
+            }
+        });
     },
 
     _getCurrentCapacityDeltas() {
