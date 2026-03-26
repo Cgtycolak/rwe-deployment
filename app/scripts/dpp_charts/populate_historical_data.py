@@ -90,18 +90,24 @@ def populate_heatmap_data(plant_type: str, start_date: datetime.date, end_date: 
                     # Delete existing data in both databases
                     try:
                         # Delete from deployed database
-                        model.query.filter(
+                        delete_query = model.query.filter(
                             model.date.between(chunk_start, chunk_end),
                             model.version == version
-                        ).delete()
+                        )
+                        if plants:
+                            delete_query = delete_query.filter(model.plant_name.in_(plants))
+                        delete_query.delete(synchronize_session='fetch')
                         db.session.commit()
-                        
+
                         # Delete from local database
                         if local_db:
-                            local_session.query(model).filter(
+                            delete_query_local = local_session.query(model).filter(
                                 model.date.between(chunk_start, chunk_end),
                                 model.version == version
-                            ).delete()
+                            )
+                            if plants:
+                                delete_query_local = delete_query_local.filter(model.plant_name.in_(plants))
+                            delete_query_local.delete(synchronize_session='fetch')
                             local_session.commit()
                     except Exception as e:
                         print(f"Error clearing existing data: {str(e)}")
