@@ -4891,3 +4891,114 @@ def download_merit_order_excel():
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'Error downloading merit order data: {str(e)}'}), 500
+
+
+@main.route('/api/supply_demand_price', methods=['GET'])
+@login_required
+def get_supply_demand_price():
+    try:
+        selected_date = request.args.get('date')
+        diff_filter_threshold = float(request.args.get('threshold', 50))
+
+        if not selected_date:
+            return jsonify({'error': 'Date parameter is required'}), 400
+
+        sb_user = os.getenv('SUPABASE_USER')
+        sb_password = os.getenv('SUPABASE_PASSWORD')
+        connection_str = f"postgresql+psycopg2://{sb_user}:{sb_password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
+        engine_sb = create_engine(connection_str)
+
+        query = text(
+            f"""
+            WITH base AS (
+                SELECT *,
+                       supply + demand AS total,
+                       LAG(supply + demand, 1) OVER (ORDER BY date) AS lag_total,
+                       (LAG(supply + demand, 1) OVER (ORDER BY date)) - (supply + demand) AS diff
+                FROM epias.supply_demand
+            ),
+            aggregated AS (
+                SELECT
+                    DATE(date) AS trade_date,
+                    price,
+                    EXTRACT(HOUR FROM date) AS hour,
+                    AVG(total) AS avg_total,
+                    AVG(diff) AS avg_diff
+                FROM base
+                WHERE DATE(date) = '{selected_date}'
+                GROUP BY DATE(date), price, EXTRACT(HOUR FROM date)
+            )
+            SELECT
+                trade_date,
+                price,
+                SUM(CASE WHEN hour = 0  THEN avg_diff ELSE 0 END) AS "00:00",
+                SUM(CASE WHEN hour = 1  THEN avg_diff ELSE 0 END) AS "01:00",
+                SUM(CASE WHEN hour = 2  THEN avg_diff ELSE 0 END) AS "02:00",
+                SUM(CASE WHEN hour = 3  THEN avg_diff ELSE 0 END) AS "03:00",
+                SUM(CASE WHEN hour = 4  THEN avg_diff ELSE 0 END) AS "04:00",
+                SUM(CASE WHEN hour = 5  THEN avg_diff ELSE 0 END) AS "05:00",
+                SUM(CASE WHEN hour = 6  THEN avg_diff ELSE 0 END) AS "06:00",
+                SUM(CASE WHEN hour = 7  THEN avg_diff ELSE 0 END) AS "07:00",
+                SUM(CASE WHEN hour = 8  THEN avg_diff ELSE 0 END) AS "08:00",
+                SUM(CASE WHEN hour = 9  THEN avg_diff ELSE 0 END) AS "09:00",
+                SUM(CASE WHEN hour = 10 THEN avg_diff ELSE 0 END) AS "10:00",
+                SUM(CASE WHEN hour = 11 THEN avg_diff ELSE 0 END) AS "11:00",
+                SUM(CASE WHEN hour = 12 THEN avg_diff ELSE 0 END) AS "12:00",
+                SUM(CASE WHEN hour = 13 THEN avg_diff ELSE 0 END) AS "13:00",
+                SUM(CASE WHEN hour = 14 THEN avg_diff ELSE 0 END) AS "14:00",
+                SUM(CASE WHEN hour = 15 THEN avg_diff ELSE 0 END) AS "15:00",
+                SUM(CASE WHEN hour = 16 THEN avg_diff ELSE 0 END) AS "16:00",
+                SUM(CASE WHEN hour = 17 THEN avg_diff ELSE 0 END) AS "17:00",
+                SUM(CASE WHEN hour = 18 THEN avg_diff ELSE 0 END) AS "18:00",
+                SUM(CASE WHEN hour = 19 THEN avg_diff ELSE 0 END) AS "19:00",
+                SUM(CASE WHEN hour = 20 THEN avg_diff ELSE 0 END) AS "20:00",
+                SUM(CASE WHEN hour = 21 THEN avg_diff ELSE 0 END) AS "21:00",
+                SUM(CASE WHEN hour = 22 THEN avg_diff ELSE 0 END) AS "22:00",
+                SUM(CASE WHEN hour = 23 THEN avg_diff ELSE 0 END) AS "23:00"
+            FROM aggregated
+            GROUP BY trade_date, price
+            ORDER BY trade_date, price
+            """
+        )
+
+        with engine_sb.connect() as conn:
+            df = pd.read_sql(query, con=conn)
+
+        hour_cols = [col for col in df.columns if col.endswith(':00')]
+
+        # Filter rows where any hourly diff > threshold
+        filtered_df = df[(df[hour_cols] > diff_filter_threshold).any(axis=1)]
+
+        if filtered_df.empty:
+            return jsonify({'rows': [], 'hour_cols': hour_cols, 'threshold': diff_filter_threshold})
+
+        prices = filtered_df['price'].tolist()
+        min_price = min(prices)
+        max_price = max(prices)
+
+        rows = []
+        for _, row in filtered_df.iterrows():
+            hour_values = {}
+            for col in hour_cols:
+                val = float(row[col])
+                hour_values[col] = round(val, 4)
+
+            rows.append({
+                'trade_date': str(row['trade_date']),
+                'price': float(row['price']),
+                'hours': hour_values
+            })
+
+        return jsonify({
+            'rows': rows,
+            'hour_cols': hour_cols,
+            'threshold': diff_filter_threshold,
+            'min_price': min_price,
+            'max_price': max_price
+        })
+
+    except Exception as e:
+        print(f"Error in get_supply_demand_price: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
