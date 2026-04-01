@@ -4275,26 +4275,31 @@ function loadRollingCharts() {
     }
 
     /**
-     * Gradient for hour cells:
-     *   val < threshold * 0.5          → white (#fff)
-     *   threshold * 0.5 <= val < threshold → white → yellow (smooth)
-     *   val >= threshold               → yellow → deep red (smooth, capped at 3x threshold)
+     * Smooth yellow-only gradient:
+     *   val <= 0       → white
+     *   0 → threshold  → white → light yellow (#fffef0 → #ffe066)
+     *   > threshold    → deeper amber yellow (#ffe066 → #cc8800), capped at 4x threshold
      */
     function getCellColor(val, threshold) {
         if (threshold <= 0) threshold = 1;
-        const lower = threshold * 0.5;
-        if (val < lower) {
-            return '#ffffff';
-        } else if (val < threshold) {
-            // white → yellow
-            const t = (val - lower) / (threshold - lower); // 0→1
-            const b = Math.round(255 * (1 - t));
-            return `rgb(255,255,${b})`;
+        if (val <= 0) return '#ffffff';
+
+        function lerp(a, b, t) { return Math.round(a + (b - a) * t); }
+
+        if (val < threshold) {
+            const t = val / threshold;
+            // white (255,254,240) → light yellow (255,224,102)
+            const r = lerp(255, 255, t);
+            const g = lerp(254, 224, t);
+            const b = lerp(240, 102, t);
+            return `rgb(${r},${g},${b})`;
         } else {
-            // yellow → deep red, cap at threshold * 4 for full saturation
             const t = Math.min(1, (val - threshold) / (threshold * 3));
-            const g = Math.round(255 * (1 - t));
-            return `rgb(255,${g},0)`;
+            // light yellow (255,224,102) → deep amber (204,136,0)
+            const r = lerp(255, 204, t);
+            const g = lerp(224, 136, t);
+            const b = lerp(102, 0,   t);
+            return `rgb(${r},${g},${b})`;
         }
     }
 
@@ -4375,8 +4380,7 @@ function loadRollingCharts() {
                     data.hour_cols.forEach(h => {
                         const val = row.hours[h];
                         const bg = getCellColor(val, data.threshold);
-                        // Use dark text for light cells, keep default for coloured ones
-                        bodyHtml += `<td style="background-color:${bg};">${val}</td>`;
+                        bodyHtml += `<td style="background-color:${bg};">${Math.round(val)}</td>`;
                     });
                     bodyHtml += `</tr>`;
                 });
