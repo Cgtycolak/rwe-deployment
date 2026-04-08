@@ -1905,12 +1905,14 @@ def get_rolling_data():
             regular_columns = [col for col in df.columns if col not in ['renewablesratio', 'solar_combined']]
             regular_columns.append('solar_combined')  # Add combined solar data
             for column in regular_columns:
-                # Resample to daily frequency
-                daily_avg = df[column].resample('d', closed='left', label='left').mean()
-                # Apply completeness per-series
+                # For solar columns, only average daytime hours (07:00-18:00)
+                # to avoid diluting the average with zero-generation night hours
                 if column in ['solar_combined', 'unlicensed_solar', 'licensed_solar', 'sun']:
+                    col_series = df[df.index.hour.isin(range(7, 19))][column]
+                    daily_avg = col_series.resample('d', closed='left', label='left').mean()
                     daily_avg = daily_avg[daily_avg.index.map(lambda x: x.date() in solar_complete_days)]
                 else:
+                    daily_avg = df[column].resample('d', closed='left', label='left').mean()
                     daily_avg = daily_avg[daily_avg.index.map(lambda x: x.date() in set(prod_complete_days))]
                 rolling_avg = daily_avg.rolling(window=7, min_periods=1).mean()
                 

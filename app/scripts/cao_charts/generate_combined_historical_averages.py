@@ -185,9 +185,16 @@ def generate_combined_historical_averages():
                 continue
             
             print(f"Processing {column}...")
-            
+
+            # For solar columns, only average daytime hours (07:00-18:00)
+            # to avoid diluting the average with zero-generation night hours
+            if column in ['solar_combined', 'unlicensed_solar', 'licensed_solar', 'sun']:
+                col_series = df_hourly[df_hourly.index.hour.isin(range(7, 19))][column]
+            else:
+                col_series = df_hourly[column]
+
             # Calculate daily averages first
-            daily_avg = df_hourly[column].resample('D', closed='left', label='left').mean()
+            daily_avg = col_series.resample('D', closed='left', label='left').mean()
             
             # Calculate 7-day rolling averages
             rolling_avg = daily_avg.rolling(window=7, min_periods=1).mean()
