@@ -806,13 +806,16 @@
   .sdp-table-wrapper {
     overflow-x: auto;
     overflow-y: auto;
-    max-height: 75vh;
+    height: 72vh;
+    border: 1px solid #dee2e6;
   }
 
   .sdp-table {
     font-size: 0.75rem;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     white-space: nowrap;
+    width: 100%;
   }
 
   .sdp-table th {
@@ -820,42 +823,56 @@
     color: white;
     padding: 6px 8px;
     text-align: center;
+    border-right: 1px solid #4a6278;
+    border-bottom: 2px solid #1a252f;
+  }
+
+  /* Sticky DATE column header */
+  .sdp-table th:nth-child(1) {
     position: sticky;
     top: 0;
-    z-index: 2;
-  }
-
-  .sdp-table th:nth-child(1),
-  .sdp-table th:nth-child(2) {
     left: 0;
-    z-index: 3;
+    z-index: 6;
+    min-width: 95px;
+    background-color: #2c3e50;
   }
 
+  /* Sticky PRICE column header */
   .sdp-table th:nth-child(2) {
-    left: 90px;
+    position: sticky;
+    top: 0;
+    left: 95px;
+    z-index: 6;
+    min-width: 80px;
+    background-color: #2c3e50;
   }
 
   .sdp-table td {
     padding: 4px 8px;
     text-align: center;
-    border: 1px solid #e0e0e0;
+    border-right: 1px solid #e0e0e0;
+    border-bottom: 1px solid #e0e0e0;
   }
 
+  /* Sticky DATE column cells */
   .sdp-table td:nth-child(1) {
     position: sticky;
     left: 0;
     background: #f8f9fa;
     font-weight: 600;
     z-index: 1;
-    min-width: 90px;
+    min-width: 95px;
+    border-right: 1px solid #ccc;
   }
 
+  /* Sticky PRICE column cells */
   .sdp-table td:nth-child(2) {
     position: sticky;
-    left: 90px;
+    left: 95px;
     z-index: 1;
     min-width: 80px;
     font-weight: 600;
+    border-right: 1px solid #ccc;
   }
 </style>
 
@@ -2642,8 +2659,8 @@
 
             <div class="card">
                 <div class="card-body p-2">
-                    <div class="sdp-table-wrapper">
-                        <table class="sdp-table table table-bordered mb-0" id="sdp_table">
+                    <div class="sdp-table-wrapper" id="sdp_wrapper" style="overflow-x:auto;overflow-y:auto;height:70vh;">
+                        <table class="sdp-table mb-0" id="sdp_table">
                             <thead id="sdp_thead"></thead>
                             <tbody id="sdp_tbody"></tbody>
                         </table>
@@ -4143,6 +4160,169 @@ function renderMonthlyDemandChart() {
         });
 }
 
+function renderWeeklySolarChart() {
+    const chartsContainer = document.getElementById('charts-container');
+
+    // Section title
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'row mt-4 mb-3';
+    titleDiv.innerHTML = `
+        <div class="col-12">
+            <h3 class="section-title" style="color:#2c3e50;font-family:'RWE Sans Web';border-bottom:2px solid #eee;padding-bottom:10px;">
+                Solar Generation – Weekly Hourly View
+            </h3>
+        </div>`;
+    chartsContainer.appendChild(titleDiv);
+
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'row mb-4';
+    chartsContainer.appendChild(rowDiv);
+
+    const colDiv = document.createElement('div');
+    colDiv.className = 'col-12';
+    rowDiv.appendChild(colDiv);
+
+    const chartDiv = document.createElement('div');
+    chartDiv.className = 'chart-container';
+    chartDiv.id = 'chart-solar-weekly';
+    chartDiv.style.width = '100%';
+    colDiv.appendChild(chartDiv);
+
+    fetch('{{ url_for("main.get_solar_weekly_data") }}')
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                chartDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                return;
+            }
+
+            const cur  = data.current_week;
+            const prev = data.previous_week;
+            const ly   = data.last_year;
+            const hr   = data.historical_range;
+
+            const xCur  = cur.values.map((_, i) => i);
+            const xPrev = prev.values.map((_, i) => i);
+            const xLy   = ly.values.map((_, i) => i);
+            const xHr   = hr.min.map((_, i) => i);
+
+            const traces = [];
+
+            // Historical range fill (2020-2025)
+            traces.push({
+                name: hr.years,
+                x: xHr.concat(xHr.slice().reverse()),
+                y: hr.max.concat(hr.min.slice().reverse()),
+                fill: 'toself',
+                type: 'scatter', mode: 'none',
+                fillcolor: 'rgba(135, 206, 250, 0.4)',
+                line: { color: 'transparent', width: 0 },
+                showlegend: true,
+                hoverinfo: 'skip'
+            });
+
+            // Historical average (dashed blue)
+            traces.push({
+                name: `${hr.years} avg.`,
+                x: xHr,
+                y: hr.avg,
+                type: 'scatter', mode: 'lines',
+                line: { color: 'rgba(0,0,255,0.8)', width: 1.5, dash: '3,3' },
+                hovertemplate: '<b>Historical avg</b><br>%{y:,.0f} MW<extra></extra>'
+            });
+
+            // Last year
+            traces.push({
+                name: `Last year (${ly.range})`,
+                x: xLy, y: ly.values, text: ly.labels,
+                type: 'scatter', mode: 'lines',
+                line: { color: 'rgba(100,100,100,0.7)', width: 1.5, dash: 'dot' },
+                hovertemplate: '<b>Last year</b><br>%{text}<br>%{y:,.0f} MW<extra></extra>'
+            });
+
+            // Previous week
+            traces.push({
+                name: `Previous week (${prev.range})`,
+                x: xPrev, y: prev.values, text: prev.labels,
+                type: 'scatter', mode: 'lines',
+                line: { color: 'black', width: 2 },
+                hovertemplate: '<b>Previous week</b><br>%{text}<br>%{y:,.0f} MW<extra></extra>'
+            });
+
+            // Current week
+            traces.push({
+                name: `Current week (${cur.range})`,
+                x: xCur, y: cur.values, text: cur.labels,
+                type: 'scatter', mode: 'lines',
+                line: { color: 'red', width: 2.5 },
+                hovertemplate: '<b>Current week</b><br>%{text}<br>%{y:,.0f} MW<extra></extra>'
+            });
+
+            // Build tick marks at midnight (hour 0) of each day — every 24 points
+            const tickVals = [], tickText = [];
+            cur.labels.forEach((lbl, i) => {
+                if (lbl.includes('00:00')) { tickVals.push(i); tickText.push(lbl.split(' ').slice(0,3).join(' ')); }
+            });
+
+            const layout = {
+                title: {
+                    text: 'Solar (Combined) Generation – Hourly, Last 7 Days vs Previous Week vs Same Week Last Year',
+                    font: { family: 'RWE Sans Web', size: 22, color: '#333333' },
+                    x: 0.127,
+                    y: 0.95,
+                    xanchor: 'left',
+                    yanchor: 'top'
+                },
+                xaxis: {
+                    tickmode: 'array', tickvals: tickVals, ticktext: tickText,
+                    showgrid: true, gridcolor: 'rgba(0,0,0,0.2)',
+                    linecolor: 'black', linewidth: 1, mirror: true,
+                    zeroline: true, zerolinecolor: 'rgba(0,0,0,0.2)', zerolinewidth: 1,
+                    tickfont: { family: 'RWE Sans Web', size: 14, color: '#333333' }
+                },
+                yaxis: {
+                    title: 'mW', tickformat: ',d',
+                    showgrid: true, gridcolor: 'rgba(0,0,0,0.2)',
+                    linecolor: 'black', linewidth: 1, mirror: true,
+                    zeroline: true, zerolinecolor: 'rgba(0,0,0,0.2)', zerolinewidth: 1,
+                    rangemode: 'tozero',
+                    exponentformat: 'none', separatethousands: true,
+                    tickfont: { family: 'RWE Sans Web', size: 14, color: '#333333' }
+                },
+                showlegend: true,
+                legend: {
+                    orientation: 'v', x: 1, y: 1, xanchor: 'right', yanchor: 'top',
+                    bgcolor: 'rgba(255,255,255,0.9)', bordercolor: 'rgba(0,0,0,0.2)', borderwidth: 1,
+                    font: { family: 'RWE Sans Web', size: 12, color: '#333333' }
+                },
+                hovermode: 'x unified',
+                hoverlabel: { namelength: -1, font: { family: 'RWE Sans Web', size: 12 } },
+                plot_bgcolor: 'white', paper_bgcolor: 'white',
+                font: { family: 'RWE Sans Web' },
+                margin: { l: 70, r: 20, t: 60, b: 50 },
+                autosize: true,
+                height: 600,
+                shapes: [{ type: 'rect', xref: 'paper', yref: 'paper',
+                           x0: 0, y0: 0, x1: 1, y1: 1,
+                           line: { color: 'black', width: 1 }, layer: 'below' }]
+            };
+
+            Plotly.newPlot(chartDiv, traces, layout, {
+                displayModeBar: true,
+                responsive: true,
+                modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d'],
+                toImageButtonOptions: {
+                    format: 'png', filename: 'Solar_Weekly_Hourly',
+                    height: 600, width: 1400, scale: 2,
+                    bgcolor: 'white', font: { family: 'RWE Sans Web' }
+                }
+            });
+        })
+        .catch(err => {
+            chartDiv.innerHTML = `<div class="alert alert-danger">Error loading weekly solar data: ${err.message}</div>`;
+        });
+}
+
 // Modify the loadRollingCharts function to call renderDemandChart
 function loadRollingCharts() {
     // Prevent multiple loads
@@ -4185,6 +4365,9 @@ function loadRollingCharts() {
             // Render both demand charts
             renderDemandChart();
             renderMonthlyDemandChart();
+
+            // Render weekly solar hourly chart
+            renderWeeklySolarChart();
             
             // Set the loaded flag
             chartsLoaded = true;
@@ -4334,7 +4517,15 @@ function loadRollingCharts() {
         statusEl.style.display = 'none';
 
         fetch(`/api/supply_demand_price?date=${encodeURIComponent(date)}&threshold=${threshold}`)
-            .then(r => r.json())
+            .then(r => {
+                const ct = r.headers.get('content-type') || '';
+                if (!ct.includes('application/json')) {
+                    return r.text().then(txt => {
+                        throw new Error(`Server returned non-JSON (HTTP ${r.status}): ${txt.substring(0, 300)}`);
+                    });
+                }
+                return r.json();
+            })
             .then(data => {
                 btn.disabled = false;
                 spinner.classList.add('d-none');
@@ -4385,6 +4576,14 @@ function loadRollingCharts() {
                     bodyHtml += `</tr>`;
                 });
                 tbody.innerHTML = bodyHtml;
+
+                // JS-based sticky header: translate thead by scroll offset
+                const wrapper = document.getElementById('sdp_wrapper');
+                wrapper.onscroll = function() {
+                    thead.style.transform = `translateY(${this.scrollTop}px)`;
+                };
+                // Reset on fresh load
+                thead.style.transform = 'translateY(0)';
             })
             .catch(err => {
                 btn.disabled = false;

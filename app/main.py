@@ -46,6 +46,9 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get('authenticated'):
+            # Return JSON 401 for API/XHR requests instead of HTML redirect
+            if request.path.startswith('/api/') or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'error': 'Not authenticated'}), 401
             return redirect(url_for('main.login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -1998,6 +2001,117 @@ def get_rolling_last_update():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+@main.route('/get-solar-weekly-data')
+@login_required
+def get_solar_weekly_data():
+    try:
+        import datetime as dt_module
+        istanbul_tz = pytz.timezone('Europe/Istanbul')
+
+        latest_solar = db.session.query(UnlicensedSolarData.datetime).order_by(UnlicensedSolarData.datetime.desc()).first()
+        if not latest_solar:
+            return jsonify({'error': 'No solar data found'}), 404
+
+        latest_dt = latest_solar[0].replace(tzinfo=pytz.UTC).astimezone(istanbul_tz)
+        end_date = latest_dt.date()
+        start_date = end_date - timedelta(days=6)
+
+        prev_end = start_date - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=6)
+
+        ly_start = start_date - timedelta(days=365)
+        ly_end = end_date - timedelta(days=365)
+
+        def fetch_hourly_solar(date_from, date_to):
+            from_dt = datetime(date_from.year, date_from.month, date_from.day, tzinfo=istanbul_tz)
+            to_dt = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59, tzinfo=istanbul_tz)
+            from_utc = from_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+            to_utc = to_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+
+            unl = db.session.query(UnlicensedSolarData).filter(
+                UnlicensedSolarData.datetime >= from_utc,
+                UnlicensedSolarData.datetime <= to_utc
+            ).order_by(UnlicensedSolarData.datetime).all()
+
+            lic = db.session.query(LicensedSolarData).filter(
+                LicensedSolarData.datetime >= from_utc,
+                LicensedSolarData.datetime <= to_utc
+            ).order_by(LicensedSolarData.datetime).all()
+
+            if not unl and not lic:
+                return [], []
+
+            unl_map = {}
+            for r in unl:
+                dt_ist = r.datetime.replace(tzinfo=pytz.UTC).astimezone(istanbul_tz)
+                key = dt_ist.replace(minute=0, second=0, microsecond=0)
+                unl_map[key] = unl_map.get(key, 0) + (r.unlicensed_solar or 0)
+
+            lic_map = {}
+            for r in lic:
+                dt_ist = r.datetime.replace(tzinfo=pytz.UTC).astimezone(istanbul_tz)
+                key = dt_ist.replace(minute=0, second=0, microsecond=0)
+                lic_map[key] = lic_map.get(key, 0) + (r.licensed_solar or 0)
+
+            all_keys = sorted(set(list(unl_map.keys()) + list(lic_map.keys())))
+            labels = [k.strftime('%a %d %b %H:%M') for k in all_keys]
+            values = [round((unl_map.get(k, 0) + lic_map.get(k, 0)), 1) for k in all_keys]
+            return labels, values
+
+        def smooth(values, window=5):
+            if not values:
+                return values
+            s = pd.Series(values)
+            return s.rolling(window=window, center=True, min_periods=1).mean().round(1).tolist()
+
+        cur_labels, cur_values = fetch_hourly_solar(start_date, end_date)
+        prev_labels, prev_values = fetch_hourly_solar(prev_start, prev_end)
+        ly_labels, ly_values = fetch_hourly_solar(ly_start, ly_end)
+
+        # Historical range: same ISO week across 2020-2025
+        week_number = start_date.isocalendar()[1]
+        all_hist = []
+        for year in range(2020, 2026):
+            try:
+                h_start = dt_module.date.fromisocalendar(year, week_number, 1)
+                h_end = h_start + timedelta(days=6)
+                _, h_vals = fetch_hourly_solar(h_start, h_end)
+                if h_vals and len(h_vals) >= 100:
+                    all_hist.append(smooth(h_vals, window=5))
+            except (ValueError, AttributeError):
+                pass
+
+        max_len = max((len(v) for v in all_hist), default=0)
+        hist_min, hist_max, hist_avg = [], [], []
+        for i in range(max_len):
+            vals = [v[i] for v in all_hist if i < len(v)]
+            if vals:
+                hist_min.append(round(min(vals), 1))
+                hist_max.append(round(max(vals), 1))
+                hist_avg.append(round(sum(vals) / len(vals), 1))
+            else:
+                hist_min.append(None)
+                hist_max.append(None)
+                hist_avg.append(None)
+
+        return jsonify({
+            'current_week': {'labels': cur_labels, 'values': smooth(cur_values),
+                             'range': f"{start_date} – {end_date}"},
+            'previous_week': {'labels': prev_labels, 'values': smooth(prev_values),
+                              'range': f"{prev_start} – {prev_end}"},
+            'last_year': {'labels': ly_labels, 'values': smooth(ly_values),
+                          'range': f"{ly_start} – {ly_end}"},
+            'historical_range': {'min': hist_min, 'max': hist_max, 'avg': hist_avg,
+                                 'years': '2020-2025'}
+        })
+
+    except Exception as e:
+        print(f"Error in get_solar_weekly_data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 
 @main.route('/update-rolling-data')
 def update_rolling_data():
