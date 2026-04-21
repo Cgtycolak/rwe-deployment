@@ -5029,9 +5029,10 @@ def get_supply_demand_price():
             WITH base AS (
                 SELECT *,
                        supply + demand AS total,
-                       LAG(supply + demand, 1) OVER (ORDER BY date) AS lag_total,
-                       (LAG(supply + demand, 1) OVER (ORDER BY date)) - (supply + demand) AS diff
+                       LAG(supply + demand, 1) OVER (ORDER BY date, price) AS lag_total,
+                       (LAG(supply + demand, 1) OVER (ORDER BY date, price)) - (supply + demand) AS diff
                 FROM epias.supply_demand
+                ORDER BY date, price
             ),
             aggregated AS (
                 SELECT
