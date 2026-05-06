@@ -4553,10 +4553,25 @@ function loadRollingCharts() {
                 table.style.display = '';
                 emptyMsg.style.display = 'none';
 
-                // Build header
+                // Build header — row 1: column labels
                 let headerHtml = '<tr><th>Date</th><th>Price</th>';
                 data.hour_cols.forEach(h => { headerHtml += `<th>${h}</th>`; });
                 headerHtml += '</tr>';
+
+                // Row 2: PTF prices
+                headerHtml += '<tr style="background:#1a5276;color:#fff;">';
+                headerHtml += '<th style="background:#1a5276;font-size:0.7rem;">PTF</th>';
+                headerHtml += '<th style="background:#1a5276;font-size:0.7rem;">₺/MWh</th>';
+                if (data.ptf_row && data.ptf_row.length) {
+                    data.ptf_row.forEach(val => {
+                        const display = val !== null ? val.toFixed(2) : '—';
+                        headerHtml += `<th style="background:#1a5276;font-weight:400;font-size:0.7rem;">${display}</th>`;
+                    });
+                } else {
+                    data.hour_cols.forEach(() => { headerHtml += '<th style="background:#1a5276;">—</th>'; });
+                }
+                headerHtml += '</tr>';
+
                 thead.innerHTML = headerHtml;
 
                 // Build rows

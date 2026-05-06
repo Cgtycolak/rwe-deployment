@@ -5106,12 +5106,35 @@ def get_supply_demand_price():
                 'hours': hour_values
             })
 
+        # Fetch PTF prices for the selected date
+        ptf_query = text(
+            f"""
+            SELECT EXTRACT(HOUR FROM date) AS hour, AVG(price) AS ptf_price
+            FROM epias.ptf
+            WHERE DATE(date) = '{selected_date}'
+            GROUP BY EXTRACT(HOUR FROM date)
+            ORDER BY hour
+            """
+        )
+        ptf_by_hour = {}
+        try:
+            with engine_sb.connect() as conn:
+                ptf_df = pd.read_sql(ptf_query, con=conn)
+            for _, r in ptf_df.iterrows():
+                h = int(r['hour'])
+                ptf_by_hour[f"{h:02d}:00"] = round(float(r['ptf_price']), 2)
+        except Exception as ptf_err:
+            print(f"PTF fetch warning: {ptf_err}")
+
+        ptf_row = [ptf_by_hour.get(col, None) for col in hour_cols]
+
         return jsonify({
             'rows': rows,
             'hour_cols': hour_cols,
             'threshold': diff_filter_threshold,
             'min_price': min_price,
-            'max_price': max_price
+            'max_price': max_price,
+            'ptf_row': ptf_row
         })
 
     except Exception as e:
