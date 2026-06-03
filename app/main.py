@@ -28,8 +28,6 @@ import tempfile
 from dotenv import load_dotenv
 import psycopg2
 from sqlalchemy import create_engine
-from darts.metrics import wmape, rmse, r2_score
-from darts import TimeSeries
 from functools import wraps
 
 # Conditionally set pandas option if it exists (available in pandas 2.1.0+)
@@ -3801,70 +3799,31 @@ def get_forecast_performance_data():
                 'error': 'No data available with actual prices for evaluation period'
             }), 404
         
-        # Calculate metrics using darts metrics
+        # Calculate forecast metrics using numpy only
         def calculate_darts_metrics(actual_series, forecast_series):
             try:
-                # Clean the data and align indices
                 actual_clean = actual_series.dropna()
                 forecast_clean = forecast_series[actual_clean.index].dropna()
-                
                 if len(forecast_clean) == 0 or len(actual_clean) == 0:
                     return {'wmape': 0, 'rmse': 0, 'r2': 0}
-                
-                # Find common indices
                 common_indices = actual_clean.index.intersection(forecast_clean.index)
                 if len(common_indices) == 0:
                     return {'wmape': 0, 'rmse': 0, 'r2': 0}
-                
-                # Align the data
-                actual_aligned = actual_clean[common_indices]
-                forecast_aligned = forecast_clean[common_indices]
-                
-                # Ensure the index is datetime for TimeSeries
-                if not isinstance(actual_aligned.index, pd.DatetimeIndex):
-                    actual_aligned.index = pd.to_datetime(actual_aligned.index)
-                    forecast_aligned.index = pd.to_datetime(forecast_aligned.index)
-                
-                # Create DataFrame for TimeSeries conversion
-                df_actual = pd.DataFrame({'value': actual_aligned.values}, index=actual_aligned.index)
-                df_forecast = pd.DataFrame({'value': forecast_aligned.values}, index=forecast_aligned.index)
-                
-                # Convert to TimeSeries
-                ts_actual = TimeSeries.from_dataframe(df_actual, time_col=None, value_cols=['value'])
-                ts_forecast = TimeSeries.from_dataframe(df_forecast, time_col=None, value_cols=['value'])
-                
-                # Calculate metrics using darts
-                darts_wmape_raw = wmape(ts_actual, ts_forecast)
-                rmse_score = rmse(ts_actual, ts_forecast)
-                r2_score_value = r2_score(ts_actual, ts_forecast)
-                
-                # Calculate WMAPE manually for validation
-                # WMAPE = 100 * sum(|actual - forecast|) / sum(|actual|)
-                numerator = np.sum(np.abs(actual_aligned.values - forecast_aligned.values))
-                denominator = np.sum(np.abs(actual_aligned.values))
-                manual_wmape = (numerator / denominator) * 100 if denominator != 0 else 0
-                
-                # Determine correct WMAPE format and use reliable calculation
-                # Check if darts WMAPE is in decimal (0-1) or percentage (0-100) format
-                if darts_wmape_raw < 1.0 and manual_wmape > 1.0:
-                    wmape_score = darts_wmape_raw * 100  # Convert from decimal to percentage
-                elif abs(darts_wmape_raw - manual_wmape) < 5:  # Values are close, use darts
-                    wmape_score = darts_wmape_raw
-                else:
-                    # Use manual calculation if darts value seems unreasonable
-                    wmape_score = manual_wmape
-                    print(f"Using manual WMAPE calculation ({manual_wmape:.2f}) instead of darts value ({darts_wmape_raw:.2f})")
-                
+                a = actual_clean[common_indices].values.astype(float)
+                f = forecast_clean[common_indices].values.astype(float)
+                denom = np.sum(np.abs(a))
+                wmape_score = float(np.sum(np.abs(a - f)) / denom * 100) if denom != 0 else 0
+                rmse_score  = float(np.sqrt(np.mean((a - f) ** 2)))
+                ss_res = np.sum((a - f) ** 2)
+                ss_tot = np.sum((a - np.mean(a)) ** 2)
+                r2_score_value = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0
                 return {
                     'wmape': round(wmape_score, 2),
-                    'rmse': round(rmse_score, 2),
-                    'r2': round(r2_score_value, 2)
+                    'rmse':  round(rmse_score, 2),
+                    'r2':    round(r2_score_value, 2),
                 }
-                
             except Exception as e:
                 print(f"Error in calculate_darts_metrics: {e}")
-                import traceback
-                traceback.print_exc()
                 return {'wmape': 0, 'rmse': 0, 'r2': 0}
         
         # Prepare response data
