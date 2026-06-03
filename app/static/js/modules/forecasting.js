@@ -1,10 +1,14 @@
 export const forecasting = {
     // Store the uploaded file
     uploadedFile: null,
-    
+
     // Store the latest forecast data
     latestForecast: null,
-    
+
+    // Per-model result caches — keyed by model value (e.g. "Model 1")
+    predictionCache: {},
+    evaluationCache: {},
+
     // Helper functions
     toggleLoading: null,
     displayMessage: null,
@@ -143,6 +147,30 @@ export const forecasting = {
         const evaluateBtn = document.getElementById('run_evaluation');
         if (evaluateBtn) {
             evaluateBtn.addEventListener('click', () => this.runEvaluation());
+        }
+
+        // Restore cached prediction when model dropdown changes (no re-run needed)
+        const forecastModelSelect = document.getElementById('forecast_model');
+        if (forecastModelSelect) {
+            forecastModelSelect.addEventListener('change', () => {
+                const m = forecastModelSelect.value;
+                if (this.predictionCache[m]) {
+                    this.renderPredictionResult(this.predictionCache[m].chartData, this.predictionCache[m].confusionMatrix);
+                    this.displayMessage('Showing cached result for this model', 'info');
+                }
+            });
+        }
+
+        // Restore cached evaluation when model dropdown changes
+        const evalModelSelect = document.getElementById('eval_model');
+        if (evalModelSelect) {
+            evalModelSelect.addEventListener('change', () => {
+                const m = evalModelSelect.value;
+                if (this.evaluationCache[m]) {
+                    this.renderEvaluationResult(this.evaluationCache[m]);
+                    this.displayMessage('Showing cached result for this model', 'info');
+                }
+            });
         }
     },
     
@@ -382,88 +410,8 @@ export const forecasting = {
             
             if (evalResult.success) {
                 const result = evalResult.result;
-                
-                // Update the evaluation metrics display
-                document.getElementById('eval_model_name').textContent = result.model_name;
-                document.getElementById('eval_mae').textContent = result.mae;
-                document.getElementById('eval_r2').textContent = result.r2;
-                
-                // Show the results section
-                document.getElementById('evaluation_results').classList.remove('d-none');
-                
-                // Create plot data for the chart
-                const plotData = [
-                    {
-                        x: result.real_data.x,
-                        y: result.real_data.y,
-                        type: 'scatter',
-                        mode: 'lines',
-                        name: 'Real Values',
-                        line: {
-                            color: 'blue',
-                            width: 2
-                        }
-                    },
-                    {
-                        x: result.forecast_data.x,
-                        y: result.forecast_data.y,
-                        type: 'scatter',
-                        mode: 'lines',
-                        name: 'Forecast',
-                        line: {
-                            color: 'red',
-                            width: 2
-                        }
-                    }
-                ];
-                
-                const layout = {
-                    title: `${result.model_name} Evaluation (MAE: ${result.mae}, R²: ${result.r2})`,
-                    xaxis: {
-                        title: 'Date & Time',
-                        tickformat: '%Y-%m-%d', // Format to show just the date
-                        tickangle: -45,
-                        nticks: 12, // Fewer ticks for dates only
-                        gridcolor: 'rgba(200,200,200,0.2)'
-                    },
-                    yaxis: {
-                        title: 'System Direction (MW)',
-                        gridcolor: 'rgba(200,200,200,0.2)',
-                        zerolinecolor: 'rgba(200,200,200,0.5)',
-                        zerolinewidth: 1
-                    },
-                    legend: {
-                        x: 0,
-                        y: 1,
-                        orientation: 'h'
-                    },
-                    margin: {
-                        l: 60,
-                        r: 30,
-                        t: 60,
-                        b: 80  // Slightly reduced since we have shorter labels
-                    },
-                    hovermode: 'closest',
-                    plot_bgcolor: 'rgba(255,255,255,1)',
-                    paper_bgcolor: 'rgba(255,255,255,1)',
-                    grid: {
-                        rows: 1,
-                        columns: 1,
-                        pattern: 'independent',
-                        roworder: 'top to bottom'
-                    }
-                };
-                
-                // Create the plot
-                Plotly.newPlot('evaluation_chart', plotData, layout, {responsive: true});
-                
-                // Render confusion matrix heatmap if available
-                if (result.confusion_matrix) {
-                    this.displayConfusionMatrix(result.confusion_matrix);
-                } else {
-                    Plotly.purge('confusion_matrix_chart');
-                }
-                
+                this.evaluationCache[model] = result;
+                this.renderEvaluationResult(result);
                 this.displayMessage('Model evaluation completed successfully', 'success');
             } else {
                 throw new Error(evalResult.error || 'Failed to evaluate model');
@@ -531,9 +479,6 @@ export const forecasting = {
                 
                 // Check if we have forecast data in the expected format
                 if (forecastData.median && Array.isArray(forecastData.median) && forecastData.median.length > 0) {
-                    console.log("Forecast data found in response");
-                    
-                    // Create chart data object directly from the response
                     const chartData = {
                         x: forecastData.x || [],
                         median: forecastData.median || [],
@@ -542,32 +487,14 @@ export const forecasting = {
                         model_name: forecastData.model_name || predictResult.model_name || model,
                         forecast_period: forecastData.forecast_period || forecastPeriod
                     };
-                    
-                    // Store the forecast result for later use
-                    this.latestForecast = {
-                        model: model,
-                        period: forecastPeriod,
-                        data: predictResult
-                    };
-                    
-                    console.log("Chart data being passed to displayForecastChart:", chartData);
-                    
-                    // Display the chart
-                    this.displayForecastChart(chartData);
-                    
-                    // Display SHAP plot if available
-                    this.displayShapPlot(predictResult.shap_image);
 
-                    // Display confusion matrix if available
-                    const cmContainer = document.getElementById('forecast_confusion_matrix_container');
-                    if (predictResult.confusion_matrix) {
-                        this.displayConfusionMatrix(predictResult.confusion_matrix, 'forecast_confusion_matrix_chart');
-                        if (cmContainer) cmContainer.classList.remove('d-none');
-                    } else {
-                        if (cmContainer) cmContainer.classList.add('d-none');
-                        Plotly.purge('forecast_confusion_matrix_chart');
-                    }
+                    // Store for download button
+                    this.latestForecast = { model, period: forecastPeriod, data: predictResult };
 
+                    // Cache result so switching models doesn't re-run
+                    this.predictionCache[model] = { chartData, confusionMatrix: predictResult.confusion_matrix };
+
+                    this.renderPredictionResult(chartData, predictResult.confusion_matrix);
                     this.displayMessage('Forecast generated successfully', 'success');
                 } else {
                     console.warn("No forecast data available in the response");
@@ -587,7 +514,58 @@ export const forecasting = {
             this.toggleButtonLoading(button, false);
         }
     },
-    
+
+    // Render a prediction result (used by runForecast and cache restore)
+    renderPredictionResult(chartData, confusionMatrix) {
+        this.displayForecastChart(chartData);
+        const cmContainer = document.getElementById('forecast_confusion_matrix_container');
+        if (confusionMatrix) {
+            this.displayConfusionMatrix(confusionMatrix, 'forecast_confusion_matrix_chart');
+            if (cmContainer) cmContainer.classList.remove('d-none');
+        } else {
+            if (cmContainer) cmContainer.classList.add('d-none');
+            Plotly.purge('forecast_confusion_matrix_chart');
+        }
+    },
+
+    // Render an evaluation result (used by runEvaluation and cache restore)
+    renderEvaluationResult(result) {
+        document.getElementById('eval_model_name').textContent = result.model_name;
+        document.getElementById('eval_mae').textContent = result.mae;
+        document.getElementById('eval_r2').textContent = result.r2;
+        document.getElementById('evaluation_results').classList.remove('d-none');
+
+        const plotData = [
+            {
+                x: result.real_data.x, y: result.real_data.y,
+                type: 'scatter', mode: 'lines', name: 'Real Values',
+                line: { color: 'blue', width: 2 }
+            },
+            {
+                x: result.forecast_data.x, y: result.forecast_data.y,
+                type: 'scatter', mode: 'lines', name: 'Forecast',
+                line: { color: 'red', width: 2 }
+            }
+        ];
+        const layout = {
+            title: `${result.model_name} Evaluation (MAE: ${result.mae}, R²: ${result.r2})`,
+            xaxis: { title: 'Date & Time', tickformat: '%Y-%m-%d', tickangle: -45, nticks: 12, gridcolor: 'rgba(200,200,200,0.2)' },
+            yaxis: { title: 'System Direction (MW)', gridcolor: 'rgba(200,200,200,0.2)', zerolinecolor: 'rgba(200,200,200,0.5)', zerolinewidth: 1 },
+            legend: { x: 0, y: 1, orientation: 'h' },
+            margin: { l: 60, r: 30, t: 60, b: 80 },
+            hovermode: 'closest',
+            plot_bgcolor: 'rgba(255,255,255,1)',
+            paper_bgcolor: 'rgba(255,255,255,1)',
+        };
+        Plotly.newPlot('evaluation_chart', plotData, layout, { responsive: true });
+
+        if (result.confusion_matrix) {
+            this.displayConfusionMatrix(result.confusion_matrix);
+        } else {
+            Plotly.purge('confusion_matrix_chart');
+        }
+    },
+
     displayForecastChart(data) {
         console.log("displayForecastChart called with data:", data);
         

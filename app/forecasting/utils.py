@@ -2,49 +2,15 @@ import pandas as pd
 import numpy as np
 import pytz
 from datetime import datetime, timedelta
-from darts import TimeSeries
 from sqlalchemy import create_engine, pool, text
 import os
 from dotenv import load_dotenv
 import time
 import random
+# darts imported lazily inside functions to reduce per-worker memory on Render
 
 # Load environment variables
 load_dotenv()
-
-def ts_to_df(series_or_df):
-    """Return a pandas DataFrame from a Darts TimeSeries or pass-through DataFrame.
-
-    This provides compatibility across Darts versions where the conversion API
-    changed (e.g., pd_dataframe vs to_dataframe). It also supports pandas Series.
-    """
-    # Already a DataFrame
-    if isinstance(series_or_df, pd.DataFrame):
-        return series_or_df
-
-    # pandas Series
-    if isinstance(series_or_df, pd.Series):
-        return series_or_df.to_frame()
-
-    # Darts TimeSeries (lazy import type check to avoid strict coupling)
-    try:
-        from darts import TimeSeries as _DartsTimeSeries  # local import to avoid unused import when not needed
-        is_ts = isinstance(series_or_df, _DartsTimeSeries)
-    except Exception:
-        is_ts = False
-
-    if is_ts:
-        # Try legacy/newer APIs in order
-        if hasattr(series_or_df, 'pd_dataframe') and callable(getattr(series_or_df, 'pd_dataframe')):
-            return series_or_df.pd_dataframe()
-        if hasattr(series_or_df, 'to_dataframe') and callable(getattr(series_or_df, 'to_dataframe')):
-            return series_or_df.to_dataframe()
-        if hasattr(series_or_df, 'pd_series') and callable(getattr(series_or_df, 'pd_series')):
-            return series_or_df.pd_series().to_frame()
-        if hasattr(series_or_df, 'to_series') and callable(getattr(series_or_df, 'to_series')):
-            return series_or_df.to_series().to_frame()
-
-    raise AttributeError("Unsupported object type for ts_to_df conversion")
 
 def get_database_connection():
     """Create a database connection using environment variables with better connection pooling."""
@@ -87,20 +53,25 @@ def fetch_with_retry(query, engine, max_retries=3):
             else:
                 raise
 
+CONTEXT_LENGTHS = {"Model 1": 168, "Model 2": 336}
+
 def fetch_generation_data(engine):
-    """Fetch generation data from the database with retry logic."""
+    """Fetch generation data (wind/hydro/solar/demand) including future Meteologica forecasts."""
     query = """
-    SELECT u."From-yyyy-mm-dd-hh-mm" AS date, w.wind_forecast AS wind,
-    d.conventional_forecast + r.runofriver_forecast AS hydro,
+    SELECT u."From-yyyy-mm-dd-hh-mm" AS date,
+    mdem.demand_forecast AS demand,
+    w.wind_forecast AS wind,
+    dam.conventional_forecast + r.runofriver_forecast AS hydro,
     u.unlicensed_forecast + l.licensed_forecast AS solar
     FROM meteologica.unlicensed_solar u
     JOIN meteologica.licensed_solar l ON u."From-yyyy-mm-dd-hh-mm" = l."From-yyyy-mm-dd-hh-mm"
     JOIN meteologica.wind w on u."From-yyyy-mm-dd-hh-mm" = w."From-yyyy-mm-dd-hh-mm"
-    JOIN meteologica.dam_hydro d on u."From-yyyy-mm-dd-hh-mm" = d."From-yyyy-mm-dd-hh-mm"
+    JOIN meteologica.dam_hydro dam on u."From-yyyy-mm-dd-hh-mm" = dam."From-yyyy-mm-dd-hh-mm"
     JOIN meteologica.runofriver_hydro r on u."From-yyyy-mm-dd-hh-mm" = r."From-yyyy-mm-dd-hh-mm"
+    JOIN meteologica.demand mdem on u."From-yyyy-mm-dd-hh-mm" = mdem."From-yyyy-mm-dd-hh-mm"
     WHERE u."From-yyyy-mm-dd-hh-mm" > '2025'
     """
-    
+
     generation_df = fetch_with_retry(query, engine)
     generation_df['date'] = pd.to_datetime(generation_df['date']).dt.tz_localize(None)
     return generation_df
@@ -111,10 +82,33 @@ def fetch_smf_data(engine):
     SELECT date, "systemMarginalPrice" FROM epias.smf
     WHERE date >= '2025-01-01'
     """
-    
+
     smf_df = fetch_with_retry(query, engine)
     smf_df['date'] = pd.to_datetime(smf_df['date']).dt.tz_localize(None)
     return smf_df
+
+def fetch_smf_ptf_data(engine):
+    """Fetch combined SMF + PTF data; PTF has future day-ahead prices, SMF is real-time."""
+    query = """
+    SELECT ptf.date,
+           smf."systemMarginalPrice" AS smf,
+           ptf.price AS ptf
+    FROM epias.ptf
+    LEFT JOIN epias.smf ON ptf.date = smf.date
+    WHERE ptf.date >= '2025-01-01'
+    """
+
+    df = fetch_with_retry(query, engine)
+    df['date'] = pd.to_datetime(df['date']).dt.tz_localize(None)
+    df['smf_ptf_diff'] = df['smf'] - df['ptf']
+    return df
+
+def fetch_ramadan_data(engine):
+    """Return the set of Ramadan dates (date-only, normalized) from DB."""
+    query = "SELECT date FROM epias.ramadan_dates"
+    df = fetch_with_retry(query, engine)
+    df['date'] = pd.to_datetime(df['date']).dt.normalize()
+    return set(df['date'])
 
 def fetch_dgp_data(engine):
     """Fetch DGP data from the database with retry logic."""
@@ -172,63 +166,81 @@ def process_excel_data(excel_data):
     
     return updated_yal_yat
 
-def prepare_data_for_modeling(generation_df, dgp_df, excel_data, smf_df=None):
-    """Prepare data for modeling by combining database, SMF, and Excel data."""
+def build_chronos_features(engine, excel_data, model_name):
+    """Build a fully feature-engineered flat DataFrame for Chronos-2 predict_df.
+
+    Returns a single DataFrame with:
+    - All feature columns (demand, wind, hydro, solar, lags, MAs, temporal, etc.)
+    - system_direction column: real values for historical rows, NaN for future rows
+    - id = 'DF', date column (not index)
+
+    Caller splits into train/covariates based on system_direction nullability.
+    """
+    ctx_len = CONTEXT_LENGTHS.get(model_name, 168)
+
+    # 1. Fetch data
+    generation_df = fetch_generation_data(engine)
+    smf_ptf_df    = fetch_smf_ptf_data(engine)
+    dgp_df        = fetch_dgp_data(engine)
+    ramadan_dates = fetch_ramadan_data(engine)
+
+    # 2. Merge today's Excel data into system_direction
     if excel_data is not None:
-        updated_yal_yat = process_excel_data(excel_data)
-        dgp_df = pd.concat([dgp_df, updated_yal_yat])
-        # Dedup after concat — Excel rows take priority over DB rows for same timestamps
-        dgp_df = dgp_df.drop_duplicates(subset=['date'], keep='last').sort_values('date')
+        today_df = process_excel_data(excel_data)
+        if not today_df.empty:
+            dgp_df = (
+                pd.concat([dgp_df, today_df])
+                .drop_duplicates(subset=['date'], keep='last')
+                .sort_values('date')
+                .reset_index(drop=True)
+            )
 
-    # Merge generation data with SMF data first (if available)
-    if smf_df is not None:
-        new_df = pd.merge(generation_df, smf_df, on='date', how='left')
-        new_df = new_df.drop_duplicates(subset=['date'], keep='last')
-    else:
-        new_df = generation_df.drop_duplicates(subset=['date'], keep='last').copy()
-
-    # Merge with DGP (system direction) data
-    df = pd.merge(new_df, dgp_df, on='date', how='left')
-    # Guard against any remaining duplicates before setting the index
+    # 3. Merge all sources on date
+    df = pd.merge(generation_df, smf_ptf_df, on='date', how='left')
+    df = pd.merge(df, dgp_df, on='date', how='left')
     df = df.drop_duplicates(subset=['date'], keep='last').sort_values('date')
     df.set_index('date', inplace=True)
-    
-    # Create time series without holidays first
-    ts_df = TimeSeries.from_dataframe(df)
-    
-    # Add holidays with a different name to avoid conflict with Prophet
-    ts_df_with_holidays = ts_df.add_holidays('TR')
-    df = ts_to_df(ts_df_with_holidays).rename(columns={'holidays': 'is_holiday'})
-    
+
+    # 4. Holiday flags using the `holidays` package (no Darts dependency needed)
+    import holidays as _holidays_lib
+    tr_holidays = _holidays_lib.Turkey(years=sorted(df.index.year.unique().tolist()))
+    df['is_holiday'] = df.index.normalize().isin(tr_holidays).astype(float)
+
+    # 5. Ramadan flag
+    df['is_ramadan'] = df.index.normalize().isin(ramadan_dates).astype(float)
+
+    # 6. Temporal features
     df['hour'] = df.index.hour.astype(float)
-    hour_map = {hour: 'off-peak1' if hour < 10 else 'peak' if hour >= 18 else 'off-peak2' for hour in range(24)}
+    hour_map = {h: ('off-peak1' if h < 10 else ('peak' if h >= 18 else 'off-peak2')) for h in range(24)}
     df['is_peak'] = df.index.hour.map(hour_map)
-    day_map = {day: 'Sunday' if day == 'Sunday' else 'Saturday' if day == 'Saturday' else 'Weekday' for day in df.index.day_name().unique()}
+    unique_days = df.index.day_name().unique()
+    day_map = {d: ('Sunday' if d == 'Sunday' else ('Saturday' if d == 'Saturday' else 'Weekday')) for d in unique_days}
     df['week_part'] = df.index.day_name().map(day_map)
-    df['is_last_week'] = (df.index.day > (df.index.to_period('M').days_in_month - 7)).astype(float)
     df = pd.get_dummies(df, dtype='float')
-    
-    # Lag and rolling features
+
+    # 7. Derived demand features
+    df['demand_renewable_diff'] = df['demand'] - df['wind'] - df['solar'] - df['hydro']
+    df['demand_diff24'] = df['demand'].diff(24)
+
+    # 8. Price lag features
+    df['smf_lag24']        = df['smf'].shift(24)
+    df['smf_lag168']       = df['smf'].shift(168)
+    df['smf_ptf_diff_lag24'] = df['smf_ptf_diff'].shift(24)
+    df.drop(columns=['smf', 'smf_ptf_diff', 'ptf'], inplace=True, errors='ignore')
+
+    # 9. System direction lags and rolling averages
     df['system_direction_lag1'] = df['system_direction'].shift(1)
-    
-    # SMF lag feature (1 week = 168 hours)
-    if 'systemMarginalPrice' in df.columns:
-        df['systemMarginalPrice_lag168'] = df['systemMarginalPrice'].shift(24 * 7)
-    
-    # Moving average features for system_direction
-    df['system_direction_ma2'] = df['system_direction'].rolling(window=2).mean().shift(1)
-    df['system_direction_ma3'] = df['system_direction'].rolling(window=3).mean().shift(1)
-    df['system_direction_ma6'] = df['system_direction'].rolling(window=6).mean().shift(1)
-    df['system_direction_ma12'] = df['system_direction'].rolling(window=12).mean().shift(1)
-    
-    # Drop raw systemMarginalPrice (we only use the lag168 version)
-    if 'systemMarginalPrice' in df.columns:
-        df.drop(columns='systemMarginalPrice', inplace=True)
-    
-    # Skip first 168 rows (needed for the 168-hour lag)
+    df['system_direction_ma3']  = df['system_direction'].rolling(3).mean().shift(1)
+    df['system_direction_ma6']  = df['system_direction'].rolling(6).mean().shift(1)
+    df['system_direction_ma12'] = df['system_direction'].rolling(12).mean().shift(1)
+    if model_name == "Model 2":
+        df['system_direction_ma2'] = df['system_direction'].rolling(2).mean().shift(1)
+
+    # 10. Drop warmup rows needed for smf_lag168
     df = df.iloc[168:].copy()
-    
-    # Convert back to TimeSeries
-    ts_df = TimeSeries.from_dataframe(df)
-    
-    return ts_df 
+
+    # 11. Flatten: reset index, add id column
+    df.reset_index(inplace=True)   # date becomes a column again
+    df['id'] = 'DF'
+
+    return df
