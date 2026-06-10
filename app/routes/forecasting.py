@@ -43,6 +43,17 @@ def _get_modal_url():
 
 
 
+EVAL_PERIOD = 168  # validation window shown before the forecast (1 week)
+
+def _covariate_drop_cols(model_name):
+    """Columns to remove from covariates (match notebook behavior)."""
+    cols = ['system_direction', 'system_direction_lag1',
+            'system_direction_ma3', 'system_direction_ma6', 'system_direction_ma12']
+    if model_name == 'Model 2':
+        cols.append('system_direction_ma2')
+    return cols
+
+
 def _build_system_direction_series(engine, excel_data):
     """Fetch system direction + generation data for the Recent Data tab only."""
     dgp_df = fetch_dgp_data(engine)
@@ -173,17 +184,17 @@ def evaluate():
         engine  = get_database_connection()
         ctx_len = CONTEXT_LENGTHS.get(model_name, 168)
 
-        full_df = build_chronos_features(engine, excel_data, model_name)
-        known   = full_df[full_df['system_direction'].notna()].copy()
+        full_df, _ = build_chronos_features(engine, excel_data, model_name)
+        known      = full_df[full_df['system_direction'].notna()].copy()
 
         if len(known) < forecast_period + ctx_len:
             return jsonify({'error': 'Not enough historical data for evaluation'}), 400
 
-        # Split: last forecast_period as test, the ctx_len before that as training context
+        drop_cols  = _covariate_drop_cols(model_name)
         test_rows  = known.tail(forecast_period)
         ctx_end    = len(known) - forecast_period
         train_df   = known.iloc[max(0, ctx_end - ctx_len):ctx_end].copy()
-        cov_df     = test_rows.drop(columns=['system_direction'], errors='ignore').copy()
+        cov_df     = test_rows.drop(columns=drop_cols, errors='ignore').copy()
 
         chronos_result = _call_modal(train_df, cov_df, forecast_period, model_name)
 
@@ -227,9 +238,8 @@ def predict():
         if 'file' not in request.files or request.files['file'].filename == '':
             return jsonify({'error': 'No file uploaded'}), 400
 
-        excel_data      = pd.read_excel(request.files['file'], header=2)
-        model_name      = request.form.get('model', 'Model 1')
-        forecast_period = int(request.form.get('forecast_period', 24))
+        excel_data = pd.read_excel(request.files['file'], header=2)
+        model_name = request.form.get('model', 'Model 1')
 
         if model_name not in VALID_MODELS:
             return jsonify({'error': f'Unknown model: {model_name}'}), 400
@@ -237,62 +247,81 @@ def predict():
         engine  = get_database_connection()
         ctx_len = CONTEXT_LENGTHS.get(model_name, 168)
 
-        full_df = build_chronos_features(engine, excel_data, model_name)
-        known   = full_df[full_df['system_direction'].notna()]
-        future  = full_df[full_df['system_direction'].isna()]
+        full_df, known_price_length = build_chronos_features(engine, excel_data, model_name)
+        known  = full_df[full_df['system_direction'].notna()]
+        future = full_df[full_df['system_direction'].isna()]
 
-        if len(known) < 12:
+        if len(known) < EVAL_PERIOD + ctx_len:
             return jsonify({'error': 'Not enough historical data'}), 400
+        if known_price_length == 0:
+            return jsonify({'error': 'No future PTF price data available in DB'}), 400
 
-        train_df = known.tail(ctx_len).copy()
-        cov_df   = future.drop(columns=['system_direction'], errors='ignore').head(forecast_period).copy()
+        drop_cols = _covariate_drop_cols(model_name)
 
-        if len(cov_df) < forecast_period:
-            return jsonify({'error': 'Not enough future covariate data in DB for requested forecast period'}), 400
+        # Validation slice (last EVAL_PERIOD known rows)
+        eval_rows = known.tail(EVAL_PERIOD).copy()
+        pre_eval  = known.iloc[:-EVAL_PERIOD]
+        train_df  = pre_eval.tail(ctx_len).copy()
 
-        chronos_result = _call_modal(train_df, cov_df, forecast_period, model_name)
+        # Covariates = eval period + future (both without system_direction cols)
+        eval_cov   = eval_rows.drop(columns=drop_cols, errors='ignore')
+        future_cov = future.drop(columns=drop_cols, errors='ignore').head(known_price_length)
+        cov_df     = pd.concat([eval_cov, future_cov], ignore_index=True)
 
-        timestamps = chronos_result['dates']
-        forecast_data = {
-            'x':               timestamps,
-            'median':          chronos_result['median'],
-            'lower':           chronos_result['lower'],
-            'upper':           chronos_result['upper'],
-            'model_name':      model_name,
-            'forecast_period': forecast_period,
-        }
+        total_length   = EVAL_PERIOD + known_price_length
+        chronos_result = _call_modal(train_df, cov_df, total_length, model_name)
 
-        forecast_df = pd.DataFrame({
-            'date':                  timestamps,
-            'system_direction_0.1':  chronos_result['lower'],
-            'system_direction_0.5':  chronos_result['median'],
-            'system_direction_0.9':  chronos_result['upper'],
-        })
+        # Split model output into validation vs forecast sections
+        val_predicted = chronos_result['median'][:EVAL_PERIOD]
+        future_median = chronos_result['median'][EVAL_PERIOD:]
+        future_lower  = chronos_result['lower'][EVAL_PERIOD:]
+        future_upper  = chronos_result['upper'][EVAL_PERIOD:]
+        future_dates  = chronos_result['dates'][EVAL_PERIOD:]
 
-        # Confusion matrix on last known window vs median prediction
+        val_dates  = [d.strftime('%Y-%m-%d %H:%M:%S') for d in pd.to_datetime(eval_rows['date'])]
+        val_actual = eval_rows['system_direction'].tolist()
+
+        # MAE / R² on validation section
+        a = np.array(val_actual)
+        p = np.array(val_predicted)
+        mae     = round(float(np.mean(np.abs(a - p))), 2)
+        ss_res  = np.sum((a - p) ** 2)
+        ss_tot  = np.sum((a - np.mean(a)) ** 2)
+        r2      = round(float(1 - ss_res / ss_tot) if ss_tot > 0 else 0, 2)
+
+        # Confusion matrix on validation section
         confusion_data = None
         try:
-            if len(known) >= forecast_period:
-                actual_vals    = known['system_direction'].values[-forecast_period:]
-                predicted_vals = np.array(chronos_result['median'])[:len(actual_vals)]
-                confusion_data = compute_confusion_matrix(actual_vals, predicted_vals)
+            confusion_data = compute_confusion_matrix(val_actual, val_predicted)
         except Exception:
             pass
 
+        # Excel download DataFrame (forecast only)
+        forecast_df = pd.DataFrame({
+            'date':                 future_dates,
+            'system_direction_0.1': future_lower,
+            'system_direction_0.5': future_median,
+            'system_direction_0.9': future_upper,
+        })
+
         forecast_id = str(uuid.uuid4())
         forecast_cache[forecast_id] = {
-            'model_name':      model_name,
-            'forecast_period': forecast_period,
-            'forecast_result': {'forecast_data': forecast_data, 'forecast_df': forecast_df},
-            'timestamp':       datetime.now().isoformat(),
+            'model_name':        model_name,
+            'known_price_length': known_price_length,
+            'forecast_result':   {'forecast_df': forecast_df, 'future_dates': future_dates},
+            'timestamp':         datetime.now().isoformat(),
         }
         _clean_cache()
 
         response_data = {
-            'success':       True,
-            'model_name':    model_name,
-            'forecast_data': forecast_data,
-            'forecast_id':   forecast_id,
+            'success':            True,
+            'model_name':         MODEL_DISPLAY_NAMES.get(model_name, model_name),
+            'known_price_length': known_price_length,
+            'mae': mae, 'r2': r2,
+            'validation': {'x': val_dates, 'actual': val_actual, 'predicted': val_predicted},
+            'forecast':   {'x': future_dates, 'median': future_median,
+                           'lower': future_lower, 'upper': future_upper},
+            'forecast_id': forecast_id,
         }
         if confusion_data:
             response_data['confusion_matrix'] = confusion_data
@@ -314,47 +343,20 @@ def download_forecast():
         forecast_id   = request.form.get('forecast_id')
 
         if reuse_results and forecast_id and forecast_id in forecast_cache:
-            cached = forecast_cache[forecast_id]
-            fr     = cached['forecast_result']
+            cached      = forecast_cache[forecast_id]
+            fr          = cached['forecast_result']
             excel_bytes = to_excel_bytes(fr['forecast_df'])
-            first_date  = fr['forecast_data']['x'][0]
-            last_date   = fr['forecast_data']['x'][-1]
+            dates       = fr['future_dates']
+            first_date  = dates[0] if dates else ''
+            last_date   = dates[-1] if dates else ''
             return jsonify({
                 'success':    True,
                 'excel_data': base64.b64encode(excel_bytes).decode('utf-8'),
                 'filename':   f"direction_forecast_{cached['model_name']}_{first_date}_{last_date}.xlsx",
             })
 
-        # Fallback: re-run prediction
-        excel_data      = pd.read_excel(request.files['file'], header=2)
-        model_name      = request.form.get('model', 'Model 1')
-        forecast_period = int(request.form.get('forecast_period', 24))
-
-        if model_name not in VALID_MODELS:
-            return jsonify({'error': f'Unknown model: {model_name}'}), 400
-
-        engine = get_database_connection()
-        merged = _build_system_direction_series(engine, excel_data)
-        context_values  = merged['system_direction'].dropna().tolist()
-        chronos_result  = _call_modal(context_values, forecast_period, model_name)
-        timestamps      = _make_forecast_timestamps(forecast_period)
-
-        forecast_df = pd.DataFrame({
-            'date':                  timestamps,
-            'system_direction_0.1':  chronos_result['lower'],
-            'system_direction_0.5':  chronos_result['median'],
-            'system_direction_0.9':  chronos_result['upper'],
-        })
-
-        excel_bytes = to_excel_bytes(forecast_df)
-        first_date  = timestamps[0].strftime('%Y-%m-%d %H:%M:%S')
-        last_date   = timestamps[-1].strftime('%Y-%m-%d %H:%M:%S')
-
-        return jsonify({
-            'success':    True,
-            'excel_data': base64.b64encode(excel_bytes).decode('utf-8'),
-            'filename':   f'direction_forecast_{model_name}_{first_date}_{last_date}.xlsx',
-        })
+        # No cache hit — cannot re-run without a fresh predict call
+        return jsonify({'error': 'Forecast session expired. Please run Predict again.'}), 400
 
     except Exception as e:
         current_app.logger.error(traceback.format_exc())

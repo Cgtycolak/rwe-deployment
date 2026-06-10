@@ -7,7 +7,6 @@ export const forecasting = {
 
     // Per-model result caches — keyed by model value (e.g. "Model 1")
     predictionCache: {},
-    evaluationCache: {},
 
     // Helper functions
     toggleLoading: null,
@@ -112,9 +111,6 @@ export const forecasting = {
             this.loadRecentData();
         });
         
-        document.getElementById('run_evaluation')?.addEventListener('click', () => {
-            this.runEvaluation();
-        });
         
         document.getElementById('run_forecast')?.addEventListener('click', () => {
             this.runForecast();
@@ -143,77 +139,56 @@ export const forecasting = {
             });
         });
         
-        // Set up evaluation button
-        const evaluateBtn = document.getElementById('run_evaluation');
-        if (evaluateBtn) {
-            evaluateBtn.addEventListener('click', () => this.runEvaluation());
-        }
-
         // Restore cached prediction when model dropdown changes (no re-run needed)
         const forecastModelSelect = document.getElementById('forecast_model');
         if (forecastModelSelect) {
             forecastModelSelect.addEventListener('change', () => {
                 const m = forecastModelSelect.value;
                 if (this.predictionCache[m]) {
-                    this.renderPredictionResult(this.predictionCache[m].chartData, this.predictionCache[m].confusionMatrix);
-                    this.displayMessage('Showing cached result for this model', 'info');
-                }
-            });
-        }
-
-        // Restore cached evaluation when model dropdown changes
-        const evalModelSelect = document.getElementById('eval_model');
-        if (evalModelSelect) {
-            evalModelSelect.addEventListener('change', () => {
-                const m = evalModelSelect.value;
-                if (this.evaluationCache[m]) {
-                    this.renderEvaluationResult(this.evaluationCache[m]);
+                    this.renderPredictionResult(this.predictionCache[m]);
                     this.displayMessage('Showing cached result for this model', 'info');
                 }
             });
         }
     },
     
-    handleFileUpload(file) {
-        // Prevent duplicate uploads
-        if (this.uploadedFile && this.uploadedFile.name === file.name && 
-            this.uploadedFile.size === file.size && 
-            this.uploadedFile.lastModified === file.lastModified) {
-            console.log('File already uploaded, ignoring duplicate');
-            return;
-        }
-        
-        // Check file type
+    async handleFileUpload(file) {
         if (!file.name.match(/\.(xls|xlsx)$/i)) {
             this.displayMessage('Please upload an Excel file (.xls or .xlsx)', 'warning');
             return;
         }
-        
-        // Check file size (200MB limit)
         if (file.size > 200 * 1024 * 1024) {
             this.displayMessage('File size exceeds 200MB limit', 'warning');
             return;
         }
-        
-        // Store the file
-        this.uploadedFile = file;
-        
-        // Update UI
-        const fileInfo = document.getElementById('forecast_file_info');
-        const filename = document.getElementById('forecast_filename');
+
+        // Read into memory immediately — avoids ERR_UPLOAD_FILE_CHANGED if the file
+        // is re-downloaded or modified on disk after selection.
+        try {
+            const buffer = await file.arrayBuffer();
+            this.uploadedBlob     = new Blob([buffer], { type: file.type || 'application/octet-stream' });
+            this.uploadedFileName = file.name;
+            this.uploadedFile     = file; // keep for size/name checks only
+        } catch (e) {
+            this.displayMessage('Could not read file. Please try again.', 'danger');
+            return;
+        }
+
+        const fileInfo  = document.getElementById('forecast_file_info');
+        const filename  = document.getElementById('forecast_filename');
         const uploadArea = document.getElementById('forecast_upload_area');
-        
         if (fileInfo && filename) {
             filename.textContent = file.name;
             fileInfo.classList.remove('d-none');
             uploadArea.classList.add('d-none');
         }
-        
         this.displayMessage(`File "${file.name}" uploaded successfully`, 'success');
     },
-    
+
     removeUploadedFile() {
-        this.uploadedFile = null;
+        this.uploadedFile     = null;
+        this.uploadedBlob     = null;
+        this.uploadedFileName = null;
         
         // Update UI
         const fileInfo = document.getElementById('forecast_file_info');
@@ -228,7 +203,7 @@ export const forecasting = {
     },
     
     async loadRecentData() {
-        if (!this.uploadedFile) {
+        if (!this.uploadedBlob) {
             this.displayMessage('Please upload an Excel file first', 'warning');
             return;
         }
@@ -239,9 +214,8 @@ export const forecasting = {
         try {
             this.toggleButtonLoading(button, true);
             
-            // Create form data
             const formData = new FormData();
-            formData.append('file', this.uploadedFile);
+            formData.append('file', this.uploadedBlob, this.uploadedFileName);
             formData.append('hours', hours);
             
             // Send request
@@ -377,150 +351,66 @@ export const forecasting = {
         }
     },
     
-    async runEvaluation() {
-        if (!this.uploadedFile) {
-            this.displayMessage('Please upload an Excel file first', 'warning');
-            return;
-        }
-        
-        const model = document.getElementById('eval_model').value;
-        const forecastPeriod = document.getElementById('eval_forecast_period').value;
-        const button = document.getElementById('run_evaluation');
-        
-        try {
-            this.toggleButtonLoading(button, true);
-            
-            // Create form data
-            const formData = new FormData();
-            formData.append('file', this.uploadedFile);
-            formData.append('model', model);
-            formData.append('forecast_period', forecastPeriod);
-            
-            // Send the evaluation request to the correct endpoint
-            const response = await fetch('/api/forecasting/evaluate', {
-                method: 'POST',
-                body: formData
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-            
-            const evalResult = await response.json();
-            
-            if (evalResult.success) {
-                const result = evalResult.result;
-                this.evaluationCache[model] = result;
-                this.renderEvaluationResult(result);
-                this.displayMessage('Model evaluation completed successfully', 'success');
-            } else {
-                throw new Error(evalResult.error || 'Failed to evaluate model');
-            }
-        } catch (error) {
-            console.error('Error evaluating model:', error);
-            this.displayMessage(`Error: ${error.message}`, 'danger');
-            // Clear any existing chart on error
-            Plotly.purge('evaluation_chart');
-            Plotly.purge('confusion_matrix_chart');
-            // Hide results section
-            document.getElementById('evaluation_results').classList.add('d-none');
-        } finally {
-            this.toggleButtonLoading(button, false);
-        }
-    },
-    
     async runForecast() {
-        if (!this.uploadedFile) {
+        if (!this.uploadedBlob) {
             this.displayMessage('Please upload an Excel file first', 'warning');
             return;
         }
-        
-        const model = document.getElementById('forecast_model').value;
-        const forecastPeriod = document.getElementById('forecast_period').value;
+
+        const model  = document.getElementById('forecast_model').value;
         const button = document.getElementById('run_forecast');
-        
+
         try {
             this.toggleButtonLoading(button, true);
-            
-            // Create form data
+
             const formData = new FormData();
-            formData.append('file', this.uploadedFile);
+            formData.append('file', this.uploadedBlob, this.uploadedFileName);
             formData.append('model', model);
-            formData.append('forecast_period', forecastPeriod);
-            
-            // First, get the forecast data for visualization
+
             const predictResponse = await fetch('/api/forecasting/predict', {
                 method: 'POST',
                 body: formData
             });
-            
+
             if (!predictResponse.ok) {
-                if (predictResponse.status === 500) {
-                    const errorText = await predictResponse.text();
-                    if (errorText.includes("max clients reached")) {
-                        throw new Error("Database connection limit reached. Please try again in a few moments.");
-                    } else {
-                        throw new Error("Server error. Please try again later.");
-                    }
+                const errorText = await predictResponse.text();
+                if (errorText.includes('max clients reached')) {
+                    throw new Error('Database connection limit reached. Please try again in a few moments.');
                 }
-                throw new Error(`HTTP error ${predictResponse.status}`);
+                throw new Error(`Server error ${predictResponse.status}`);
             }
-            
-            const predictResult = await predictResponse.json();
-            console.log("Forecast prediction response:", predictResult);
-            
-            if (predictResult.success) {
-                // Enable download button
-                document.getElementById('download_forecast').disabled = false;
-                
-                // Extract the forecast data from the nested structure
-                const forecastData = predictResult.forecast_data || {};
-                console.log("Extracted forecast data:", forecastData);
-                
-                // Check if we have forecast data in the expected format
-                if (forecastData.median && Array.isArray(forecastData.median) && forecastData.median.length > 0) {
-                    const chartData = {
-                        x: forecastData.x || [],
-                        median: forecastData.median || [],
-                        lower: forecastData.lower || [],
-                        upper: forecastData.upper || [],
-                        model_name: forecastData.model_name || predictResult.model_name || model,
-                        forecast_period: forecastData.forecast_period || forecastPeriod
-                    };
 
-                    // Store for download button
-                    this.latestForecast = { model, period: forecastPeriod, data: predictResult };
+            const result = await predictResponse.json();
+            if (!result.success) throw new Error(result.error || 'Failed to generate forecast');
 
-                    // Cache result so switching models doesn't re-run
-                    this.predictionCache[model] = { chartData, confusionMatrix: predictResult.confusion_matrix };
+            // Update forecast period badge
+            const badge = document.getElementById('forecast_period_badge');
+            if (badge) badge.textContent = `Forecast: ${result.known_price_length}h`;
 
-                    this.renderPredictionResult(chartData, predictResult.confusion_matrix);
-                    this.displayMessage('Forecast generated successfully', 'success');
-                } else {
-                    console.warn("No forecast data available in the response");
-                    this.displayMessage('Forecast generated but no data available for visualization', 'warning');
-                    // Clear any existing chart
-                    Plotly.purge('forecast_chart');
-                }
-            } else {
-                throw new Error(predictResult.error || 'Failed to generate forecast');
-            }
+            document.getElementById('download_forecast').disabled = false;
+            this.latestForecast = { model, data: result };
+
+            // Cache so switching model dropdown is instant
+            this.predictionCache[model] = result;
+
+            this.renderPredictionResult(result);
+            this.displayMessage('Forecast generated successfully', 'success');
+
         } catch (error) {
             console.error('Error running forecast:', error);
             this.displayMessage(`Error: ${error.message}`, 'danger');
-            // Clear any existing chart on error
             Plotly.purge('forecast_chart');
         } finally {
             this.toggleButtonLoading(button, false);
         }
     },
 
-    // Render a prediction result (used by runForecast and cache restore)
-    renderPredictionResult(chartData, confusionMatrix) {
-        this.displayForecastChart(chartData);
+    // Render a prediction result (used by runForecast and model-switch cache restore)
+    renderPredictionResult(result) {
+        this.displayForecastChart(result);
         const cmContainer = document.getElementById('forecast_confusion_matrix_container');
-        if (confusionMatrix) {
-            this.displayConfusionMatrix(confusionMatrix, 'forecast_confusion_matrix_chart');
+        if (result.confusion_matrix) {
+            this.displayConfusionMatrix(result.confusion_matrix, 'forecast_confusion_matrix_chart');
             if (cmContainer) cmContainer.classList.remove('d-none');
         } else {
             if (cmContainer) cmContainer.classList.add('d-none');
@@ -528,137 +418,95 @@ export const forecasting = {
         }
     },
 
-    // Render an evaluation result (used by runEvaluation and cache restore)
-    renderEvaluationResult(result) {
-        document.getElementById('eval_model_name').textContent = result.model_name;
-        document.getElementById('eval_mae').textContent = result.mae;
-        document.getElementById('eval_r2').textContent = result.r2;
-        document.getElementById('evaluation_results').classList.remove('d-none');
+    // Render a prediction result (used by runForecast and model-switch cache restore)
 
-        const plotData = [
+    displayForecastChart(result) {
+        // result = { model_name, mae, r2, known_price_length, validation: {x, actual, predicted}, forecast: {x, median, lower, upper}, ... }
+        const validation = result.validation || {};
+        const forecast = result.forecast || {};
+
+        if (!validation.x || !forecast.x || !forecast.median) {
+            console.error('Invalid chart data:', result);
+            this.displayMessage('No forecast data available', 'warning');
+            return;
+        }
+
+        const traces = [
+            // Validation section: actual values (blue solid)
             {
-                x: result.real_data.x, y: result.real_data.y,
-                type: 'scatter', mode: 'lines', name: 'Real Values',
-                line: { color: 'blue', width: 2 }
+                x: validation.x,
+                y: validation.actual,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Actual Values',
+                line: { color: 'rgb(0, 0, 255)', width: 2 }
             },
+            // Validation section: predicted values (green dashed)
             {
-                x: result.forecast_data.x, y: result.forecast_data.y,
-                type: 'scatter', mode: 'lines', name: 'Forecast',
-                line: { color: 'red', width: 2 }
+                x: validation.x,
+                y: validation.predicted,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Model Prediction (Validation)',
+                line: { color: 'rgb(0, 128, 0)', width: 2, dash: 'dash' }
+            },
+            // Forecast section: lower bound (gray, no visibility)
+            {
+                x: forecast.x,
+                y: forecast.lower,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Confidence Band',
+                line: { color: 'rgba(128, 128, 128, 0)', width: 0 },
+                showlegend: true
+            },
+            // Forecast section: upper bound (gray, fill to lower)
+            {
+                x: forecast.x,
+                y: forecast.upper,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Upper Confidence Bound',
+                fill: 'tonexty',
+                fillcolor: 'rgba(128, 128, 128, 0.3)',
+                line: { color: 'rgba(128, 128, 128, 0)', width: 0 },
+                showlegend: false
+            },
+            // Forecast section: median (red solid)
+            {
+                x: forecast.x,
+                y: forecast.median,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Median Forecast',
+                line: { color: 'rgb(255, 0, 0)', width: 2 }
             }
         ];
+
         const layout = {
-            title: `${result.model_name} Evaluation (MAE: ${result.mae}, R²: ${result.r2})`,
-            xaxis: { title: 'Date & Time', tickformat: '%Y-%m-%d', tickangle: -45, nticks: 12, gridcolor: 'rgba(200,200,200,0.2)' },
-            yaxis: { title: 'System Direction (MW)', gridcolor: 'rgba(200,200,200,0.2)', zerolinecolor: 'rgba(200,200,200,0.5)', zerolinewidth: 1 },
-            legend: { x: 0, y: 1, orientation: 'h' },
-            margin: { l: 60, r: 30, t: 60, b: 80 },
+            title: `${result.model_name} | MAE: ${result.mae} | R²: ${result.r2} | Forecast: ${result.known_price_length}h`,
+            xaxis: {
+                type: 'date',
+                title: 'Date & Time',
+                tickangle: -45
+            },
+            yaxis: {
+                title: 'System Direction (MW)',
+                zerolinecolor: 'rgba(0,0,0,0.2)',
+                zerolinewidth: 1
+            },
             hovermode: 'closest',
             plot_bgcolor: 'rgba(255,255,255,1)',
             paper_bgcolor: 'rgba(255,255,255,1)',
+            legend: { x: 0, y: 1, orientation: 'h' },
+            margin: { l: 60, r: 30, t: 80, b: 80 }
         };
-        Plotly.newPlot('evaluation_chart', plotData, layout, { responsive: true });
 
-        if (result.confusion_matrix) {
-            this.displayConfusionMatrix(result.confusion_matrix);
-        } else {
-            Plotly.purge('confusion_matrix_chart');
-        }
-    },
-
-    displayForecastChart(data) {
-        console.log("displayForecastChart called with data:", data);
-        
-        // Make sure we have valid data to display
-        if (!data.x || !data.x.length || !data.median || !data.median.length) {
-            console.error("Invalid chart data:", data);
-            this.displayMessage("No forecast data available to display", "warning");
-            return;
-        }
-        
-        // Ensure dates are properly formatted
-        const xValues = data.x.map(d => typeof d === 'string' ? new Date(d) : d);
-        
-        const medianTrace = {
-            x: xValues,
-            y: data.median,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'Median Forecast',
-            line: {
-                color: 'rgb(255, 0, 0)',
-                width: 2
-            }
-        };
-        
-        console.log("Median trace:", medianTrace);
-        
-        // Only add confidence interval if we have upper and lower bounds
-        let traces = [medianTrace];
-        
-        if (data.upper && data.upper.length && data.lower && data.lower.length) {
-            // First define the lower trace (no fill)
-            const lowerTrace = {
-                x: xValues,
-                y: data.lower,
-                type: 'scatter',
-                mode: 'lines',
-                name: '95% Confidence Interval',
-                line: {
-                    color: 'rgba(0, 0, 0, 0)',
-                    width: 0
-                }
-            };
-            
-            // Then define the upper trace (with fill to the trace below)
-            const upperTrace = {
-                x: xValues,
-                y: data.upper,
-                type: 'scatter',
-                mode: 'lines',
-                name: '95% Upper Bound',
-                fill: 'tonexty',
-                fillcolor: 'rgba(200, 200, 200, 0.3)',
-                line: {
-                    color: 'rgba(0, 0, 0, 0)',
-                    width: 0
-                },
-                showlegend: false
-            };
-            
-            // The order matters here - lowerTrace must come first
-            traces = [lowerTrace, upperTrace, medianTrace];
-        }
-        
-        const layout = {
-            title: `${data.model_name || 'Model'} Forecast (${data.forecast_period || '24'} hours)`,
-            xaxis: {
-                type: 'date'
-            },
-            yaxis: {
-                title: 'System Direction (MW)'
-            },
-            hovermode: 'closest',
-            plot_bgcolor: 'white',
-            paper_bgcolor: 'white',
-            legend: {
-                orientation: 'h',
-                y: -0.2
-            }
-        };
-        
-        console.log("About to call Plotly.newPlot with:", {
-            chartDiv: 'forecast_chart',
-            traces: traces,
-            layout: layout
-        });
-        
         try {
-            Plotly.newPlot('forecast_chart', traces, layout, {responsive: true});
-            console.log("Chart successfully rendered");
+            Plotly.newPlot('forecast_chart', traces, layout, { responsive: true });
         } catch (error) {
-            console.error("Error rendering chart:", error);
-            this.displayMessage("Error rendering chart: " + error.message, "danger");
+            console.error('Chart rendering error:', error);
+            this.displayMessage('Error rendering chart: ' + error.message, 'danger');
         }
     },
     
@@ -713,27 +561,24 @@ export const forecasting = {
     },
     
     async downloadForecast() {
-        if (!this.uploadedFile) {
+        if (!this.uploadedBlob) {
             this.displayMessage('Please upload an Excel file first', 'warning');
             return;
         }
-        
+
         const button = document.getElementById('download_forecast');
-        
+
         try {
             this.toggleButtonLoading(button, true);
-            
-            // Check if we have the latest forecast result
+
             if (!this.latestForecast) {
                 this.displayMessage('Please run forecast first before downloading', 'warning');
                 return;
             }
-            
-            // Create form data
+
             const formData = new FormData();
-            formData.append('file', this.uploadedFile);
+            formData.append('file', this.uploadedBlob, this.uploadedFileName);
             formData.append('model', this.latestForecast.model);
-            formData.append('forecast_period', this.latestForecast.period);
             formData.append('reuse_results', 'true');
             
             // Send the forecast ID if available

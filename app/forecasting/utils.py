@@ -122,49 +122,41 @@ def fetch_dgp_data(engine):
     return dgp_df
 
 def process_excel_data(excel_data):
-    """Process uploaded Excel data."""
-    # Get current time in Turkey
-    turkey_tz = pytz.timezone("Europe/Istanbul")
-    now_tr = datetime.now(tz=turkey_tz)
-    
-    # Get the current hour in Turkey time (0-23)
-    current_hour = now_tr.hour
-    
-    # Set start time to midnight today (timezone-naive to avoid pandas tz issues)
-    start_time = now_tr.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
-    
-    # Create time range from midnight to the hour BEFORE current hour (exclusive of current hour)
-    # This ensures we don't include incomplete data for the current hour
-    if current_hour == 0:
-        # If it's midnight, we don't have any complete hours today yet
-        print("Current hour is 0 (midnight), no complete hours available for today")
+    """Process uploaded Excel data.
+
+    The daily report covers yesterday midnight → current settled hour.
+    Matches the notebook: filter 'Tüketim KGÜP(MW)' < 0 to get only rows
+    with actual settlement data (automatically excludes future unsettled hours).
+    Time_range starts from yesterday midnight with exactly n periods.
+    """
+    turkey_tz   = pytz.timezone("Europe/Istanbul")
+    now_tr      = datetime.now(tz=turkey_tz)
+    today_start = now_tr.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+    d1_start    = today_start - timedelta(days=1)
+
+    # Select only settled rows — unsettled future hours have Tüketim >= 0 or NaN
+    settled = excel_data[excel_data['Tüketim KGÜP(MW)'] < 0].copy()
+
+    if settled.empty:
+        print("process_excel_data: no settled rows found in Excel")
         return pd.DataFrame(columns=['date', 'system_direction'])
-    
-    time_range = pd.date_range(start=start_time, periods=current_hour, freq='h')
-    
-    # Only use rows in the Excel file up to but NOT including the current hour
-    updated_yal_yat = excel_data[excel_data['Saat'] < current_hour].copy()
-    
-    # Process the data
-    updated_yal_yat['YAT TeslimEdilemeyenMiktar(MWh)'] = updated_yal_yat['YAT TeslimEdilemeyenMiktar(MWh)'].fillna(0)
-    updated_yal_yat['YAL TeslimEdilemeyenMiktar(MWh)'] = updated_yal_yat['YAL TeslimEdilemeyenMiktar(MWh)'].fillna(0)
-    updated_yal_yat['yal'] = updated_yal_yat['YAL0(MWh)'] + updated_yal_yat['YAL1(MWh)'] - updated_yal_yat['YAL TeslimEdilemeyenMiktar(MWh)']
-    updated_yal_yat['yat'] = updated_yal_yat['YAT0(MWh)'] + updated_yal_yat['YAT1(MWh)'] - updated_yal_yat['YAT TeslimEdilemeyenMiktar(MWh)']
-    updated_yal_yat['system_direction'] = updated_yal_yat['yal'] - updated_yal_yat['yat']
-    
-    # Make sure we have exactly the right number of rows
-    if len(updated_yal_yat) > len(time_range):
-        updated_yal_yat = updated_yal_yat.iloc[:len(time_range)]
-    
-    # Assign dates to the rows
-    updated_yal_yat['date'] = time_range[:len(updated_yal_yat)]
-    updated_yal_yat['date'] = pd.to_datetime(updated_yal_yat['date']).dt.tz_localize(None)
-    updated_yal_yat = updated_yal_yat[['date','system_direction']]
-    updated_yal_yat['system_direction'] = updated_yal_yat['system_direction'].fillna(0)
-    
-    print(f"Processed Excel data with {len(updated_yal_yat)} rows, last timestamp: {updated_yal_yat['date'].max()}")
-    
-    return updated_yal_yat
+
+    settled['YAT TeslimEdilemeyenMiktar(MWh)'] = settled['YAT TeslimEdilemeyenMiktar(MWh)'].fillna(0)
+    settled['YAL TeslimEdilemeyenMiktar(MWh)'] = settled['YAL TeslimEdilemeyenMiktar(MWh)'].fillna(0)
+    settled['yal'] = settled['YAL0(MWh)'] + settled['YAL1(MWh)'] - settled['YAL TeslimEdilemeyenMiktar(MWh)']
+    settled['yat'] = settled['YAT0(MWh)'] + settled['YAT1(MWh)'] - settled['YAT TeslimEdilemeyenMiktar(MWh)']
+    settled['system_direction'] = settled['yal'] - settled['yat']
+
+    # Assign timestamps starting from yesterday midnight, one per settled hour
+    n          = len(settled)
+    time_range = pd.date_range(start=d1_start, periods=n, freq='h')
+    settled    = settled.reset_index(drop=True)
+    settled['date'] = pd.to_datetime(time_range).tz_localize(None)
+    settled = settled[['date', 'system_direction']]
+    settled['system_direction'] = settled['system_direction'].fillna(0)
+
+    print(f"Processed Excel data: {n} rows from {d1_start} to {settled['date'].max()}")
+    return settled
 
 def build_chronos_features(engine, excel_data, model_name):
     """Build a fully feature-engineered flat DataFrame for Chronos-2 predict_df.
@@ -226,7 +218,8 @@ def build_chronos_features(engine, excel_data, model_name):
     df['smf_lag24']        = df['smf'].shift(24)
     df['smf_lag168']       = df['smf'].shift(168)
     df['smf_ptf_diff_lag24'] = df['smf_ptf_diff'].shift(24)
-    df.drop(columns=['smf', 'smf_ptf_diff', 'ptf'], inplace=True, errors='ignore')
+    # Keep ptf (used for known_price_length) but drop raw smf and smf_ptf_diff
+    df.drop(columns=['smf', 'smf_ptf_diff'], inplace=True, errors='ignore')
 
     # 9. System direction lags and rolling averages
     df['system_direction_lag1'] = df['system_direction'].shift(1)
@@ -239,8 +232,12 @@ def build_chronos_features(engine, excel_data, model_name):
     # 10. Drop warmup rows needed for smf_lag168
     df = df.iloc[168:].copy()
 
-    # 11. Flatten: reset index, add id column
-    df.reset_index(inplace=True)   # date becomes a column again
+    # 11. Compute known_price_length: future rows where PTF price is available
+    future_mask        = df['system_direction'].isna()
+    known_price_length = int(df[future_mask]['ptf'].notna().sum())
+
+    # 12. Flatten: reset index, add id column
+    df.reset_index(inplace=True)
     df['id'] = 'DF'
 
-    return df
+    return df, known_price_length

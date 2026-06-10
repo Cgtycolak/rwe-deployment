@@ -2107,11 +2107,6 @@
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="evaluation-tab" data-bs-toggle="tab" data-bs-target="#evaluation" type="button" role="tab" aria-controls="evaluation" aria-selected="false">
-                        <i class="fas fa-chart-bar"></i> Evaluation
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
                     <button class="nav-link" id="prediction-tab" data-bs-toggle="tab" data-bs-target="#prediction" type="button" role="tab" aria-controls="prediction" aria-selected="false">
                         <i class="fas fa-chart-line"></i> Prediction
                     </button>
@@ -2144,62 +2139,6 @@
                 </div>
                 
                 <!-- Evaluation Tab -->
-                <div class="tab-pane fade" id="evaluation" role="tabpanel" aria-labelledby="evaluation-tab">
-                    <div class="card mb-4">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">Model Evaluation</h5>
-                            <div>
-                                <div class="input-group">
-                                    <label class="input-group-text" for="eval_model">Model</label>
-                                    <select class="form-select" id="eval_model">
-                                        <option value="Model 1">Long Term — Without Recently Direction</option>
-                                        <option value="Model 2">Short Term — With Recently Direction</option>
-                                    </select>
-                                    <label class="input-group-text" for="eval_forecast_period">Hours</label>
-                                    <input type="number" id="eval_forecast_period" class="form-control" value="168" min="1" max="720">
-                                    <button id="run_evaluation" class="btn btn-primary">
-                                        <span class="button-content">Evaluate</span>
-                                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="card-body">
-                            <div id="evaluation_results" class="mb-4 d-none">
-                                <div class="row mb-4">
-                                    <div class="col-md-6">
-                                        <div class="card">
-                                            <div class="card-header">
-                                                <h6 class="mb-0">Model Performance</h6>
-                                            </div>
-                                            <div class="card-body">
-                                                <table class="table table-sm">
-                                                    <tbody>
-                                                        <tr>
-                                                            <th style="width: 120px;" class="text-dark">Model</th>
-                                                            <td id="eval_model_name" class="text-dark">-</td>
-                                                        </tr>
-                                                        <tr>
-                                                            <th class="text-dark">MAE</th>
-                                                            <td id="eval_mae" class="text-dark">-</td>
-                                                        </tr>
-                                                        <tr>
-                                                            <th class="text-dark">R²</th>
-                                                            <td id="eval_r2" class="text-dark">-</td>
-                                                        </tr>
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div id="evaluation_chart" style="height: 500px;"></div>
-                            <div id="confusion_matrix_chart" style="height: 650px; margin-top: 20px;"></div>
-                        </div>
-                    </div>
-                </div>
-                
                 <!-- Prediction Tab -->
                 <div class="tab-pane fade" id="prediction" role="tabpanel" aria-labelledby="prediction-tab">
                     <div class="card">
@@ -2212,8 +2151,7 @@
                                         <option value="Model 1">Long Term — Without Recently Direction</option>
                                         <option value="Model 2">Short Term — With Recently Direction</option>
                                     </select>
-                                    <label class="input-group-text" for="forecast_period">Hours</label>
-                                    <input type="number" id="forecast_period" class="form-control" value="24" min="1" max="168">
+                                    <span class="input-group-text" id="forecast_period_badge" title="Auto-detected from available PTF price data">Forecast: — h</span>
                                     <button id="run_forecast" class="btn btn-primary">
                                         <span class="button-content">Predict</span>
                                         <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
