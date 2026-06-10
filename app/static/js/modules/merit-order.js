@@ -4,6 +4,9 @@ export const meritOrder = {
     originalAicValues: null,  // Original AIC values from API
     supplyDemandCurves: null, // Supply/demand curves for client-side MCP calc
     baseCapacityDeltas: null, // Base capacity deltas before AIC adjustments
+    splitPoints: { s1: 7, s2: 15 },
+    lastTableData: null,
+    slidersInited: false,
 
     setup(helpers) {
         this.helpers = helpers;
@@ -629,13 +632,89 @@ export const meritOrder = {
         }
     },
 
+    extractHour(dateStr) {
+        if (!dateStr) return 0;
+        const t = dateStr.split(' ')[1] || dateStr.split('T')[1] || '00:00';
+        return parseInt(t.split(':')[0], 10);
+    },
+
+    computeAvgRow(rows, fromHour, toHour) {
+        const subset = rows.filter(r => {
+            const h = this.extractHour(r.date_ref);
+            return h >= fromHour && h <= toHour;
+        });
+        if (!subset.length) return null;
+        const n = subset.length;
+        const avg = col => subset.reduce((s, r) => s + (r[col] ?? 0), 0) / n;
+        return {
+            mcp_ref: avg('mcp_ref'), mcp_merit: avg('mcp_merit'), mcp_pred: avg('mcp_pred'),
+            capacity_delta: avg('capacity_delta'),
+            demand_ref: avg('demand_ref'), demand_pred: avg('demand_pred'), demand_delta: avg('demand_delta'),
+            river_ref: avg('river_ref'), river_pred: avg('river_pred'), river_delta: avg('river_delta'),
+            wind_ref: avg('wind_ref'), wind_pred: avg('wind_pred'), wind_delta: avg('wind_delta'),
+            solar_ref: avg('solar_ref'), solar_pred: avg('solar_pred'), solar_delta: avg('solar_delta'),
+        };
+    },
+
+    buildAvgRow(label, avgData, rowClass) {
+        if (!avgData) return '';
+        const fmt  = v => this.formatNumber(v);
+        const dc   = v => this.getDeltaClass(v);
+        const mcp  = v => (v !== null && v !== undefined) ? Number(v).toFixed(2) : '-';
+        return `<tr class="${rowClass} fw-bold">
+            <td class="text-center" colspan="2" style="font-style:italic">${label}</td>
+            <td class="text-center">${mcp(avgData.mcp_ref)}</td>
+            <td class="text-center">${mcp(avgData.mcp_merit)}</td>
+            <td class="text-center">${mcp(avgData.mcp_pred)}</td>
+            <td class="text-center ${dc(avgData.capacity_delta)}">${fmt(avgData.capacity_delta)}</td>
+            <td class="text-center">${fmt(avgData.demand_ref)}</td>
+            <td class="text-center">${fmt(avgData.demand_pred)}</td>
+            <td class="text-center ${dc(avgData.demand_delta)}">${fmt(avgData.demand_delta)}</td>
+            <td class="text-center">${fmt(avgData.river_ref)}</td>
+            <td class="text-center">${fmt(avgData.river_pred)}</td>
+            <td class="text-center ${dc(avgData.river_delta)}">${fmt(avgData.river_delta)}</td>
+            <td class="text-center">${fmt(avgData.wind_ref)}</td>
+            <td class="text-center">${fmt(avgData.wind_pred)}</td>
+            <td class="text-center ${dc(avgData.wind_delta)}">${fmt(avgData.wind_delta)}</td>
+            <td class="text-center">${fmt(avgData.solar_ref)}</td>
+            <td class="text-center">${fmt(avgData.solar_pred)}</td>
+            <td class="text-center ${dc(avgData.solar_delta)}">${fmt(avgData.solar_delta)}</td>
+        </tr>`;
+    },
+
+    initSliders(container) {
+        const ctrlDiv = document.getElementById('merit_order_slider_controls');
+        if (ctrlDiv) ctrlDiv.classList.remove('d-none');
+        if (this.slidersInited) return;
+        this.slidersInited = true;
+
+        const s1El  = document.getElementById('merit_split1');
+        const s2El  = document.getElementById('merit_split2');
+        const s1Lbl = document.getElementById('merit_split1_label');
+        const s2Lbl = document.getElementById('merit_split2_label');
+
+        const update = () => {
+            let v1 = parseInt(s1El.value, 10);
+            let v2 = parseInt(s2El.value, 10);
+            if (v1 >= v2) { v2 = v1 + 1; s2El.value = v2; }
+            this.splitPoints = { s1: v1, s2: v2 };
+            s1Lbl.textContent = 'h' + String(v1).padStart(2, '0');
+            s2Lbl.textContent = 'h' + String(v2).padStart(2, '0');
+            this.renderResultsTable(this.lastTableData, container);
+        };
+
+        s1El.addEventListener('input', update);
+        s2El.addEventListener('input', update);
+    },
+
     renderResultsTable(data, container) {
         if (!data || !data.rows || data.rows.length === 0) {
             container.innerHTML = '<div class="alert alert-info">No comparison data available for selected dates.</div>';
             return;
         }
 
-        const { rows, summary_row } = data;
+        this.lastTableData = data;
+        const { rows } = data;
 
         // Compute min/max for each MCP column across all data rows (excluding nulls)
         const mcpCols = ['mcp_ref', 'mcp_merit', 'mcp_pred'];
@@ -707,27 +786,16 @@ export const meritOrder = {
             </tr>`;
         });
 
-        if (summary_row) {
-            html += `<tr class="table-warning fw-bold">
-                <td class="text-center" colspan="5">TOTAL</td>
-                <td class="text-center ${this.getDeltaClass(summary_row['capacity_delta'])}">${this.formatNumber(summary_row['capacity_delta'])}</td>
-                <td class="text-center">${this.formatNumber(summary_row.demand_ref)}</td>
-                <td class="text-center">${this.formatNumber(summary_row.demand_pred)}</td>
-                <td class="text-center ${this.getDeltaClass(summary_row.demand_delta)}">${this.formatNumber(summary_row.demand_delta)}</td>
-                <td class="text-center">${this.formatNumber(summary_row.river_ref)}</td>
-                <td class="text-center">${this.formatNumber(summary_row.river_pred)}</td>
-                <td class="text-center ${this.getDeltaClass(summary_row.river_delta)}">${this.formatNumber(summary_row.river_delta)}</td>
-                <td class="text-center">${this.formatNumber(summary_row.wind_ref)}</td>
-                <td class="text-center">${this.formatNumber(summary_row.wind_pred)}</td>
-                <td class="text-center ${this.getDeltaClass(summary_row.wind_delta)}">${this.formatNumber(summary_row.wind_delta)}</td>
-                <td class="text-center">${this.formatNumber(summary_row.solar_ref)}</td>
-                <td class="text-center">${this.formatNumber(summary_row.solar_pred)}</td>
-                <td class="text-center ${this.getDeltaClass(summary_row.solar_delta)}">${this.formatNumber(summary_row.solar_delta)}</td>
-            </tr>`;
-        }
+        const { s1, s2 } = this.splitPoints;
+        const ph = h => 'h' + String(h).padStart(2, '0');
+        html += this.buildAvgRow(`AVG ${ph(0)}–${ph(s1)}`,    this.computeAvgRow(rows, 0, s1),    'table-info');
+        html += this.buildAvgRow(`AVG ${ph(s1+1)}–${ph(s2)}`, this.computeAvgRow(rows, s1+1, s2), 'table-info');
+        html += this.buildAvgRow(`AVG ${ph(s2+1)}–${ph(23)}`, this.computeAvgRow(rows, s2+1, 23), 'table-info');
+        html += this.buildAvgRow('AVG ALL',                          this.computeAvgRow(rows, 0, 23),   'table-warning');
 
         html += `</tbody></table></div>`;
         container.innerHTML = html;
+        this.initSliders(container);
     },
 
     renderFailureTable(data, container) {

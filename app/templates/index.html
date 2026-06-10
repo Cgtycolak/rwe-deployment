@@ -2508,6 +2508,29 @@
                 <div class="card-header">
                     <h5 class="mb-0"><i class="fas fa-table"></i> Generation vs Prediction Comparison</h5>
                 </div>
+                <!-- Band-average sliders — shown after first data load -->
+                <div id="merit_order_slider_controls" class="card-body border-bottom d-none py-2">
+                    <div class="row align-items-center g-2">
+                        <div class="col-auto"><small class="fw-bold text-muted">Band splits</small></div>
+                        <div class="col-auto">
+                            <small class="text-muted">Band 1: h00 –</small>
+                            <strong id="merit_split1_label">h07</strong>
+                        </div>
+                        <div class="col" style="max-width:180px">
+                            <input type="range" class="form-range" id="merit_split1" min="0" max="22" value="7">
+                        </div>
+                        <div class="col-auto">
+                            <small class="text-muted">| Band 2: –</small>
+                            <strong id="merit_split2_label">h15</strong>
+                        </div>
+                        <div class="col" style="max-width:180px">
+                            <input type="range" class="form-range" id="merit_split2" min="1" max="23" value="15">
+                        </div>
+                        <div class="col-auto">
+                            <small class="text-muted">| Band 3: – h23</small>
+                        </div>
+                    </div>
+                </div>
                 <div class="card-body p-0">
                     <div id="merit_order_results">
                         <div class="text-center p-4 text-muted">
