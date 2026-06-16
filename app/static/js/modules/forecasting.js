@@ -139,11 +139,22 @@ export const forecasting = {
             });
         });
         
-        // Restore cached prediction when model dropdown changes (no re-run needed)
-        const forecastModelSelect = document.getElementById('forecast_model');
+        // Show/hide lagged_hour selector based on selected model
+        const forecastModelSelect   = document.getElementById('forecast_model');
+        const lagLabel  = document.getElementById('lagged_hour_label');
+        const lagSelect = document.getElementById('lagged_hour_selection');
+
+        const updateLagVisibility = (model) => {
+            const show = model === 'Model 2';
+            lagLabel?.classList.toggle('d-none', !show);
+            lagSelect?.classList.toggle('d-none', !show);
+        };
+        updateLagVisibility(forecastModelSelect?.value || 'Model 1');
+
         if (forecastModelSelect) {
             forecastModelSelect.addEventListener('change', () => {
                 const m = forecastModelSelect.value;
+                updateLagVisibility(m);
                 if (this.predictionCache[m]) {
                     this.renderPredictionResult(this.predictionCache[m]);
                     this.displayMessage('Showing cached result for this model', 'info');
@@ -363,9 +374,11 @@ export const forecasting = {
         try {
             this.toggleButtonLoading(button, true);
 
+            const laggedHour = document.getElementById('lagged_hour_selection')?.value || '1';
             const formData = new FormData();
             formData.append('file', this.uploadedBlob, this.uploadedFileName);
             formData.append('model', model);
+            formData.append('lagged_hour_selection', laggedHour);
 
             const predictResponse = await fetch('/api/forecasting/predict', {
                 method: 'POST',
@@ -483,12 +496,23 @@ export const forecasting = {
             }
         ];
 
+        // Default view: last 48h of validation + full forecast, range slider for full history
+        const forecastStart = forecast.x.length ? new Date(forecast.x[0]) : null;
+        const forecastEnd   = forecast.x.length ? new Date(forecast.x[forecast.x.length - 1]) : null;
+        const zoomStart     = forecastStart
+            ? new Date(forecastStart.getTime() - 48 * 60 * 60 * 1000)
+            : undefined;
+
         const layout = {
             title: `${result.model_name} | MAE: ${result.mae} | R²: ${result.r2} | Forecast: ${result.known_price_length}h`,
             xaxis: {
                 type: 'date',
                 title: 'Date & Time',
-                tickangle: -45
+                tickangle: -45,
+                range: zoomStart && forecastEnd
+                    ? [zoomStart.toISOString(), forecastEnd.toISOString()]
+                    : undefined,
+                rangeslider: { visible: true, thickness: 0.08 },
             },
             yaxis: {
                 title: 'System Direction (MW)',
@@ -499,7 +523,7 @@ export const forecasting = {
             plot_bgcolor: 'rgba(255,255,255,1)',
             paper_bgcolor: 'rgba(255,255,255,1)',
             legend: { x: 0, y: 1, orientation: 'h' },
-            margin: { l: 60, r: 30, t: 80, b: 80 }
+            margin: { l: 60, r: 30, t: 80, b: 60 }
         };
 
         try {

@@ -158,7 +158,7 @@ def process_excel_data(excel_data):
     print(f"Processed Excel data: {n} rows from {d1_start} to {settled['date'].max()}")
     return settled
 
-def build_chronos_features(engine, excel_data, model_name):
+def build_chronos_features(engine, excel_data, model_name, lagged_hour_selection=1):
     """Build a fully feature-engineered flat DataFrame for Chronos-2 predict_df.
 
     Returns a single DataFrame with:
@@ -222,12 +222,14 @@ def build_chronos_features(engine, excel_data, model_name):
     df.drop(columns=['smf', 'smf_ptf_diff'], inplace=True, errors='ignore')
 
     # 9. System direction lags and rolling averages
-    df['system_direction_lag1'] = df['system_direction'].shift(1)
-    df['system_direction_ma3']  = df['system_direction'].rolling(3).mean().shift(1)
-    df['system_direction_ma6']  = df['system_direction'].rolling(6).mean().shift(1)
-    df['system_direction_ma12'] = df['system_direction'].rolling(12).mean().shift(1)
-    if model_name == "Model 2":
-        df['system_direction_ma2'] = df['system_direction'].rolling(2).mean().shift(1)
+    # Model 1: always shift(1), no lag/MA in covariates (they are dropped before predict_df)
+    # Model 2: shift by lagged_hour_selection (user-selectable 1-5), lag/MA KEPT in covariates
+    lag = lagged_hour_selection if model_name == "Model 2" else 1
+    df[f'system_direction_lag{lag}'] = df['system_direction'].shift(lag)
+    df['system_direction_ma2']  = df['system_direction'].rolling(2).mean().shift(lag)
+    df['system_direction_ma3']  = df['system_direction'].rolling(3).mean().shift(lag)
+    df['system_direction_ma6']  = df['system_direction'].rolling(6).mean().shift(lag)
+    df['system_direction_ma12'] = df['system_direction'].rolling(12).mean().shift(lag)
 
     # 10. Drop warmup rows needed for smf_lag168
     df = df.iloc[168:].copy()

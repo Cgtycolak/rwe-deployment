@@ -45,13 +45,23 @@ def _get_modal_url():
 
 EVAL_PERIOD = 168  # validation window shown before the forecast (1 week)
 
-def _covariate_drop_cols(model_name):
-    """Columns to remove from covariates (match notebook behavior)."""
-    cols = ['system_direction', 'system_direction_lag1',
-            'system_direction_ma3', 'system_direction_ma6', 'system_direction_ma12']
+def _covariate_drop_cols(model_name, lagged_hour_selection=1):
+    """Columns to remove from covariates (match notebook behavior).
+
+    Model 1: lag/MA cols are NOT useful covariates — drop them all.
+    Model 2: lag/MA cols ARE covariates (they carry recent direction info) — only drop system_direction.
+    """
     if model_name == 'Model 2':
-        cols.append('system_direction_ma2')
-    return cols
+        return ['system_direction']
+    # Model 1
+    return [
+        'system_direction',
+        f'system_direction_lag{lagged_hour_selection}',
+        'system_direction_ma2',
+        'system_direction_ma3',
+        'system_direction_ma6',
+        'system_direction_ma12',
+    ]
 
 
 def _build_system_direction_series(engine, excel_data):
@@ -184,13 +194,13 @@ def evaluate():
         engine  = get_database_connection()
         ctx_len = CONTEXT_LENGTHS.get(model_name, 168)
 
-        full_df, _ = build_chronos_features(engine, excel_data, model_name)
+        full_df, _ = build_chronos_features(engine, excel_data, model_name, lagged_hour_selection=1)
         known      = full_df[full_df['system_direction'].notna()].copy()
 
         if len(known) < forecast_period + ctx_len:
             return jsonify({'error': 'Not enough historical data for evaluation'}), 400
 
-        drop_cols  = _covariate_drop_cols(model_name)
+        drop_cols  = _covariate_drop_cols(model_name, lagged_hour_selection=1)
         test_rows  = known.tail(forecast_period)
         ctx_end    = len(known) - forecast_period
         train_df   = known.iloc[max(0, ctx_end - ctx_len):ctx_end].copy()
@@ -238,8 +248,10 @@ def predict():
         if 'file' not in request.files or request.files['file'].filename == '':
             return jsonify({'error': 'No file uploaded'}), 400
 
-        excel_data = pd.read_excel(request.files['file'], header=2)
-        model_name = request.form.get('model', 'Model 1')
+        excel_data            = pd.read_excel(request.files['file'], header=2)
+        model_name            = request.form.get('model', 'Model 1')
+        lagged_hour_selection = int(request.form.get('lagged_hour_selection', 1))
+        lagged_hour_selection = max(1, min(5, lagged_hour_selection))  # clamp 1–5
 
         if model_name not in VALID_MODELS:
             return jsonify({'error': f'Unknown model: {model_name}'}), 400
@@ -247,7 +259,9 @@ def predict():
         engine  = get_database_connection()
         ctx_len = CONTEXT_LENGTHS.get(model_name, 168)
 
-        full_df, known_price_length = build_chronos_features(engine, excel_data, model_name)
+        full_df, known_price_length = build_chronos_features(
+            engine, excel_data, model_name, lagged_hour_selection
+        )
         known  = full_df[full_df['system_direction'].notna()]
         future = full_df[full_df['system_direction'].isna()]
 
@@ -256,7 +270,7 @@ def predict():
         if known_price_length == 0:
             return jsonify({'error': 'No future PTF price data available in DB'}), 400
 
-        drop_cols = _covariate_drop_cols(model_name)
+        drop_cols = _covariate_drop_cols(model_name, lagged_hour_selection)
 
         # Validation slice (last EVAL_PERIOD known rows)
         eval_rows = known.tail(EVAL_PERIOD).copy()

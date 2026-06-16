@@ -2123,7 +2123,7 @@
                             <div>
                                 <div class="input-group">
                                     <span class="input-group-text">Hours</span>
-                                    <input type="number" id="recent_hours" class="form-control" value="24" min="1" max="168">
+                                    <input type="number" id="recent_hours" class="form-control" value="48" min="1" max="168">
                                     <button id="load_recent_data" class="btn btn-primary">
                                         <span class="button-content">Load Data</span>
                                         <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
@@ -2150,6 +2150,15 @@
                                     <select class="form-select" id="forecast_model">
                                         <option value="Model 1">Long Term — Without Recently Direction</option>
                                         <option value="Model 2">Short Term — With Recently Direction</option>
+                                    </select>
+                                    <!-- Lagged hour selector: only relevant for Short Term (Model 2) -->
+                                    <span class="input-group-text d-none" id="lagged_hour_label" title="Hours of recent system direction used as input for Short Term model">Lag</span>
+                                    <select class="form-select d-none" id="lagged_hour_selection" style="max-width:70px" title="Lagged hours of recent system direction (1 = most recent)">
+                                        <option value="1">1</option>
+                                        <option value="2">2</option>
+                                        <option value="3">3</option>
+                                        <option value="4">4</option>
+                                        <option value="5">5</option>
                                     </select>
                                     <span class="input-group-text" id="forecast_period_badge" title="Auto-detected from available PTF price data">Forecast: — h</span>
                                     <button id="run_forecast" class="btn btn-primary">
