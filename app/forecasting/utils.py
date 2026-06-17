@@ -69,38 +69,26 @@ def fetch_generation_data(engine):
     JOIN meteologica.dam_hydro dam on u."From-yyyy-mm-dd-hh-mm" = dam."From-yyyy-mm-dd-hh-mm"
     JOIN meteologica.runofriver_hydro r on u."From-yyyy-mm-dd-hh-mm" = r."From-yyyy-mm-dd-hh-mm"
     JOIN meteologica.demand mdem on u."From-yyyy-mm-dd-hh-mm" = mdem."From-yyyy-mm-dd-hh-mm"
-    WHERE u."From-yyyy-mm-dd-hh-mm" > '2025'
+    ORDER BY 1
     """
 
     generation_df = fetch_with_retry(query, engine)
     generation_df['date'] = pd.to_datetime(generation_df['date']).dt.tz_localize(None)
     return generation_df
 
-def fetch_smf_data(engine):
-    """Fetch System Marginal Price (SMF) data from the database with retry logic."""
-    query = """
-    SELECT date, "systemMarginalPrice" FROM epias.smf
-    WHERE date >= '2025-01-01'
-    """
-
-    smf_df = fetch_with_retry(query, engine)
-    smf_df['date'] = pd.to_datetime(smf_df['date']).dt.tz_localize(None)
-    return smf_df
-
 def fetch_smf_ptf_data(engine):
     """Fetch combined SMF + PTF data; PTF has future day-ahead prices, SMF is real-time."""
     query = """
-    SELECT ptf.date,
-           smf."systemMarginalPrice" AS smf,
-           ptf.price AS ptf
-    FROM epias.ptf
-    LEFT JOIN epias.smf ON ptf.date = smf.date
-    WHERE ptf.date >= '2025-01-01'
+    SELECT ptf.date, smf."systemMarginalPrice" AS smf,
+    ptf.price AS ptf,
+    smf."systemMarginalPrice" - ptf.price AS smf_ptf_diff
+    FROM epias.smf
+    RIGHT JOIN epias.ptf ON smf.date = ptf.date
+    ORDER BY 1
     """
 
     df = fetch_with_retry(query, engine)
     df['date'] = pd.to_datetime(df['date']).dt.tz_localize(None)
-    df['smf_ptf_diff'] = df['smf'] - df['ptf']
     return df
 
 def fetch_ramadan_data(engine):
@@ -112,9 +100,14 @@ def fetch_ramadan_data(engine):
 
 def fetch_dgp_data(engine):
     """Fetch DGP data from the database with retry logic."""
-    query = """
+    turkey_tz   = pytz.timezone("Europe/Istanbul")
+    now_tr      = datetime.now(tz=turkey_tz)
+    today_start = now_tr.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+    d1_start    = today_start - timedelta(days=1)
+    
+    query = f"""
     SELECT date, net AS system_direction FROM epias.yal
-    WHERE date >= '2025-01-01'
+    WHERE date < '{d1_start.isoformat().split('T')[0]}'
     """
     
     dgp_df = fetch_with_retry(query, engine)
@@ -222,21 +215,21 @@ def build_chronos_features(engine, excel_data, model_name, lagged_hour_selection
     df.drop(columns=['smf', 'smf_ptf_diff'], inplace=True, errors='ignore')
 
     # 9. System direction lags and rolling averages
-    # Model 1: always shift(1), no lag/MA in covariates (they are dropped before predict_df)
-    # Model 2: shift by lagged_hour_selection (user-selectable 1-5), lag/MA KEPT in covariates
-    lag = lagged_hour_selection if model_name == "Model 2" else 1
-    df[f'system_direction_lag{lag}'] = df['system_direction'].shift(lag)
-    df['system_direction_ma2']  = df['system_direction'].rolling(2).mean().shift(lag)
-    df['system_direction_ma3']  = df['system_direction'].rolling(3).mean().shift(lag)
-    df['system_direction_ma6']  = df['system_direction'].rolling(6).mean().shift(lag)
-    df['system_direction_ma12'] = df['system_direction'].rolling(12).mean().shift(lag)
+    lagged_hour_selection = 1
+    df['system_direction_lag1'] = df['system_direction'].shift(lagged_hour_selection)
+    df['system_direction_ma3']  = df['system_direction'].rolling(3).mean().shift(lagged_hour_selection)
+    df['system_direction_ma6']  = df['system_direction'].rolling(6).mean().shift(lagged_hour_selection)
+    df['system_direction_ma12'] = df['system_direction'].rolling(12).mean().shift(lagged_hour_selection)
+
+    if model_name == "Model 1":
+        df.drop(columns=['system_direction_lag1', 'system_direction_ma3', 'system_direction_ma6', 'system_direction_ma12'])
 
     # 10. Drop warmup rows needed for smf_lag168
     df = df.iloc[168:].copy()
 
     # 11. Compute known_price_length: future rows where PTF price is available
-    future_mask        = df['system_direction'].isna()
-    known_price_length = int(df[future_mask]['ptf'].notna().sum())
+    test_df = df[-df['system_direction'].isnull().sum():]
+    known_price_length = min(len(test_df[test_df['ptf'].notnull()]), len(test_df[test_df['smf_lag24'].notnull()]))
 
     # 12. Flatten: reset index, add id column
     df.reset_index(inplace=True)
