@@ -84,8 +84,18 @@ def _build_system_direction_series(engine, excel_data):
     return merged
 
 
+_ALL_QUANTILES = [round(q, 2) for q in np.arange(0.05, 1.0, 0.05).tolist()]
+
+
+def _find_q_key(quantiles_dict, target_q):
+    """Find the dict key closest to target_q (handles float formatting differences)."""
+    keys_as_float = {float(k): k for k in quantiles_dict}
+    nearest = min(keys_as_float.keys(), key=lambda x: abs(x - target_q))
+    return keys_as_float[nearest]
+
+
 def _call_modal(train_df, cov_df, prediction_length, model_name):
-    """POST feature-engineered DataFrames to Modal endpoint, return {dates, lower, median, upper}."""
+    """POST feature-engineered DataFrames to Modal endpoint, return {dates, quantiles}."""
     import json, math
     url = _get_modal_url()
 
@@ -113,7 +123,7 @@ def _call_modal(train_df, cov_df, prediction_length, model_name):
         "train":             df_to_records(train_df),
         "covariates":        df_to_records(cov_df),
         "prediction_length": int(prediction_length),
-        "quantile_levels":   [0.1, 0.5, 0.9],
+        "quantile_levels":   _ALL_QUANTILES,
         "model":             model_name,
     }
 
@@ -285,23 +295,42 @@ def predict():
         total_length   = EVAL_PERIOD + known_price_length
         chronos_result = _call_modal(train_df, cov_df, total_length, model_name)
 
-        # Split model output into validation vs forecast sections
-        val_predicted = chronos_result['median'][:EVAL_PERIOD]
-        future_median = chronos_result['median'][EVAL_PERIOD:]
-        future_lower  = chronos_result['lower'][EVAL_PERIOD:]
-        future_upper  = chronos_result['upper'][EVAL_PERIOD:]
-        future_dates  = chronos_result['dates'][EVAL_PERIOD:]
+        quantiles_dict = chronos_result['quantiles']  # {q_str: [values]}
+        all_dates      = chronos_result['dates']
 
         val_dates  = [d.strftime('%Y-%m-%d %H:%M:%S') for d in pd.to_datetime(eval_rows['date'])]
         val_actual = eval_rows['system_direction'].tolist()
-
-        # MAE / R² on validation section
         a = np.array(val_actual)
-        p = np.array(val_predicted)
-        mae     = round(float(np.mean(np.abs(a - p))), 2)
-        ss_res  = np.sum((a - p) ** 2)
-        ss_tot  = np.sum((a - np.mean(a)) ** 2)
-        r2      = round(float(1 - ss_res / ss_tot) if ss_tot > 0 else 0, 2)
+
+        # Find best quantile by RMSE on the validation portion (notebook: best_q)
+        best_q_key  = None
+        best_rmse   = float('inf')
+        for q_key, vals in quantiles_dict.items():
+            p = np.array(vals[:EVAL_PERIOD])
+            rmse = float(np.sqrt(np.mean((a - p) ** 2)))
+            if rmse < best_rmse:
+                best_rmse = rmse
+                best_q_key = q_key
+
+        best_q     = float(best_q_key)
+        q_low_val  = round(max(0.05, best_q - 0.25), 2)
+        q_high_val = round(min(0.95, best_q + 0.25), 2)
+
+        q_low_key  = _find_q_key(quantiles_dict, q_low_val)
+        q_high_key = _find_q_key(quantiles_dict, q_high_val)
+
+        val_predicted = quantiles_dict[best_q_key][:EVAL_PERIOD]
+        future_median = quantiles_dict[best_q_key][EVAL_PERIOD:]
+        future_lower  = quantiles_dict[q_low_key][EVAL_PERIOD:]
+        future_upper  = quantiles_dict[q_high_key][EVAL_PERIOD:]
+        future_dates  = all_dates[EVAL_PERIOD:]
+
+        # MAE / R² on validation section using best_q
+        p      = np.array(val_predicted)
+        mae    = round(float(np.mean(np.abs(a - p))), 2)
+        ss_res = np.sum((a - p) ** 2)
+        ss_tot = np.sum((a - np.mean(a)) ** 2)
+        r2     = round(float(1 - ss_res / ss_tot) if ss_tot > 0 else 0, 2)
 
         # Confusion matrix on validation section
         confusion_data = None
@@ -312,10 +341,10 @@ def predict():
 
         # Excel download DataFrame (forecast only)
         forecast_df = pd.DataFrame({
-            'date':                 future_dates,
-            'system_direction_0.1': future_lower,
-            'system_direction_0.5': future_median,
-            'system_direction_0.9': future_upper,
+            'date':                          future_dates,
+            f'system_direction_{q_low_val}': future_lower,
+            f'system_direction_{best_q}':    future_median,
+            f'system_direction_{q_high_val}': future_upper,
         })
 
         forecast_id = str(uuid.uuid4())
@@ -331,6 +360,7 @@ def predict():
             'success':            True,
             'model_name':         MODEL_DISPLAY_NAMES.get(model_name, model_name),
             'known_price_length': known_price_length,
+            'best_quantile':      best_q,
             'mae': mae, 'r2': r2,
             'validation': {'x': val_dates, 'actual': val_actual, 'predicted': val_predicted},
             'forecast':   {'x': future_dates, 'median': future_median,

@@ -504,7 +504,7 @@ export const forecasting = {
             : undefined;
 
         const layout = {
-            title: `${result.model_name} | MAE: ${result.mae} | R²: ${result.r2} | Forecast: ${result.known_price_length}h`,
+            title: `${result.model_name} | MAE: ${result.mae} | R²: ${result.r2} | Best Q: ${result.best_quantile ?? '-'} | Forecast: ${result.known_price_length}h`,
             xaxis: {
                 type: 'date',
                 title: 'Date & Time',

@@ -78,13 +78,9 @@ class ChronosForecaster:
             quantile_levels=quantile_levels,
         )
 
-        q_low  = str(quantile_levels[0])
-        q_mid  = str(quantile_levels[1])
-        q_high = str(quantile_levels[2])
-
+        # Return all quantile columns so caller can select best_q dynamically
+        q_cols = [c for c in pred_df.columns if c not in ('id', 'date', 'target_name', 'predictions')]
         return {
-            "dates":  pred_df['date'].astype(str).tolist(),
-            "lower":  pred_df[q_low].tolist(),
-            "median": pred_df[q_mid].tolist(),
-            "upper":  pred_df[q_high].tolist(),
+            "dates":     pred_df['date'].astype(str).tolist(),
+            "quantiles": {col: pred_df[col].tolist() for col in q_cols},
         }
