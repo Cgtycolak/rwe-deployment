@@ -222,7 +222,7 @@ def build_chronos_features(engine, excel_data, model_name, lagged_hour_selection
     df['system_direction_ma12'] = df['system_direction'].rolling(12).mean().shift(lagged_hour_selection)
 
     if model_name == "Model 1":
-        df.drop(columns=['system_direction_lag1', 'system_direction_ma3', 'system_direction_ma6', 'system_direction_ma12'])
+        df.drop(columns=['system_direction_lag1', 'system_direction_ma3', 'system_direction_ma6', 'system_direction_ma12'], inplace=True, errors='ignore')
 
     # 10. Drop warmup rows needed for smf_lag168
     df = df.iloc[168:].copy()

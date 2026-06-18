@@ -287,7 +287,10 @@ export const forecasting = {
         const layout = {
             title: 'Recent System Direction',
             yaxis: {
-                title: 'System Direction (MW)'
+                title: 'System Direction (MW)',
+                zeroline: true,
+                zerolinecolor: 'black',
+                zerolinewidth: 2     
             },
             hovermode: 'closest',
             plot_bgcolor: 'white',
@@ -516,8 +519,9 @@ export const forecasting = {
             },
             yaxis: {
                 title: 'System Direction (MW)',
-                zerolinecolor: 'rgba(0,0,0,0.2)',
-                zerolinewidth: 1
+                zeroline: true,
+                zerolinecolor: 'black',
+                zerolinewidth: 2
             },
             hovermode: 'closest',
             plot_bgcolor: 'rgba(255,255,255,1)',

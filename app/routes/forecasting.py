@@ -219,7 +219,8 @@ def evaluate():
         chronos_result = _call_modal(train_df, cov_df, forecast_period, model_name)
 
         actual_vals    = test_rows['system_direction'].values
-        predicted_vals = np.array(chronos_result['median'])[:len(actual_vals)]
+        q50_key        = _find_q_key(chronos_result['quantiles'], 0.5)
+        predicted_vals = np.array(chronos_result['quantiles'][q50_key])[:len(actual_vals)]
 
         mae_score = float(np.round(np.mean(np.abs(actual_vals - predicted_vals)), 2))
         ss_res    = np.sum((actual_vals - predicted_vals) ** 2)
