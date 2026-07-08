@@ -295,6 +295,15 @@ export const ligniteHeatmap = {
             
             const element = document.getElementById(elementId);
 
+            if (version === 'date_comparison') {
+                const netCol = data.values.map(row => row.reduce((sum, v) => sum + v, 0));
+                data = {
+                    values: data.values.map((row, i) => [...row, netCol[i]]),
+                    hours: data.hours,
+                    plants: [...data.plants, 'NET']
+                };
+            }
+
             // Find min and max for color scaling
             const allValues = data.values.flat();
             const maxValue = Math.max(...allValues);
@@ -322,6 +331,21 @@ export const ligniteHeatmap = {
                 `Lignite Hourly Generation Difference MWh - ${date} (First Version)` :
                 `Lignite Hourly Generation MWh - ${date} (${version === 'first' ? 'First Version' : version === 'current' ? 'Final Version' : 'Realtime'})`;
 
+            const netIdx = data.plants.length - 1;
+            const netShapes = (version === 'date_comparison') ? data.values.map((row, i) => ({
+                type: 'rect',
+                xref: 'x',
+                yref: 'y',
+                x0: netIdx - 0.5,
+                x1: netIdx + 0.5,
+                y0: i - 0.5,
+                y1: i + 0.5,
+                fillcolor: row[netIdx] >= 0 ? '#4caf50' : '#f44336',
+                opacity: 1,
+                layer: 'above',
+                line: { width: 0 }
+            })) : [];
+
             const layout = {
                 title: {
                     text: title,
@@ -348,7 +372,8 @@ export const ligniteHeatmap = {
                 height: 1200,
                 plot_bgcolor: 'white',
                 paper_bgcolor: 'white',
-                annotations: data.values.map((row, i) => 
+                shapes: netShapes,
+                annotations: data.values.map((row, i) =>
                     row.map((val, j) => ({
                         text: Math.round(val).toString(),
                         x: j,
@@ -358,7 +383,7 @@ export const ligniteHeatmap = {
                         showarrow: false,
                         font: {
                             size: 14,
-                            color: getTextColor(val)
+                            color: (version === 'date_comparison' && j === netIdx) ? 'white' : getTextColor(val)
                         }
                     }))
                 ).flat()

@@ -283,9 +283,15 @@ export const hydroHeatmap = {
                          'hydro_heatmap_difference';
         const element = document.getElementById(elementId);
 
-        const values = data.values;
+        let values = data.values;
         const hours = data.hours;
-        const plants = data.plants;
+        let plants = data.plants;
+
+        if (version === 'date_comparison') {
+            const netCol = values.map(row => row.reduce((sum, v) => sum + v, 0));
+            values = values.map((row, i) => [...row, netCol[i]]);
+            plants = [...plants, 'NET'];
+        }
 
         // Find min and max for color scaling
         const allValues = values.flat();
@@ -314,6 +320,21 @@ export const hydroHeatmap = {
             `Hydro Hourly Generation Difference MWh - ${date} (First Version)` : // NEW: Date comparison title
             `Hourly Generation MWh - ${date} (${version === 'first' ? 'First Version' : version === 'current' ? 'Final Version' : 'Realtime'})`;
 
+        const netIdx = plants.length - 1;
+        const netShapes = (version === 'date_comparison') ? values.map((row, i) => ({
+            type: 'rect',
+            xref: 'x',
+            yref: 'y',
+            x0: netIdx - 0.5,
+            x1: netIdx + 0.5,
+            y0: i - 0.5,
+            y1: i + 0.5,
+            fillcolor: row[netIdx] >= 0 ? '#4caf50' : '#f44336',
+            opacity: 1,
+            layer: 'above',
+            line: { width: 0 }
+        })) : [];
+
         const layout = {
             title: {
                 text: title,
@@ -340,7 +361,8 @@ export const hydroHeatmap = {
             height: 1000,
             plot_bgcolor: 'white',
             paper_bgcolor: 'white',
-            annotations: values.map((row, i) => 
+            shapes: netShapes,
+            annotations: values.map((row, i) =>
                 row.map((val, j) => ({
                     text: Math.round(val).toString(),
                     x: j,
@@ -350,7 +372,7 @@ export const hydroHeatmap = {
                     showarrow: false,
                     font: {
                         size: 14,
-                        color: getTextColor(val)
+                        color: (version === 'date_comparison' && j === netIdx) ? 'white' : getTextColor(val)
                     }
                 }))
             ).flat()
