@@ -164,9 +164,10 @@ def init_scheduler(app):
         name='Update heatmap data daily at 16:05',
         args=[app],
         replace_existing=True,
+        max_instances=1,
         misfire_grace_time=900  # 15 minutes grace time
     )
-    
+
     # Schedule retry update task for data that might not be available at 16:05
     daily_retry = CronTrigger(hour=16, minute=45, timezone=tz)
     scheduler.add_job(
@@ -176,9 +177,10 @@ def init_scheduler(app):
         name='Retry heatmap data update at 16:45',
         args=[app],
         replace_existing=True,
+        max_instances=1,
         misfire_grace_time=900  # 15 minutes grace time
     )
-    
+
     # Schedule the hourly update task (runs every hour)
     hourly_run = CronTrigger(minute=30, timezone=tz)  # Run at 30 minutes past every hour
     scheduler.add_job(
@@ -188,13 +190,14 @@ def init_scheduler(app):
         name='Update current version data hourly at :30',
         args=[app],
         replace_existing=True,
+        max_instances=1,
         misfire_grace_time=300  # 5 minutes grace time
     )
-    
+
     # Schedule realtime update task (runs twice a day)
     realtime_morning = CronTrigger(hour=5, minute=0, timezone=tz)  # Run at 05:00
     realtime_noon = CronTrigger(hour=12, minute=0, timezone=tz)    # Run at 12:00
-    
+
     # Add morning job
     scheduler.add_job(
         update_realtime_data,
@@ -203,9 +206,10 @@ def init_scheduler(app):
         name='Update realtime data at 05:00',
         args=[app],
         replace_existing=True,
+        max_instances=1,
         misfire_grace_time=900  # 15 minutes grace time
     )
-    
+
     # Add noon job
     scheduler.add_job(
         update_realtime_data,
@@ -214,9 +218,10 @@ def init_scheduler(app):
         name='Update realtime data at 12:00',
         args=[app],
         replace_existing=True,
+        max_instances=1,
         misfire_grace_time=900  # 15 minutes grace time
     )
-    
+
     # Schedule daily email report (runs at 16:10 every day)
     email_report = CronTrigger(hour=16, minute=10, timezone=tz)
     scheduler.add_job(
@@ -226,6 +231,8 @@ def init_scheduler(app):
         name='Send daily heatmap email at 16:10',
         args=[app],
         replace_existing=True,
+        max_instances=1,
+        coalesce=True,          # collapse multiple missed fires into one run
         misfire_grace_time=900  # 15 minutes grace time
     )
 

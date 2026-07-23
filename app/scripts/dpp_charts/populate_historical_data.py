@@ -29,7 +29,9 @@ TYPE_MAPPINGS = {
 
 def get_local_session():
     """Create a session for the local database"""
-    local_db_url = "postgresql://rwe_user:123Cagatay123@localhost:5432/rwe_data"
+    local_db_url = os.getenv('LOCAL_DATABASE_URL')
+    if not local_db_url:
+        raise RuntimeError("LOCAL_DATABASE_URL environment variable must be set")
     engine = create_engine(local_db_url)
     Session = sessionmaker(bind=engine)
     return Session()
@@ -99,7 +101,10 @@ def populate_heatmap_data(plant_type: str, start_date: datetime.date, end_date: 
                         delete_query.delete(synchronize_session='fetch')
                         db.session.commit()
 
-                        # Delete from local database
+                        # Delete from local database.
+                        # NOTE: these are two independent commits with no 2PC. If local_session.commit()
+                        # fails after db.session.commit() succeeds, the deployed DB has new data but local
+                        # doesn't. Re-run the script to re-sync (DELETE+INSERT is idempotent).
                         if local_db:
                             delete_query_local = local_session.query(model).filter(
                                 model.date.between(chunk_start, chunk_end),

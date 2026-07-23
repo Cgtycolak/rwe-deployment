@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from flask import abort, app, Blueprint, session, render_template, redirect, url_for, Response, request, jsonify, Request, Response, current_app, flash, send_file
 from requests import post, Session
-from .functions import get_tgt_token, asutc, invalidates_or_none, fetch_plant_data
+from .functions import get_tgt_token, asutc, invalidates_or_none, fetch_plant_data, login_required
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 import pandas as pd
@@ -27,8 +27,29 @@ import zipfile
 import tempfile
 from dotenv import load_dotenv
 import psycopg2
-from sqlalchemy import create_engine
-from functools import wraps
+from sqlalchemy import create_engine, pool
+from sqlalchemy.exc import IntegrityError
+
+_supabase_engine = None
+
+def _get_supabase_engine():
+    global _supabase_engine
+    if _supabase_engine is None:
+        sb_user = os.getenv("SUPABASE_USER")
+        sb_password = os.getenv("SUPABASE_PASSWORD")
+        if not sb_user or not sb_password:
+            raise RuntimeError("SUPABASE_USER / SUPABASE_PASSWORD not set")
+        _supabase_engine = create_engine(
+            f"postgresql+psycopg2://{sb_user}:{sb_password}"
+            "@aws-0-us-east-2.pooler.supabase.com:5432/postgres",
+            poolclass=pool.QueuePool,
+            pool_size=3,
+            max_overflow=5,
+            pool_timeout=30,
+            pool_recycle=1800,
+            pool_pre_ping=True,
+        )
+    return _supabase_engine
 
 # Conditionally set pandas option if it exists (available in pandas 2.1.0+)
 try:
@@ -39,17 +60,12 @@ except pd._config.config.OptionError:
 
 main = Blueprint('main', __name__)
 
-# Authentication decorator
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get('authenticated'):
-            # Return JSON 401 for API/XHR requests instead of HTML redirect
-            if request.path.startswith('/api/') or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({'error': 'Not authenticated'}), 401
-            return redirect(url_for('main.login'))
-        return f(*args, **kwargs)
-    return decorated_function
+
+
+def _err(route_name, e):
+    current_app.logger.error(f"Error in {route_name}: {e}", exc_info=True)
+    return jsonify({'code': 500, 'error': 'Internal server error'}), 500
+
 
 @main.route('/login', methods=['GET', 'POST'])
 def login():
@@ -57,16 +73,20 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
         
-        # Get credentials from config
-        correct_username = current_app.config.get('DASHBOARD_USERNAME', 'admin')
-        correct_password = current_app.config.get('DASHBOARD_PASSWORD', 'admin')
+        # Get credentials from config (guaranteed non-None by factory startup assertion)
+        correct_username = current_app.config['DASHBOARD_USERNAME']
+        correct_password = current_app.config['DASHBOARD_PASSWORD']
         
         if username == correct_username and password == correct_password:
             session['authenticated'] = True
             session['username'] = username
             session.permanent = True
+            current_app.logger.info("Login success: user=%r ip=%s", username,
+                                    request.headers.get('X-Forwarded-For', request.remote_addr))
             return redirect(url_for('main.index'))
         else:
+            current_app.logger.warning("Login failure: user=%r ip=%s", username,
+                                       request.headers.get('X-Forwarded-For', request.remote_addr))
             return render_template('login.html', error='Invalid username or password')
     
     # If already authenticated, redirect to dashboard
@@ -77,7 +97,10 @@ def login():
 
 @main.route('/logout')
 def logout():
+    username = session.get('username', 'unknown')
     session.clear()
+    current_app.logger.info("Logout: user=%r ip=%s", username,
+                            request.headers.get('X-Forwarded-For', request.remote_addr))
     return redirect(url_for('main.login'))
 
 @main.route('/', methods=['GET'])
@@ -93,6 +116,7 @@ def index():
     return render_template('index.html', urls=urls)
 
 @main.route('/get_orgs', methods=['POST'])
+@login_required
 def get_orgs():
     try:
         args = request.get_json()
@@ -114,11 +138,12 @@ def get_orgs():
         else:
             # return the invalid date valdation res to client with message related
             return jsonify(valid_dates), 400
-    except:
-        print('Error From get_orgs:{}.'.format(sys.exc_info()))
+    except Exception as e:
+        current_app.logger.error("Error in get_orgs: %s", e, exc_info=True)
         return jsonify({'code': 500, 'message': 'unknown error unable to load organizations, please check connection and try again.'}), 500
 
 @main.route('/get_orgs_uevcbids', methods=['POST'])
+@login_required
 def get_orgs_uevcbids():
     try:
         args = request.get_json()
@@ -139,33 +164,31 @@ def get_orgs_uevcbids():
         
 
         # get orgs uevcbid and remember which uevcbids belong to which org
-        # Set up session with retries
-        session = Session()
-        retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])  # Add 429 to retry on rate limit
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-        print(session)
-
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
         uevcb_list_url = current_app.config.get('UEVCB_URL')
-        for org_id, _ in system_orgs.items():
-            res = session.post(uevcb_list_url, json={
-                            "startDate": asutc(valid_dates['start_date']),
-                            "endDate": asutc(valid_dates['end_date']),
-                            "organizationId": org_id
-                        }, headers={"TGT": tgt_token}, timeout=30)
-            res.raise_for_status()
-            system_orgs[org_id] = res.json().get('items', [])
-            time.sleep(0.2)
-            
+        retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])  # Add 429 to retry on rate limit
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            for org_id, _ in system_orgs.items():
+                res = session.post(uevcb_list_url, json={
+                                "startDate": asutc(valid_dates['start_date']),
+                                "endDate": asutc(valid_dates['end_date']),
+                                "organizationId": org_id
+                            }, headers={"TGT": tgt_token}, timeout=30)
+                res.raise_for_status()
+                system_orgs[org_id] = res.json().get('items', [])
+                time.sleep(0.2)
+
         return jsonify({'code': 200, 'data': system_orgs})
 
-    except:
-        print('Error From get_orgs:{}.'.format(sys.exc_info()))
+    except Exception as e:
+        print('Error From get_orgs:{}.'.format(str(e)))
         return jsonify({'code': 500, 'message': 'unknown error unable to load uevcbids.'}), 500
 
 
 
 @main.route('/dpp_table', methods=['POST'])
+@login_required
 def get_dpp_data():
     try:
         args = request.get_json()
@@ -186,72 +209,71 @@ def get_dpp_data():
             # return the invalid date valdation res to client with message related
             return jsonify(valid_dates), 400
         
-        session = Session()
-        retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])  # Add 429 to retry on rate limit
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-
         dpp_url = current_app.config.get('DPP_URL')
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
         headers={"TGT": tgt_token}
+        retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])  # Add 429 to retry on rate limit
 
         cols = None
-        for org_id, org in orgsData.items():
-            for i in range(len(org['uevcbids'])):
-                # org['uevcbids'][ui] (update global)  org['uevcbids'][ui]['rows']
-                # send server
-                data3 = {
-                    "startDate": asutc(valid_dates['start_date']),
-                    "endDate": asutc(valid_dates['end_date']),
-                    "region": "TR1",                    
-                    "organizationId": str(org_id),
-                    "uevcbId": str(org['uevcbids'][i]['id']),
-                }
-                res = session.post(dpp_url, json=data3, headers=headers, timeout=30)
-                res.raise_for_status()
-                data = res.json()
-                items = data.get('items', [])
-                df3 = pd.DataFrame.from_records(items)
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            for org_id, org in orgsData.items():
+                for i in range(len(org['uevcbids'])):
+                    # org['uevcbids'][ui] (update global)  org['uevcbids'][ui]['rows']
+                    # send server
+                    data3 = {
+                        "startDate": asutc(valid_dates['start_date']),
+                        "endDate": asutc(valid_dates['end_date']),
+                        "region": "TR1",
+                        "organizationId": str(org_id),
+                        "uevcbId": str(org['uevcbids'][i]['id']),
+                    }
+                    res = session.post(dpp_url, json=data3, headers=headers, timeout=30)
+                    res.raise_for_status()
+                    data = res.json()
+                    items = data.get('items', [])
+                    df3 = pd.DataFrame.from_records(items)
 
-                # df3['date'] = pd.to_datetime(df3['date']) db
+                    # df3['date'] = pd.to_datetime(df3['date']) db
 
-                # pd updates
-                df3.rename(columns={
-                    "time": "HOUR",
-                    "toplam": "TOTAL", 
-                    "dogalgaz": "NG",
-                    "ruzgar": "WIND", 
-                    "linyit": "LIGNITE",
-                    "tasKomur": "HARDCOAL",
-                    "ithalKomur": "IMPORTCOAL", 
-                    "fuelOil": "FUELOIL",
-                    "barajli": "HEPP",
-                    "akarsu": "ROR",
-                    "nafta": "NAPHTHA",
-                    "biokutle": "BIO",
-                    "jeotermal": "GEOTHERMAL",
-                    "diger": "OTHER"
-                }, inplace=True)
+                    # pd updates
+                    df3.rename(columns={
+                        "time": "HOUR",
+                        "toplam": "TOTAL",
+                        "dogalgaz": "NG",
+                        "ruzgar": "WIND",
+                        "linyit": "LIGNITE",
+                        "tasKomur": "HARDCOAL",
+                        "ithalKomur": "IMPORTCOAL",
+                        "fuelOil": "FUELOIL",
+                        "barajli": "HEPP",
+                        "akarsu": "ROR",
+                        "nafta": "NAPHTHA",
+                        "biokutle": "BIO",
+                        "jeotermal": "GEOTHERMAL",
+                        "diger": "OTHER"
+                    }, inplace=True)
 
-                # add 4 columns 2 with speacifed index and reamning automtic with pandas
-                total_rows = len(df3)
-                df3.insert(0, 'Organization', [org['organizationName']]*total_rows)
-                df3.insert(1, 'UEVCB', [org['uevcbids'][i]['name']]*total_rows)
+                    # add 4 columns 2 with speacifed index and reamning automtic with pandas
+                    total_rows = len(df3)
+                    df3.insert(0, 'Organization', [org['organizationName']]*total_rows)
+                    df3.insert(1, 'UEVCB', [org['uevcbids'][i]['name']]*total_rows)
 
-                df3['ETSO_Code'] = org['organizationEtsoCode']
-                df3['UEVCB_EIC'] = org['uevcbids'][i]['eic']
+                    df3['ETSO_Code'] = org['organizationEtsoCode']
+                    df3['UEVCB_EIC'] = org['uevcbids'][i]['eic']
 
-                #df3['Index'] = df3.index
-                print(df3.head())
+                    #df3['Index'] = df3.index
+                    print(df3.head())
 
-                data_arr = pd.DataFrame.to_records(df3,index=False).tolist()
-                
-                cols = tuple(df3.columns) if cols is None else cols
-                # create array of objects row each object (columns and value of cell)
-                orgsData[org_id]['uevcbids'][i]['rows'] = [dict(zip(cols, row)) for row in data_arr]
+                    data_arr = pd.DataFrame.to_records(df3,index=False).tolist()
 
-                time.sleep(0.5)
+                    cols = tuple(df3.columns) if cols is None else cols
+                    # create array of objects row each object (columns and value of cell)
+                    orgsData[org_id]['uevcbids'][i]['rows'] = [dict(zip(cols, row)) for row in data_arr]
+
+                    time.sleep(0.5)
         return jsonify({
-            'code': 200, 
+            'code': 200,
             'data': {'orgsData': orgsData, 'columns': cols}
         })
 
@@ -260,21 +282,21 @@ def get_dpp_data():
         return jsonify({'code': 500, 'message': 'unknown error unable to load uevcbids.'}), 500
 
 @main.route('/powerplants', methods=['GET'])
+@login_required
 def get_powerplants():
     try:
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
-        session = Session()
         retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-        
-        res = session.get(
-            current_app.config['POWERPLANT_URL'],
-            headers={'TGT': tgt_token}
-        )
-        res.raise_for_status()
-        
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            res = session.get(
+                current_app.config['POWERPLANT_URL'],
+                headers={'TGT': tgt_token}
+            )
+            res.raise_for_status()
+
         return jsonify({
-            'code': 200, 
+            'code': 200,
             'data': res.json().get('items', [])
         })
     except Exception as e:
@@ -285,6 +307,7 @@ def get_powerplants():
         }), 500
 
 @main.route('/realtime_data', methods=['POST'])
+@login_required
 def get_realtime_data():
     try:
         args = request.get_json()
@@ -295,67 +318,73 @@ def get_realtime_data():
         if not powerplant_id:
             return jsonify({'code': 400, 'message': 'Power plant ID is required'}), 400
 
-        # Get powerplant name first
-        session = Session()
-        retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
-        session.mount('https://', HTTPAdapter(max_retries=retries))
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+        retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
 
-        # Get powerplant details
-        plant_res = session.get(
-            current_app.config['POWERPLANT_URL'],
-            headers={'TGT': tgt_token}
-        )
-        plant_res.raise_for_status()
-        plants = plant_res.json().get('items', [])
-        plant_name = next((p['name'] for p in plants if str(p['id']) == str(powerplant_id)), 'Unknown Plant')
+        # Get powerplant details then fetch daily data, reusing one session
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
 
-        # Validate dates
-        valid_dates = invalidates_or_none(start, end)
-        if valid_dates['code'] != 200:
-            return jsonify(valid_dates), 400
+            plant_res = session.get(
+                current_app.config['POWERPLANT_URL'],
+                headers={'TGT': tgt_token}
+            )
+            plant_res.raise_for_status()
+            plants = plant_res.json().get('items', [])
+            plant_name = next((p['name'] for p in plants if str(p['id']) == str(powerplant_id)), 'Unknown Plant')
 
-        # Convert date strings to datetime objects
-        if isinstance(valid_dates['start_date'], str):
-            start_date = datetime.strptime(valid_dates['start_date'], '%Y-%m-%d')
-        else:
-            start_date = valid_dates['start_date']
-            
-        if isinstance(valid_dates['end_date'], str):
-            end_date = datetime.strptime(valid_dates['end_date'], '%Y-%m-%d')
-        else:
-            end_date = valid_dates['end_date']
+            # Validate dates
+            valid_dates = invalidates_or_none(start, end)
+            if valid_dates['code'] != 200:
+                return jsonify(valid_dates), 400
 
-        # Check if end date is today or tomorrow
-        today = datetime.now().date()
-        if end_date.date() >= today:
-            return jsonify({
-                'code': 400, 
-                'message': 'Only data up to one day before the current date can be viewed for realtime data.'
-            }), 400
+            # Convert date strings to datetime objects
+            if isinstance(valid_dates['start_date'], str):
+                start_date = datetime.strptime(valid_dates['start_date'], '%Y-%m-%d')
+            else:
+                start_date = valid_dates['start_date']
 
-        all_data = []
-        current_date = start_date
-        while current_date <= end_date:
-            try:
-                request_data = {
-                    "startDate": f"{current_date.strftime('%Y-%m-%d')}T00:00:00+03:00",
-                    "endDate": f"{current_date.strftime('%Y-%m-%d')}T23:59:59+03:00",
-                    "powerPlantId": str(powerplant_id)
-                }
-                res = session.post(
-                    current_app.config['REALTIME_URL'],
-                    json=request_data,
-                    headers={'TGT': tgt_token}
-                )
-                res.raise_for_status()
-                day_data = res.json().get('items', [])
-                all_data.extend(day_data)
-                
-            except Exception as e:
-                print(f"Error fetching data for {current_date.date()}: {str(e)}")
-            
-            current_date += timedelta(days=1)
+            if isinstance(valid_dates['end_date'], str):
+                end_date = datetime.strptime(valid_dates['end_date'], '%Y-%m-%d')
+            else:
+                end_date = valid_dates['end_date']
+
+            # Check if end date is today or tomorrow
+            today = datetime.now().date()
+            if end_date.date() >= today:
+                return jsonify({
+                    'code': 400,
+                    'message': 'Only data up to one day before the current date can be viewed for realtime data.'
+                }), 400
+
+            if (end_date - start_date).days > 30:
+                return jsonify({
+                    'code': 400,
+                    'message': 'Date range is limited to 30 days for realtime data.'
+                }), 400
+
+            all_data = []
+            current_date = start_date
+            while current_date <= end_date:
+                try:
+                    request_data = {
+                        "startDate": f"{current_date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+                        "endDate": f"{current_date.strftime('%Y-%m-%d')}T23:59:59+03:00",
+                        "powerPlantId": str(powerplant_id)
+                    }
+                    res = session.post(
+                        current_app.config['REALTIME_URL'],
+                        json=request_data,
+                        headers={'TGT': tgt_token}
+                    )
+                    res.raise_for_status()
+                    day_data = res.json().get('items', [])
+                    all_data.extend(day_data)
+
+                except Exception as e:
+                    print(f"Error fetching data for {current_date.date()}: {str(e)}")
+
+                current_date += timedelta(days=1)
 
         # Process all collected data
         processed_data = []
@@ -402,6 +431,7 @@ def get_realtime_data():
         return jsonify({'code': 500, 'message': 'Unable to load realtime data.'}), 500
 
 @main.route('/get_aic_data', methods=['GET'])
+@login_required
 def get_aic_data():
     try:
         range_type = request.args.get('range', 'week')
@@ -427,40 +457,34 @@ def get_aic_data():
         
         print(f'Date range: {start_str} to {end_str}')
 
-        # Set up session with retries
-        session = Session()
         retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-        
-        # Fetch data sequentially
         all_data = {}
-        
-        # Fetch AIC data
-        aic_response = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/aic',
-            json={"startDate": start_str, "endDate": end_str, "region": "TR1"},
-            headers={'TGT': tgt_token}
-        )
-        aic_response.raise_for_status()
-        all_data['aic'] = aic_response.json().get('items', [])
-        
-        # Fetch realtime data
-        realtime_response = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/realtime-generation',
-            json={"startDate": start_str, "endDate": end_str},
-            headers={'TGT': tgt_token}
-        )
-        realtime_response.raise_for_status()
-        all_data['realtime'] = realtime_response.json().get('items', [])
-        
-        # Fetch DPP data
-        dpp_response = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/dpp',
-            json={"startDate": start_str, "endDate": end_str, "region": "TR1"},
-            headers={'TGT': tgt_token}
-        )
-        dpp_response.raise_for_status()
-        all_data['dpp'] = dpp_response.json().get('items', [])
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+
+            aic_response = session.post(
+                'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/aic',
+                json={"startDate": start_str, "endDate": end_str, "region": "TR1"},
+                headers={'TGT': tgt_token}
+            )
+            aic_response.raise_for_status()
+            all_data['aic'] = aic_response.json().get('items', [])
+
+            realtime_response = session.post(
+                'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/realtime-generation',
+                json={"startDate": start_str, "endDate": end_str},
+                headers={'TGT': tgt_token}
+            )
+            realtime_response.raise_for_status()
+            all_data['realtime'] = realtime_response.json().get('items', [])
+
+            dpp_response = session.post(
+                'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/dpp',
+                json={"startDate": start_str, "endDate": end_str, "region": "TR1"},
+                headers={'TGT': tgt_token}
+            )
+            dpp_response.raise_for_status()
+            all_data['dpp'] = dpp_response.json().get('items', [])
 
         # Check if all data sources returned data
         if not all(all_data.values()):
@@ -476,13 +500,11 @@ def get_aic_data():
 
     except Exception as e:
         print('Error From get_aic_data:', str(e))
-        return jsonify({
-            'code': 500,
-            'message': f'Unable to load generation data: {str(e)}'
-        }), 500
+        return _err("get_aic_data", e)
 
 
 @main.route('/heatmap_data', methods=['POST'])
+@login_required
 def heatmap_data():
     try:
         data = request.json
@@ -505,16 +527,6 @@ def heatmap_data():
             # Initialize DataFrame with hours and fill with 0
             hours = [f"{str(i).zfill(2)}:00" for i in range(24)]
             df = pd.DataFrame(0, index=hours, columns=plant_mapping['plant_names'])
-            
-            # Create session with retry strategy
-            session = requests.Session()
-            retries = Retry(
-                total=5,
-                backoff_factor=1,
-                status_forcelist=[500, 502, 503, 504, 406],
-                allowed_methods=["POST"]
-            )
-            session.mount('https://', HTTPAdapter(max_retries=retries))
             
             # Iterate through all plants with their IDs
             for plant_name, o_id, pl_id in zip(
@@ -603,9 +615,10 @@ def heatmap_data():
         return jsonify({"code": 400, "error": f"Invalid date format: {str(ve)}"})
     except Exception as e:
         current_app.logger.error(f"Error in heatmap_data: {str(e)}")
-        return jsonify({"code": 500, "error": str(e)}), 500
+        return _err("heatmap_data", e)
 
 @main.route('/realtime_heatmap_data', methods=['POST'])
+@login_required
 def realtime_heatmap_data():
     try:
         data = request.json
@@ -681,12 +694,13 @@ def realtime_heatmap_data():
                 response = requests.post(
                     current_app.config['REALTIME_URL'],
                     json=request_data,
-                    headers={'TGT': tgt_token}
+                    headers={'TGT': tgt_token},
+                    timeout=30
                 )
                 response.raise_for_status()
-                
+
                 items = response.json().get('items', [])
-                
+
                 hourly_values = [0] * 24
                 for item in items:
                     hour = int(item.get('hour', '00:00').split(':')[0])
@@ -718,14 +732,11 @@ def realtime_heatmap_data():
                     plant_name = plant_mapping['plant_names'][idx]
                     df[plant_name] = [0] * 24
 
-        # Store the fetched data in database
-        try:
-            if batch_data:
-                db.session.bulk_insert_mappings(NaturalGasRealtimeData, batch_data)
-                db.session.commit()
-        except Exception as e:
-            print(f"Error storing realtime data: {str(e)}")
-            db.session.rollback()
+        # Store the fetched data in database — return is inside try so a commit
+        # failure propagates a 500 rather than a false 200 with empty DB.
+        if batch_data:
+            db.session.bulk_insert_mappings(NaturalGasRealtimeData, batch_data)
+            db.session.commit()
 
         return jsonify({
             "code": 200,
@@ -739,10 +750,12 @@ def realtime_heatmap_data():
             }
         })
     except Exception as e:
+        db.session.rollback()
         print(f"Error in realtime_heatmap_data: {str(e)}")
-        return jsonify({"code": 500, "error": str(e)})
+        return _err("realtime_heatmap_data", e)
 
 @main.route('/import_coal_heatmap_data', methods=['POST'])
+@login_required
 def import_coal_heatmap_data():
     try:
         data = request.json
@@ -882,6 +895,7 @@ def process_heatmap_data(heatmap_data, mapping):
     return df.fillna(0).astype(float)
 
 @main.route('/get_order_summary', methods=['GET'])
+@login_required
 def get_order_summary():
     try:
         # Get current time in Turkey timezone
@@ -896,24 +910,20 @@ def get_order_summary():
         start_date = yesterday.strftime("%Y-%m-%dT00:00:00+03:00")
         end_date = tomorrow.strftime("%Y-%m-%dT23:59:59+03:00")
         
-        # Set up session with retries
-        session = Session()
-        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-        
-        # Get authentication token
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
-        
-        # Make API request
-        response = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/order-summary-up',
-            json={
-                "startDate": start_date,
-                "endDate": end_date
-            },
-            headers={'TGT': tgt_token}
-        )
-        response.raise_for_status()
+        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            response = session.post(
+                'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/order-summary-up',
+                json={
+                    "startDate": start_date,
+                    "endDate": end_date
+                },
+                headers={'TGT': tgt_token},
+                timeout=30,
+            )
+            response.raise_for_status()
         
         # Get data and filter based on current time
         data = response.json().get('items', [])
@@ -939,9 +949,10 @@ def get_order_summary():
         
     except Exception as e:
         print(f"Error in get_order_summary: {str(e)}")
-        return jsonify({'code': 500, 'message': str(e)}), 500
+        return _err("get_order_summary", e)
 
 @main.route('/get_smp_data', methods=['GET'])
+@login_required
 def get_smp_data():
     try:
         # Get current time in Turkey timezone
@@ -955,25 +966,21 @@ def get_smp_data():
         start_date = yesterday.strftime("%Y-%m-%dT00:00:00+03:00")
         end_date = yesterday.strftime("%Y-%m-%dT23:59:59+03:00")
         
-        # Set up session with retries
-        session = Session()
-        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-        
-        # Get authentication token
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
-        
-        # Make API request
-        response = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/system-marginal-price',
-            json={
-                "startDate": start_date,
-                "endDate": end_date
-            },
-            headers={'TGT': tgt_token}
-        )
-        response.raise_for_status()
-        
+        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            response = session.post(
+                'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/system-marginal-price',
+                json={
+                    "startDate": start_date,
+                    "endDate": end_date,
+                },
+                headers={'TGT': tgt_token},
+                timeout=30,
+            )
+            response.raise_for_status()
+
         # Process data
         data = response.json().get('items', [])
         processed_data = []
@@ -997,9 +1004,10 @@ def get_smp_data():
         
     except Exception as e:
         print(f"Error in get_smp_data: {str(e)}")
-        return jsonify({'code': 500, 'message': str(e)}), 500
+        return _err("get_smp_data", e)
 
 @main.route('/get_pfc_data', methods=['GET'])
+@login_required
 def get_pfc_data():
     try:
         # Get current time in Turkey timezone
@@ -1010,51 +1018,48 @@ def get_pfc_data():
         start_date = current_time.strftime("%Y-%m-%dT00:00:00+03:00")
         end_date = (current_time + timedelta(days=2)).strftime("%Y-%m-%dT23:59:59+03:00")
         
-        # Set up session with retries
-        session = Session()
-        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-        
-        # Get authentication token
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
-        
-        # Make API request
-        response = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/primary-frequency-capacity-price',
-            json={
-                "startDate": start_date,
-                "endDate": end_date
-            },
-            headers={'TGT': tgt_token}
-        )
-        response.raise_for_status()
-        
+        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            response = session.post(
+                'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/primary-frequency-capacity-price',
+                json={
+                    "startDate": start_date,
+                    "endDate": end_date
+                },
+                headers={'TGT': tgt_token},
+                timeout=30,
+            )
+            response.raise_for_status()
+
         # Process data
         data = response.json().get('items', [])
         processed_data = []
-        
+
         for item in data:
             item_datetime = datetime.strptime(item['date'], "%Y-%m-%dT%H:%M:%S+03:00")
             processed_data.append({
                 'datetime': f"{item_datetime.strftime('%Y-%m-%d')} {str(item['hour']).zfill(2)}:00",
                 'value': item['price']
             })
-        
+
         # Get statistics
         statistics = response.json().get('statistics', {})
         average = statistics.get('priceAvg', 0)
-        
+
         return jsonify({
             'code': 200,
             'data': processed_data,
             'average': average
         })
-        
+
     except Exception as e:
         print(f"Error in get_pfc_data: {str(e)}")
-        return jsonify({'code': 500, 'message': str(e)}), 500
+        return _err("get_pfc_data", e)
 
 @main.route('/get_sfc_data', methods=['GET'])
+@login_required
 def get_sfc_data():
     try:
         # Get current time in Turkey timezone
@@ -1065,24 +1070,20 @@ def get_sfc_data():
         start_date = current_time.strftime("%Y-%m-%dT00:00:00+03:00")
         end_date = (current_time + timedelta(days=2)).strftime("%Y-%m-%dT23:59:59+03:00")
         
-        # Set up session with retries
-        session = Session()
-        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-        
-        # Get authentication token
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
-        
-        # Make API request
-        response = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/secondary-frequency-capacity-price',
-            json={
-                "startDate": start_date,
-                "endDate": end_date
-            },
-            headers={'TGT': tgt_token}
-        )
-        response.raise_for_status()
+        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            response = session.post(
+                'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/secondary-frequency-capacity-price',
+                json={
+                    "startDate": start_date,
+                    "endDate": end_date
+                },
+                headers={'TGT': tgt_token},
+                timeout=30,
+            )
+            response.raise_for_status()
         
         # Process data
         data = response.json().get('items', [])
@@ -1107,9 +1108,10 @@ def get_sfc_data():
         
     except Exception as e:
         print(f"Error in get_sfc_data: {str(e)}")
-        return jsonify({'code': 500, 'message': str(e)}), 500
+        return _err("get_sfc_data", e)
 
 @main.route('/get_all_table_data', methods=['GET'])
+@login_required
 def get_all_table_data():
     try:
         # Get current time in Turkey timezone
@@ -1119,58 +1121,57 @@ def get_all_table_data():
         # Get authentication token once
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
         
-        # Set up session with retries
-        session = Session()
         retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 443, 502, 503, 504])
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-        
+
         # Prepare dates for different endpoints
         yesterday = current_time - timedelta(days=1)
         tomorrow = current_time + timedelta(days=1)
         two_days_after = current_time + timedelta(days=2)
-        
+
         # Common headers
         headers = {'TGT': tgt_token}
-        
-        # Fetch order summary data
-        order_summary_response = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/order-summary-up',
-            json={
-                "startDate": yesterday.strftime("%Y-%m-%dT00:00:00+03:00"),
-                "endDate": tomorrow.strftime("%Y-%m-%dT23:59:59+03:00")
-            },
-            headers=headers
-        )
-        
-        # Fetch SMP data
-        smp_response = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/system-marginal-price',
-            json={
-                "startDate": yesterday.strftime("%Y-%m-%dT00:00:00+03:00"),
-                "endDate": yesterday.strftime("%Y-%m-%dT23:59:59+03:00")
-            },
-            headers=headers
-        )
-        
-        # Fetch PFC data
-        pfc_response = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/primary-frequency-capacity-price',
-            json={
-                "startDate": current_time.strftime("%Y-%m-%dT00:00:00+03:00"),
-                "endDate": two_days_after.strftime("%Y-%m-%dT23:59:59+03:00")
-            },
-            headers=headers
-        )
-        
-        # Fetch SFC data
-        sfc_response = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/secondary-frequency-capacity-price',
-            json={
-                "startDate": current_time.strftime("%Y-%m-%dT00:00:00+03:00"),
-                "endDate": two_days_after.strftime("%Y-%m-%dT23:59:59+03:00")
-            },
-            headers=headers
-        )
+
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+
+            order_summary_response = session.post(
+                'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/order-summary-up',
+                json={
+                    "startDate": yesterday.strftime("%Y-%m-%dT00:00:00+03:00"),
+                    "endDate": tomorrow.strftime("%Y-%m-%dT23:59:59+03:00")
+                },
+                headers=headers,
+                timeout=30,
+            )
+
+            smp_response = session.post(
+                'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/system-marginal-price',
+                json={
+                    "startDate": yesterday.strftime("%Y-%m-%dT00:00:00+03:00"),
+                    "endDate": yesterday.strftime("%Y-%m-%dT23:59:59+03:00")
+                },
+                headers=headers,
+                timeout=30,
+            )
+
+            pfc_response = session.post(
+                'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/primary-frequency-capacity-price',
+                json={
+                    "startDate": current_time.strftime("%Y-%m-%dT00:00:00+03:00"),
+                    "endDate": two_days_after.strftime("%Y-%m-%dT23:59:59+03:00")
+                },
+                headers=headers,
+                timeout=30,
+            )
+
+            sfc_response = session.post(
+                'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/secondary-frequency-capacity-price',
+                json={
+                    "startDate": current_time.strftime("%Y-%m-%dT00:00:00+03:00"),
+                    "endDate": two_days_after.strftime("%Y-%m-%dT23:59:59+03:00")
+                },
+                headers=headers
+            )
         
         # Process order summary data
         order_data = order_summary_response.json().get('items', [])
@@ -1228,9 +1229,10 @@ def get_all_table_data():
         
     except Exception as e:
         print(f"Error in get_all_table_data: {str(e)}")
-        return jsonify({'code': 500, 'message': str(e)}), 500
+        return _err("get_all_table_data", e)
 
 @main.route('/hydro_heatmap_data', methods=['POST'])
+@login_required
 def hydro_heatmap_data():
     try:
         data = request.json
@@ -1358,6 +1360,7 @@ def hydro_heatmap_data():
         return jsonify({"code": 500, "error": "Internal server error"})
 
 @main.route('/hydro_realtime_heatmap_data', methods=['POST'])
+@login_required
 def hydro_realtime_heatmap_data():
     try:
         data = request.json
@@ -1433,12 +1436,13 @@ def hydro_realtime_heatmap_data():
                 response = requests.post(
                     current_app.config['REALTIME_URL'],
                     json=request_data,
-                    headers={'TGT': tgt_token}
+                    headers={'TGT': tgt_token},
+                    timeout=30
                 )
                 response.raise_for_status()
-                
+
                 items = response.json().get('items', [])
-                
+
                 hourly_values = [0] * 24
                 for item in items:
                     hour = int(item.get('hour', '00:00').split(':')[0])
@@ -1470,14 +1474,11 @@ def hydro_realtime_heatmap_data():
                     plant_name = hydro_mapping['plant_names'][idx]
                     df[plant_name] = [0] * 24
 
-        # Store the fetched data in database
-        try:
-            if batch_data:
-                db.session.bulk_insert_mappings(HydroRealtimeData, batch_data)
-                db.session.commit()
-        except Exception as e:
-            print(f"Error storing realtime data: {str(e)}")
-            db.session.rollback()
+        # Store the fetched data in database — return is inside the outer try so a commit
+        # failure propagates a 500 rather than a false 200 with empty DB.
+        if batch_data:
+            db.session.bulk_insert_mappings(HydroRealtimeData, batch_data)
+            db.session.commit()
 
         return jsonify({
             "code": 200,
@@ -1492,10 +1493,12 @@ def hydro_realtime_heatmap_data():
         })
 
     except Exception as e:
+        db.session.rollback()
         print(f"Error in hydro_realtime_heatmap_data: {str(e)}")
-        return jsonify({"code": 500, "error": str(e)})
+        return _err("hydro_realtime_heatmap_data", e)
 
 @main.route('/production_data', methods=['POST'])
+@login_required
 def get_production_data():
     try:
         data = request.get_json()
@@ -1542,9 +1545,9 @@ def get_production_data():
             'TGT': tgt_token
         }
         
-        response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
-        
+
         # Process the data
         items = response.json().get('items', [])
         if not items:
@@ -1565,65 +1568,68 @@ def get_production_data():
             df['DateTime'] = df['DateTime'].dt.strftime('%Y-%m-%d %H:%M:%S')
         
         # Store in database
-        for _, row in df.iterrows():
-            record = ProductionData(
-                datetime=datetime.strptime(row['DateTime'], '%Y-%m-%d %H:%M:%S'),
-                fueloil=row.get('fueloil', 0),
-                gasoil=0,  # Setting default as 0 as per crawler
-                blackcoal=row.get('blackCoal', 0),
-                lignite=row.get('lignite', 0),
-                geothermal=row.get('geothermal', 0),
-                naturalgas=row.get('naturalGas', 0),
-                river=row.get('river', 0),
-                dammedhydro=row.get('dammedHydro', 0),
-                lng=row.get('lng', 0),
-                biomass=row.get('biomass', 0),
-                naphta=row.get('naphta', 0),
-                importcoal=row.get('importCoal', 0),
-                asphaltitecoal=row.get('asphaltiteCoal', 0),
-                wind=row.get('wind', 0),
-                nuclear=0,  # Setting default as 0 as per crawler
-                sun=row.get('sun', 0),
-                importexport=row.get('importExport', 0),
-                total=row.get('total', 0),
-                wasteheat=row.get('wasteheat', 0)
-            )
-            db.session.add(record)
-        
-        db.session.commit()
-        
-        return jsonify({
-            'code': 200,
-            'data': [record.to_dict() for record in ProductionData.query.filter(
+        response_records = []
+        try:
+            for _, row in df.iterrows():
+                dt = datetime.strptime(row['DateTime'], '%Y-%m-%d %H:%M:%S')
+                record = ProductionData(
+                    datetime=dt,
+                    fueloil=row.get('fueloil', 0),
+                    gasoil=0,
+                    blackcoal=row.get('blackCoal', 0),
+                    lignite=row.get('lignite', 0),
+                    geothermal=row.get('geothermal', 0),
+                    naturalgas=row.get('naturalGas', 0),
+                    river=row.get('river', 0),
+                    dammedhydro=row.get('dammedHydro', 0),
+                    lng=row.get('lng', 0),
+                    biomass=row.get('biomass', 0),
+                    naphta=row.get('naphta', 0),
+                    importcoal=row.get('importCoal', 0),
+                    asphaltitecoal=row.get('asphaltiteCoal', 0),
+                    wind=row.get('wind', 0),
+                    nuclear=0,
+                    sun=row.get('sun', 0),
+                    importexport=row.get('importExport', 0),
+                    total=row.get('total', 0),
+                    wasteheat=row.get('wasteheat', 0)
+                )
+                db.session.add(record)
+                response_records.append(record)
+            db.session.commit()
+        except IntegrityError:
+            # Concurrent request already committed the same rows; return what's in the DB.
+            db.session.rollback()
+            existing_data = ProductionData.query.filter(
                 ProductionData.datetime.between(
                     datetime.strptime(start_date, '%Y-%m-%d'),
                     datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
                 )
-            ).all()]
+            ).all()
+            return jsonify({'code': 200, 'data': [r.to_dict() for r in existing_data]})
+
+        return jsonify({
+            'code': 200,
+            'data': [r.to_dict() for r in response_records]
         })
         
     except Exception as e:
         db.session.rollback()
         print(f"Error in get_production_data: {str(e)}")
-        return jsonify({
-            'code': 500,
-            'message': f'Error fetching production data: {str(e)}'
-        }), 500
+        return _err("get_production_data", e)
 
 @main.route('/check-data-completeness')
+@login_required
 def check_data_completeness():
     try:
-        # Get min and max dates
-        min_date = db.session.query(db.func.min(ProductionData.datetime)).scalar()
-        max_date = db.session.query(db.func.max(ProductionData.datetime)).scalar()
-        
-        # Get count of records
-        total_records = db.session.query(ProductionData).count()
-        
-        # Calculate expected records (assuming 24 records per day)
+        row = db.session.execute(
+            text("SELECT MIN(datetime), MAX(datetime), COUNT(*) FROM production_data")
+        ).fetchone()
+        min_date, max_date, total_records = row[0], row[1], row[2]
+
         days = (max_date - min_date).days + 1
         expected_records = days * 24
-        
+
         # Find gaps in data using SQLAlchemy's text()
         query = text("""
             WITH dates AS (
@@ -1657,13 +1663,10 @@ def check_data_completeness():
         
     except Exception as e:
         print(f"Error in check_data_completeness: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            'error': str(e)
-        }), 500
+        return _err("check_data_completeness", e)
 
 @main.route('/get-rolling-data')
+@login_required
 def get_rolling_data():
     try:
         # Load the original historical data (2016-2025) as the base
@@ -1968,11 +1971,10 @@ def get_rolling_data():
         
     except Exception as e:
         print(f"Error in get_rolling_data: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return _err("get_rolling_data", e)
 
 @main.route('/get-rolling-last-update')
+@login_required
 def get_rolling_last_update():
     try:
         # Get the most recent record's datetime
@@ -1996,9 +1998,7 @@ def get_rolling_last_update():
             
     except Exception as e:
         print(f"Error in get_rolling_last_update: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return _err("get_rolling_last_update", e)
 
 @main.route('/get-solar-weekly-data')
 @login_required
@@ -2021,64 +2021,87 @@ def get_solar_weekly_data():
         ly_start = start_date - timedelta(days=365)
         ly_end = end_date - timedelta(days=365)
 
-        def fetch_hourly_solar(date_from, date_to):
-            from_dt = datetime(date_from.year, date_from.month, date_from.day, tzinfo=istanbul_tz)
-            to_dt = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59, tzinfo=istanbul_tz)
-            from_utc = from_dt.astimezone(pytz.UTC).replace(tzinfo=None)
-            to_utc = to_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+        def _utc_bounds(date_from, date_to):
+            from_utc = datetime(date_from.year, date_from.month, date_from.day,
+                                tzinfo=istanbul_tz).astimezone(pytz.UTC)
+            to_utc   = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59,
+                                tzinfo=istanbul_tz).astimezone(pytz.UTC)
+            return from_utc, to_utc
 
-            unl = db.session.query(UnlicensedSolarData).filter(
-                UnlicensedSolarData.datetime >= from_utc,
-                UnlicensedSolarData.datetime <= to_utc
-            ).order_by(UnlicensedSolarData.datetime).all()
-
-            lic = db.session.query(LicensedSolarData).filter(
-                LicensedSolarData.datetime >= from_utc,
-                LicensedSolarData.datetime <= to_utc
-            ).order_by(LicensedSolarData.datetime).all()
-
-            if not unl and not lic:
-                return [], []
-
-            unl_map = {}
-            for r in unl:
-                dt_ist = r.datetime.replace(tzinfo=pytz.UTC).astimezone(istanbul_tz)
-                key = dt_ist.replace(minute=0, second=0, microsecond=0)
+        def _solar_from_rows(rows_unl, rows_lic):
+            unl_map, lic_map = {}, {}
+            for r in rows_unl:
+                key = r.datetime.replace(tzinfo=pytz.UTC).astimezone(istanbul_tz).replace(
+                    minute=0, second=0, microsecond=0)
                 unl_map[key] = unl_map.get(key, 0) + (r.unlicensed_solar or 0)
-
-            lic_map = {}
-            for r in lic:
-                dt_ist = r.datetime.replace(tzinfo=pytz.UTC).astimezone(istanbul_tz)
-                key = dt_ist.replace(minute=0, second=0, microsecond=0)
+            for r in rows_lic:
+                key = r.datetime.replace(tzinfo=pytz.UTC).astimezone(istanbul_tz).replace(
+                    minute=0, second=0, microsecond=0)
                 lic_map[key] = lic_map.get(key, 0) + (r.licensed_solar or 0)
-
-            all_keys = sorted(set(list(unl_map.keys()) + list(lic_map.keys())))
+            all_keys = sorted(set(unl_map) | set(lic_map))
             labels = [k.strftime('%a %d %b %H:%M') for k in all_keys]
-            values = [round((unl_map.get(k, 0) + lic_map.get(k, 0)), 1) for k in all_keys]
+            values = [round(unl_map.get(k, 0) + lic_map.get(k, 0), 1) for k in all_keys]
             return labels, values
 
         def smooth(values, window=5):
             if not values:
                 return values
-            s = pd.Series(values)
-            return s.rolling(window=window, center=True, min_periods=1).mean().round(1).tolist()
+            return pd.Series(values).rolling(window=window, center=True, min_periods=1).mean().round(1).tolist()
 
-        cur_labels, cur_values = fetch_hourly_solar(start_date, end_date)
-        prev_labels, prev_values = fetch_hourly_solar(prev_start, prev_end)
-        ly_labels, ly_values = fetch_hourly_solar(ly_start, ly_end)
-
-        # Historical range: same ISO week across 2020-2025
+        # Build all date ranges we need at once
         week_number = start_date.isocalendar()[1]
-        all_hist = []
+        hist_ranges = []
         for year in range(2020, 2026):
             try:
-                h_start = dt_module.date.fromisocalendar(year, week_number, 1)
-                h_end = h_start + timedelta(days=6)
-                _, h_vals = fetch_hourly_solar(h_start, h_end)
-                if h_vals and len(h_vals) >= 100:
-                    all_hist.append(smooth(h_vals, window=5))
+                hist_ranges.append((
+                    dt_module.date.fromisocalendar(year, week_number, 1),
+                    dt_module.date.fromisocalendar(year, week_number, 7),
+                ))
             except (ValueError, AttributeError):
                 pass
+
+        named_ranges = [
+            ('cur',  start_date,  end_date),
+            ('prev', prev_start,  prev_end),
+            ('ly',   ly_start,    ly_end),
+        ] + [('hist', hs, he) for hs, he in hist_ranges]
+
+        # Two queries total — one per solar table — covering all ranges via OR
+        def _fetch_solar_table(model_cls, field):
+            clauses, params = [], {}
+            for i, (_, d_from, d_to) in enumerate(named_ranges):
+                f, t = _utc_bounds(d_from, d_to)
+                clauses.append(f"(datetime >= :f{i} AND datetime <= :t{i})")
+                params[f'f{i}'] = f
+                params[f't{i}'] = t
+            return db.session.query(model_cls).filter(
+                db.or_(*[db.text(c) for c in clauses])
+            ).params(**params).order_by(model_cls.datetime).all()
+
+        all_unl = _fetch_solar_table(UnlicensedSolarData, 'unlicensed_solar')
+        all_lic = _fetch_solar_table(LicensedSolarData,   'licensed_solar')
+
+        def _subset(rows, attr, d_from, d_to):
+            f, t = _utc_bounds(d_from, d_to)
+            return [r for r in rows if f <= r.datetime <= t]
+
+        cur_labels,  cur_values  = _solar_from_rows(
+            _subset(all_unl, None, start_date, end_date),
+            _subset(all_lic, None, start_date, end_date))
+        prev_labels, prev_values = _solar_from_rows(
+            _subset(all_unl, None, prev_start, prev_end),
+            _subset(all_lic, None, prev_start, prev_end))
+        ly_labels,   ly_values   = _solar_from_rows(
+            _subset(all_unl, None, ly_start, ly_end),
+            _subset(all_lic, None, ly_start, ly_end))
+
+        all_hist = []
+        for hs, he in hist_ranges:
+            _, h_vals = _solar_from_rows(
+                _subset(all_unl, None, hs, he),
+                _subset(all_lic, None, hs, he))
+            if h_vals and len(h_vals) >= 100:
+                all_hist.append(smooth(h_vals, window=5))
 
         max_len = max((len(v) for v in all_hist), default=0)
         hist_min, hist_max, hist_avg = [], [], []
@@ -2106,12 +2129,11 @@ def get_solar_weekly_data():
 
     except Exception as e:
         print(f"Error in get_solar_weekly_data: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return _err("get_solar_weekly_data", e)
 
 
 @main.route('/update-rolling-data')
+@login_required
 def update_rolling_data():
     try:
         # Get the most recent record's datetime
@@ -2173,9 +2195,9 @@ def update_rolling_data():
         }
         
         # Make API request
-        response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
-        
+
         # Process the data
         items = response.json().get('items', [])
         if not items:
@@ -2183,7 +2205,7 @@ def update_rolling_data():
                 'message': 'No new data found for the specified date range.',
                 'records_added': 0
             })
-            
+
         # Convert to DataFrame for easier processing
         df = pd.json_normalize(items)
         df['date'] = pd.to_datetime(df['date'])
@@ -2195,19 +2217,23 @@ def update_rolling_data():
             )
             df['DateTime'] = df['DateTime'].dt.strftime('%Y-%m-%d %H:%M:%S')
         
-        # Store in database
+        # Pre-fetch existing datetimes in the range to avoid per-row SELECTs
+        dts_in_df = [datetime.strptime(r['DateTime'], '%Y-%m-%d %H:%M:%S') for _, r in df.iterrows()]
+        existing_dts = {
+            row[0] for row in
+            db.session.query(ProductionData.datetime).filter(
+                ProductionData.datetime.in_(dts_in_df)
+            ).all()
+        }
+
         records_added = 0
         for _, row in df.iterrows():
-            # Check if record already exists
-            existing_record = ProductionData.query.filter_by(
-                datetime=datetime.strptime(row['DateTime'], '%Y-%m-%d %H:%M:%S')
-            ).first()
-            
-            if not existing_record:
-                record = ProductionData(
-                    datetime=datetime.strptime(row['DateTime'], '%Y-%m-%d %H:%M:%S'),
+            dt = datetime.strptime(row['DateTime'], '%Y-%m-%d %H:%M:%S')
+            if dt not in existing_dts:
+                db.session.add(ProductionData(
+                    datetime=dt,
                     fueloil=row.get('fueloil', 0),
-                    gasoil=0,  # Setting default as 0 as per crawler
+                    gasoil=0,
                     blackcoal=row.get('blackCoal', 0),
                     lignite=row.get('lignite', 0),
                     geothermal=row.get('geothermal', 0),
@@ -2220,15 +2246,14 @@ def update_rolling_data():
                     importcoal=row.get('importCoal', 0),
                     asphaltitecoal=row.get('asphaltiteCoal', 0),
                     wind=row.get('wind', 0),
-                    nuclear=0,  # Setting default as 0 as per crawler
+                    nuclear=0,
                     sun=row.get('sun', 0),
                     importexport=row.get('importExport', 0),
                     total=row.get('total', 0),
                     wasteheat=row.get('wasteheat', 0)
-                )
-                db.session.add(record)
+                ))
                 records_added += 1
-        
+
         db.session.commit()
         
         return jsonify({
@@ -2243,87 +2268,72 @@ def update_rolling_data():
     except Exception as e:
         db.session.rollback()
         print(f"Error in update_rolling_data: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return _err("update_rolling_data", e)
 
 @main.route('/check-demand-completeness')
+@login_required
 def check_demand_completeness():
     try:
-        # Get min and max dates
-        min_date = db.session.query(db.func.min(DemandData.datetime)).scalar()
-        max_date = db.session.query(db.func.max(DemandData.datetime)).scalar()
-        
-        # Get count of records
-        total_records = db.session.query(DemandData).count()
-        
-        # Calculate expected records (assuming 24 records per day)
+        stats_row = db.session.execute(
+            text("SELECT MIN(datetime), MAX(datetime), COUNT(*) FROM demand_data")
+        ).fetchone()
+        min_date, max_date, total_records = stats_row[0], stats_row[1], stats_row[2]
+
+        if min_date is None or max_date is None:
+            return jsonify({
+                'start_date': None, 'end_date': None,
+                'total_days': 0, 'total_records': 0,
+                'expected_records': 0, 'missing_records': 0,
+                'coverage_percentage': 0, 'total_gaps': 0,
+                'gaps': [], 'all_missing_dates': [], 'total_missing_dates': 0,
+            })
+
         days = (max_date - min_date).days + 1
         expected_records = days * 24
-        
-        # Get all existing datetimes and find gaps in Python
-        all_datetimes_query = db.session.query(DemandData.datetime).order_by(DemandData.datetime).all()
-        existing_hours = set()
-        
-        for dt_tuple in all_datetimes_query:
-            dt = dt_tuple[0]
-            # Truncate to hour
-            hour_dt = dt.replace(minute=0, second=0, microsecond=0)
-            existing_hours.add(hour_dt)
-        
-        # Generate all expected hours
-        from datetime import timedelta
-        expected_hours = []
-        current = min_date.replace(minute=0, second=0, microsecond=0)
-        end = max_date.replace(minute=0, second=0, microsecond=0)
-        
-        while current <= end:
-            expected_hours.append(current)
-            current += timedelta(hours=1)
-        
-        # Find missing hours
-        missing_datetimes = [dt for dt in expected_hours if dt not in existing_hours]
-        
-        # Convert to the format expected by the rest of the code
-        missing_dates = [(dt,) for dt in missing_datetimes]
-        
-        # Group consecutive missing dates into gap ranges
+
+        missing_dates = db.session.execute(text("""
+            WITH expected AS (
+                SELECT generate_series(
+                    date_trunc('hour', CAST(:min_dt AS timestamp)),
+                    date_trunc('hour', CAST(:max_dt AS timestamp)),
+                    '1 hour'::interval
+                ) AS expected_datetime
+            )
+            SELECT expected_datetime::timestamp
+            FROM expected
+            LEFT JOIN demand_data ON expected.expected_datetime = date_trunc('hour', demand_data.datetime)
+            WHERE demand_data.id IS NULL
+            ORDER BY expected_datetime
+        """), {"min_dt": min_date, "max_dt": max_date}).fetchall()
+
         gaps = []
         all_missing_dates_list = []
-        
-        # Convert missing_dates to list first
-        if missing_dates and len(missing_dates) > 0:
+
+        if missing_dates:
             missing_datetimes = [d[0] for d in missing_dates]
             all_missing_dates_list = [d.strftime('%Y-%m-%d %H:%M') for d in missing_datetimes]
-            
-            # Group consecutive dates into gaps
-            if len(missing_datetimes) > 0:
-                gap_start = missing_datetimes[0]
-                gap_end = missing_datetimes[0]
-                
-                for i in range(1, len(missing_datetimes)):
-                    current = missing_datetimes[i]
-                    # Check if current datetime is consecutive (1 hour after gap_end)
-                    if (current - gap_end).total_seconds() == 3600:
-                        gap_end = current
-                    else:
-                        # Save the previous gap and start a new one
-                        gap_hours = int((gap_end - gap_start).total_seconds() / 3600) + 1
-                        gaps.append({
-                            'start': gap_start.strftime('%Y-%m-%d %H:%M'),
-                            'end': gap_end.strftime('%Y-%m-%d %H:%M'),
-                            'missing_hours': gap_hours
-                        })
-                        gap_start = current
-                        gap_end = current
-                
-                # Don't forget the last gap
-                gap_hours = int((gap_end - gap_start).total_seconds() / 3600) + 1
-                gaps.append({
-                    'start': gap_start.strftime('%Y-%m-%d %H:%M'),
-                    'end': gap_end.strftime('%Y-%m-%d %H:%M'),
-                    'missing_hours': gap_hours
-                })
+
+            gap_start = missing_datetimes[0]
+            gap_end = missing_datetimes[0]
+            for i in range(1, len(missing_datetimes)):
+                current = missing_datetimes[i]
+                if (current - gap_end).total_seconds() == 3600:
+                    gap_end = current
+                else:
+                    gap_hours = int((gap_end - gap_start).total_seconds() / 3600) + 1
+                    gaps.append({
+                        'start': gap_start.strftime('%Y-%m-%d %H:%M'),
+                        'end': gap_end.strftime('%Y-%m-%d %H:%M'),
+                        'missing_hours': gap_hours
+                    })
+                    gap_start = current
+                    gap_end = current
+            gap_hours = int((gap_end - gap_start).total_seconds() / 3600) + 1
+            gaps.append({
+                'start': gap_start.strftime('%Y-%m-%d %H:%M'),
+                'end': gap_end.strftime('%Y-%m-%d %H:%M'),
+                'missing_hours': gap_hours
+            })
         
         return jsonify({
             'start_date': min_date.strftime('%Y-%m-%d %H:%M'),
@@ -2342,9 +2352,10 @@ def check_demand_completeness():
             'debug_first_missing': str(missing_dates[0]) if missing_dates and len(missing_dates) > 0 else 'none'
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return _err("check_demand_completeness", e)
 
 @main.route('/get_demand_data')
+@login_required
 def get_demand_data():
     try:
         current_year = datetime.now().year  # 2026
@@ -2493,7 +2504,8 @@ def get_demand_data():
                     'pct': round(ytd_pct, 2) if ytd_pct is not None else None
                 }
             }
-        except Exception as _:
+        except Exception as e:
+            current_app.logger.error("Year-over-year metric calculation failed: %s", e, exc_info=True)
             metrics = {}
 
         # Format the response as expected by the frontend
@@ -2509,9 +2521,10 @@ def get_demand_data():
         
     except Exception as e:
         print(f"Error in get_demand_data: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return _err("get_demand_data", e)
 
 @main.route('/get_monthly_demand_data')
+@login_required
 def get_monthly_demand_data():
     try:
         current_year = datetime.now().year  # 2026
@@ -2559,9 +2572,10 @@ def get_monthly_demand_data():
         
     except Exception as e:
         print(f"Error in get_monthly_demand_data: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return _err("get_monthly_demand_data", e)
 
 @main.route('/update_demand_data_api')
+@login_required
 def update_demand_data_api():
     try:
         # Get the latest date in the database
@@ -2610,9 +2624,9 @@ def update_demand_data_api():
         }
         
         # Make API request
-        response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
-        
+
         # Process the data
         items = response.json().get('items', [])
         if not items:
@@ -2620,32 +2634,29 @@ def update_demand_data_api():
                 'message': 'No new data found for the specified date range.',
                 'records_added': 0
             })
-            
+
         # Convert to DataFrame for easier processing
         df = pd.json_normalize(items)
         df['date'] = pd.to_datetime(df['date'])
         
-        # Store in database
-        records_added = 0
-        for _, row in df.iterrows():
-            # Parse datetime from the date field
-            dt = row['date'].to_pydatetime()
-            
-            # Check if record already exists
-            existing_record = DemandData.query.filter_by(
-                datetime=dt
-            ).first()
-            
-            if not existing_record:
-                record = DemandData(
-                    datetime=dt,
-                    consumption=row.get('consumption', 0),
-                    created_at=datetime.now()  # Explicitly set created_at
-                )
-                db.session.add(record)
-                records_added += 1
-        
+        batch = [
+            {
+                'datetime': row['date'].to_pydatetime(),
+                'consumption': float(row.get('consumption', 0)),
+                'created_at': datetime.now()
+            }
+            for _, row in df.iterrows()
+        ]
+        result = db.session.execute(
+            text("""
+                INSERT INTO demand_data (datetime, consumption, created_at)
+                VALUES (:datetime, :consumption, :created_at)
+                ON CONFLICT (datetime) DO NOTHING
+            """),
+            batch
+        )
         db.session.commit()
+        records_added = result.rowcount
         
         return jsonify({
             'message': f'Successfully added {records_added} new records.',
@@ -2659,30 +2670,21 @@ def update_demand_data_api():
     except Exception as e:
         db.session.rollback()
         print(f"Error in update_demand_data_api: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return _err("update_demand_data_api", e)
 
 @main.route('/check_demand_updates')
+@login_required
 def check_demand_updates():
     try:
         # Get the last 15 days of data
         end_date = datetime.now().replace(tzinfo=None)  # Ensure timezone-naive
         start_date = end_date - timedelta(days=15)
         
-        # Set up a requests session with retry logic
-        session = requests.Session()
-        retries = requests.adapters.Retry(
-            total=5,
-            backoff_factor=0.5,
-            status_forcelist=[500, 502, 503, 504, 429],
-        )
-        session.mount('https://', requests.adapters.HTTPAdapter(max_retries=retries))
-        
-        # Get TGT token
         tgt_token = get_tgt_token(
             current_app.config.get('USERNAME'),
             current_app.config.get('PASSWORD')
         )
-        
+
         # Group dates by month to minimize API calls
         date_groups = {}
         current_date = start_date
@@ -2692,109 +2694,99 @@ def check_demand_updates():
                 date_groups[month_key] = []
             date_groups[month_key].append(current_date)
             current_date += timedelta(hours=1)
-        
-        # Process each month
+
+        retries = requests.adapters.Retry(
+            total=5,
+            backoff_factor=0.5,
+            status_forcelist=[500, 502, 503, 504, 429],
+        )
         success_count = 0
         updated_count = 0
-        
-        for month, dates in date_groups.items():
-            # Get first and last day of the month
-            first_date = min(dates)
-            last_date = max(dates)
-            
-            # Prepare API request
-            url = "https://seffaflik.epias.com.tr/electricity-service/v1/consumption/data/realtime-consumption"
-            
-            payload = {
-                "startDate": f"{first_date.strftime('%Y-%m-%d')}T00:00:00+03:00",
-                "endDate": f"{last_date.strftime('%Y-%m-%d')}T23:59:59+03:00",
-                "region": "TR1",
-            }
-            
-            headers = {
-                'Content-Type': 'application/json',
-                'Accept': "application/json",
-                'TGT': tgt_token
-            }
-            
-            # Make API request
-            response = session.post(url, headers=headers, json=payload, timeout=30)
-            response.raise_for_status()
-            
-            # Process the data
-            items = response.json().get('items', [])
-            if not items:
-                continue
-                
-            # Convert to DataFrame for easier processing
-            df = pd.json_normalize(items)
-            df['date'] = pd.to_datetime(df['date'])
-            
-            # Get existing records for this date range
-            existing_records = {}
-            query = text("""
-                SELECT datetime, consumption 
-                FROM demand_data 
-                WHERE datetime >= :start_date AND datetime <= :end_date
-            """)
-            result = db.session.execute(query, {
-                'start_date': first_date,
-                'end_date': last_date
-            }).fetchall()
-            
-            for record in result:
-                existing_records[record[0].strftime('%Y-%m-%d %H:%M')] = float(record[1])
-            
-            # Process items in batches
-            batch_data = []
-            current_time = datetime.now()  # Get current time once for all records
-            
-            for _, row in df.iterrows():
-                try:
-                    # Convert to timezone-naive datetime for comparison
-                    dt = row['date'].to_pydatetime()
-                    if dt.tzinfo is not None:
-                        dt = dt.replace(tzinfo=None)
-                    
-                    dt_key = dt.strftime('%Y-%m-%d %H:%M')
-                    consumption = float(row.get('consumption', 0))
-                    
-                    # Check if this datetime is in our date range and has a different value
-                    if dt >= first_date and dt <= last_date:
-                        success_count += 1
-                        
-                        if dt_key in existing_records:
-                            # Compare with existing value with a small tolerance for floating point differences
-                            if abs(existing_records[dt_key] - consumption) > 0.01:
-                                batch_data.append({
-                                    'datetime': dt,
-                                    'consumption': consumption,
-                                    'created_at': current_time
-                                })
-                                updated_count += 1
-                except Exception as e:
-                    print(f"Error processing item: {e}")
+
+        with requests.Session() as session:
+            session.mount('https://', requests.adapters.HTTPAdapter(max_retries=retries))
+            for _month, dates in date_groups.items():
+                first_date = min(dates)
+                last_date = max(dates)
+
+                url = "https://seffaflik.epias.com.tr/electricity-service/v1/consumption/data/realtime-consumption"
+                payload = {
+                    "startDate": f"{first_date.strftime('%Y-%m-%d')}T00:00:00+03:00",
+                    "endDate": f"{last_date.strftime('%Y-%m-%d')}T23:59:59+03:00",
+                    "region": "TR1",
+                }
+                headers = {
+                    'Content-Type': 'application/json',
+                    'Accept': "application/json",
+                    'TGT': tgt_token
+                }
+
+                response = session.post(url, headers=headers, json=payload, timeout=30)
+                response.raise_for_status()
+
+                items = response.json().get('items', [])
+                if not items:
                     continue
-            
-            # Update records with different values
-            if batch_data:
-                try:
-                    # Use bulk insert with ON CONFLICT DO UPDATE
-                    insert_stmt = """
-                    INSERT INTO demand_data (datetime, consumption, created_at)
-                    VALUES (:datetime, :consumption, :created_at)
-                    ON CONFLICT (datetime) DO UPDATE
-                    SET consumption = EXCLUDED.consumption,
-                        created_at = EXCLUDED.created_at
-                    """
-                    
-                    db.session.execute(text(insert_stmt), batch_data)
-                    db.session.commit()
-                    
-                except Exception as e:
-                    db.session.rollback()
-                    print(f"Error updating batch data: {e}")
-        
+
+                df = pd.json_normalize(items)
+                df['date'] = pd.to_datetime(df['date'])
+
+                existing_records = {}
+                query = text("""
+                    SELECT datetime, consumption
+                    FROM demand_data
+                    WHERE datetime >= :start_date AND datetime <= :end_date
+                """)
+                rows = db.session.execute(query, {
+                    'start_date': first_date,
+                    'end_date': last_date
+                }).fetchall()
+
+                for record in rows:
+                    existing_records[record[0].strftime('%Y-%m-%d %H:%M')] = float(record[1])
+
+                batch_data = []
+                current_time = datetime.now()
+
+                for _, row in df.iterrows():
+                    try:
+                        dt = row['date'].to_pydatetime()
+                        if dt.tzinfo is not None:
+                            dt = dt.replace(tzinfo=None)
+
+                        dt_key = dt.strftime('%Y-%m-%d %H:%M')
+                        consumption = float(row.get('consumption', 0))
+
+                        if dt >= first_date and dt <= last_date:
+                            success_count += 1
+
+                            if dt_key in existing_records:
+                                if abs(existing_records[dt_key] - consumption) > 0.01:
+                                    batch_data.append({
+                                        'datetime': dt,
+                                        'consumption': consumption,
+                                        'created_at': current_time
+                                    })
+                                    updated_count += 1
+                    except Exception as e:
+                        print(f"Error processing item: {e}")
+                        continue
+
+                if batch_data:
+                    try:
+                        insert_stmt = """
+                        INSERT INTO demand_data (datetime, consumption, created_at)
+                        VALUES (:datetime, :consumption, :created_at)
+                        ON CONFLICT (datetime) DO UPDATE
+                        SET consumption = EXCLUDED.consumption,
+                            created_at = EXCLUDED.created_at
+                        """
+                        db.session.execute(text(insert_stmt), batch_data)
+                        db.session.commit()
+                    except Exception as e:
+                        db.session.rollback()
+                        print(f"Error updating batch data: {e}")
+
         return jsonify({
             'message': f'Successfully checked for updates. Found {updated_count} records with changed values.',
             'updated_records': updated_count,
@@ -2807,11 +2799,10 @@ def check_demand_updates():
     except Exception as e:
         db.session.rollback()
         print(f"Error in check_demand_updates: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return _err("check_demand_updates", e)
 
 @main.route('/lignite_heatmap_data', methods=['POST'])
+@login_required
 def lignite_heatmap_data():
     try:
         data = request.get_json()
@@ -2819,11 +2810,11 @@ def lignite_heatmap_data():
         version = data.get('version', 'current')
         
         if not date_str:
-            return jsonify({'code': 400, 'message': 'Date is required'})
-        
+            return jsonify({'code': 400, 'message': 'Date is required'}), 400
+
         # Parse date
         date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-        
+
         # Import the model
         from app.models.heatmap import LigniteHeatmapData
         from app.mappings import lignite_mapping
@@ -2963,20 +2954,21 @@ def lignite_heatmap_data():
         return jsonify({"code": 400, "error": f"Invalid date format: {str(ve)}"})
     except Exception as e:
         current_app.logger.error(f"Error in lignite_heatmap_data: {str(e)}")
-        return jsonify({'code': 500, 'message': 'Internal server error'})
+        return jsonify({'code': 500, 'message': 'Internal server error'}), 500
 
 @main.route('/lignite_realtime_heatmap_data', methods=['POST'])
+@login_required
 def lignite_realtime_heatmap_data():
     try:
         data = request.get_json()
         date_str = data.get('date')
         
         if not date_str:
-            return jsonify({'code': 400, 'message': 'Date is required'})
-        
+            return jsonify({'code': 400, 'message': 'Date is required'}), 400
+
         # Parse date
         date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-        
+
         # Import the model
         from app.models.realtime import LigniteRealtimeData
         from app.mappings import lignite_mapping
@@ -3061,12 +3053,13 @@ def lignite_realtime_heatmap_data():
                 response = requests.post(
                     current_app.config['REALTIME_URL'],
                     json=request_data,
-                    headers={'TGT': tgt_token}
+                    headers={'TGT': tgt_token},
+                    timeout=30
                 )
                 response.raise_for_status()
-                
+
                 items = response.json().get('items', [])
-                
+
                 hourly_values = [0] * 24
                 for item in items:
                     hour = int(item.get('hour', '00:00').split(':')[0])
@@ -3114,14 +3107,11 @@ def lignite_realtime_heatmap_data():
                         'value': 0.0
                     })
 
-        # Store the fetched data in database
-        try:
-            if batch_data:
-                db.session.bulk_insert_mappings(LigniteRealtimeData, batch_data)
-                db.session.commit()
-        except Exception as e:
-            print(f"Error storing lignite realtime data: {str(e)}")
-            db.session.rollback()
+        # Store the fetched data in database — return is inside the outer try so a commit
+        # failure propagates a 500 rather than a false 200 with empty DB.
+        if batch_data:
+            db.session.bulk_insert_mappings(LigniteRealtimeData, batch_data)
+            db.session.commit()
 
         return jsonify({
             "code": 200,
@@ -3134,12 +3124,14 @@ def lignite_realtime_heatmap_data():
                 "values": df.values.tolist()
             }
         })
-        
+
     except Exception as e:
+        db.session.rollback()
         current_app.logger.error(f"Error in lignite_realtime_heatmap_data: {str(e)}")
-        return jsonify({'code': 500, 'message': 'Internal server error'})
+        return jsonify({'code': 500, 'message': 'Internal server error'}), 500
 
 @main.route('/update-unlicensed-solar-data')
+@login_required
 def update_unlicensed_solar_data():
     try:
         # Get current date
@@ -3170,11 +3162,12 @@ def update_unlicensed_solar_data():
         # Get authentication token
         auth_response = requests.post(
             "https://api-markets.meteologica.com/api/v1/login",
-            json={"user": username, "password": password}
+            json={"user": username, "password": password},
+            timeout=30,
         )
         auth_response.raise_for_status()
         token = auth_response.json().get("token")
-        
+
         if not token:
             return jsonify({'error': 'Failed to get authentication token'}), 500
         
@@ -3200,16 +3193,28 @@ def update_unlicensed_solar_data():
         # Collect all data first, then select best for each hour
         hourly_data = {}  # Key: hour datetime (minute=0), Value: list of forecasts for that hour
         
+        fetch_failures = []
         for year, month in sorted(months_to_process):
             try:
                 # Use content ID 1430 for unlicensed solar
-                response = requests.get(
-                    url=f"https://api-markets.meteologica.com/api/v1/contents/1430/historical_data/{year}/{month}",
-                    params={"token": token}
-                )
-                
+                _url = f"https://api-markets.meteologica.com/api/v1/contents/1430/historical_data/{year}/{month}"
+                response = requests.get(url=_url, params={"token": token}, timeout=60)
+
+                # Re-authenticate once on 401 (token may have expired mid-loop)
+                if response.status_code == 401:
+                    _reauth = requests.post(
+                        "https://api-markets.meteologica.com/api/v1/login",
+                        json={"user": username, "password": password},
+                        timeout=30,
+                    )
+                    _reauth.raise_for_status()
+                    token = _reauth.json().get("token") or token
+                    response = requests.get(url=_url, params={"token": token}, timeout=60)
+
                 if response.status_code != 200:
-                    print(f"Failed to fetch data for {year}-{month}: {response.status_code}")
+                    msg = f"{year}-{month:02d}: HTTP {response.status_code}"
+                    print(f"Failed to fetch data for {msg}")
+                    fetch_failures.append(msg)
                     continue
                 
                 # Check if response is a zip file
@@ -3336,7 +3341,6 @@ def update_unlicensed_solar_data():
             batch_num = (i // batch_size) + 1
             
             try:
-                # Use PostgreSQL's ON CONFLICT DO UPDATE for upsert
                 upsert_sql = """
                 INSERT INTO unlicensed_solar_data (datetime, unlicensed_solar, created_at)
                 VALUES (:datetime, :unlicensed_solar, :created_at)
@@ -3344,25 +3348,11 @@ def update_unlicensed_solar_data():
                     unlicensed_solar = EXCLUDED.unlicensed_solar,
                     created_at = EXCLUDED.created_at
                 """
-                
-                # Count existing records before upsert
-                datetime_list = [item['datetime'] for item in batch]
-                existing_count = db.session.query(UnlicensedSolarData).filter(
-                    UnlicensedSolarData.datetime.in_(datetime_list)
-                ).count()
-                
-                # Execute upsert
                 result = db.session.execute(text(upsert_sql), batch)
                 db.session.commit()
-                
-                # Calculate stats
-                batch_added = len(batch) - existing_count
-                batch_updated = existing_count
-                
-                records_added += batch_added
-                records_updated += batch_updated
-                
-                print(f"   Batch {batch_num}/{total_batches}: +{batch_added} new, ~{batch_updated} updated")
+
+                records_added += len(batch)
+                print(f"   Batch {batch_num}/{total_batches}: {len(batch)} rows upserted")
                 
             except Exception as e:
                 db.session.rollback()
@@ -3373,6 +3363,7 @@ def update_unlicensed_solar_data():
             'message': f'Successfully processed unlicensed solar data: {records_added} new records added, {records_updated} records updated.',
             'records_added': records_added,
             'records_updated': records_updated,
+            'fetch_failures': fetch_failures,
             'date_range': {
                 'start': start_date.strftime('%Y-%m-%d %H:%M'),
                 'end': end_date.strftime('%Y-%m-%d %H:%M')
@@ -3382,9 +3373,10 @@ def update_unlicensed_solar_data():
     except Exception as e:
         db.session.rollback()
         print(f"Error in update_unlicensed_solar_data: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return _err("update_unlicensed_solar_data", e)
 
 @main.route('/update-licensed-solar-data')  
+@login_required
 def update_licensed_solar_data():
     try:
         # Get current date
@@ -3413,14 +3405,15 @@ def update_licensed_solar_data():
         # Get authentication token
         auth_response = requests.post(
             "https://api-markets.meteologica.com/api/v1/login",
-            json={"user": username, "password": password}
+            json={"user": username, "password": password},
+            timeout=30,
         )
         auth_response.raise_for_status()
         token = auth_response.json().get("token")
-        
+
         records_added = 0
         records_updated = 0
-        
+
         print(f"🔍 RETROACTIVE UPDATE (Licensed Solar):")
         print(f"   Checking date range: {start_date} to {end_date}")
         
@@ -3440,16 +3433,28 @@ def update_licensed_solar_data():
         # Collect all data first, then select best for each hour
         hourly_data = {}  # Key: hour datetime (minute=0), Value: list of forecasts for that hour
         
+        fetch_failures = []
         for year, month in sorted(months_to_process):
             try:
                 # Use content ID 1429 for licensed solar
-                response = requests.get(
-                    url=f"https://api-markets.meteologica.com/api/v1/contents/1429/historical_data/{year}/{month}",
-                    params={"token": token}
-                )
-                
+                _url = f"https://api-markets.meteologica.com/api/v1/contents/1429/historical_data/{year}/{month}"
+                response = requests.get(url=_url, params={"token": token}, timeout=60)
+
+                # Re-authenticate once on 401 (token may have expired mid-loop)
+                if response.status_code == 401:
+                    _reauth = requests.post(
+                        "https://api-markets.meteologica.com/api/v1/login",
+                        json={"user": username, "password": password},
+                        timeout=30,
+                    )
+                    _reauth.raise_for_status()
+                    token = _reauth.json().get("token") or token
+                    response = requests.get(url=_url, params={"token": token}, timeout=60)
+
                 if response.status_code != 200:
-                    print(f"Failed to fetch data for {year}-{month}: {response.status_code}")
+                    msg = f"{year}-{month:02d}: HTTP {response.status_code}"
+                    print(f"Failed to fetch data for {msg}")
+                    fetch_failures.append(msg)
                     continue
                 
                 # Check if response is a zip file
@@ -3585,24 +3590,11 @@ def update_licensed_solar_data():
                     created_at = EXCLUDED.created_at
                 """
                 
-                # Count existing records before upsert
-                datetime_list = [item['datetime'] for item in batch]
-                existing_count = db.session.query(LicensedSolarData).filter(
-                    LicensedSolarData.datetime.in_(datetime_list)
-                ).count()
-                
-                # Execute upsert
                 result = db.session.execute(text(upsert_sql), batch)
                 db.session.commit()
-                
-                # Calculate stats
-                batch_added = len(batch) - existing_count
-                batch_updated = existing_count
-                
-                records_added += batch_added
-                records_updated += batch_updated
-                
-                print(f"   Batch {batch_num}/{total_batches}: +{batch_added} new, ~{batch_updated} updated")
+
+                records_added += len(batch)
+                print(f"   Batch {batch_num}/{total_batches}: {len(batch)} rows upserted")
                 
             except Exception as e:
                 db.session.rollback()
@@ -3613,6 +3605,7 @@ def update_licensed_solar_data():
             'message': f'Successfully processed licensed solar data: {records_added} new records added, {records_updated} records updated.',
             'records_added': records_added,
             'records_updated': records_updated,
+            'fetch_failures': fetch_failures,
             'date_range': {
                 'start': start_date.strftime('%Y-%m-%d %H:%M'),
                 'end': end_date.strftime('%Y-%m-%d %H:%M')
@@ -3622,9 +3615,10 @@ def update_licensed_solar_data():
     except Exception as e:
         db.session.rollback()
         print(f"Error in update_licensed_solar_data: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return _err("update_licensed_solar_data", e)
 
 @main.route('/forecast-performance-data')
+@login_required
 def get_forecast_performance_data():
     try:
         # Get period parameter from request
@@ -3633,163 +3627,95 @@ def get_forecast_performance_data():
         end_date = request.args.get('end_date')
         forecast_horizon = request.args.get('horizon', 'd+1')  # Default to D+1, can be 'd+1' or 'd+2'
         
-        import psycopg2
-        from sqlalchemy import create_engine
-        
-        # Get database connection using existing config or environment variables
-        try:
-            # Try to use Supabase credentials from environment
-            user = os.getenv("SUPABASE_USER")
-            password = os.getenv("SUPABASE_PASSWORD")
-            
-            if user and password:
-                connection_str = f"postgresql+psycopg2://{user}:{password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
-                engine = create_engine(connection_str)
-            else:
-                # Fallback to local database if Supabase credentials not available
-                return jsonify({
-                    'error': 'Database credentials not configured'
-                }), 500
-        except Exception as e:
-            return jsonify({
-                'error': f'Database connection failed: {str(e)}'
-            }), 500
-        
-        # Query actual price data (PTF) - fetch all data first
-        ptf_query = "SELECT date, price AS actual_price FROM epias.ptf"
-        
-        with engine.connect() as conn:
-            ptf_df = pd.read_sql(text(ptf_query), con=conn)
-        
-        if ptf_df.empty:
-            return jsonify({
-                'error': f'No PTF data available'
-            }), 404
-        
-        # Clean and process PTF data
-        ptf_df['actual_price'] = ptf_df['actual_price'].apply(lambda x: 1 if x <= 0 else x)
-        # Convert date to datetime if it's not already
-        if not pd.api.types.is_datetime64_any_dtype(ptf_df['date']):
-            ptf_df['date'] = ptf_df['date'].apply(lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x)
-            ptf_df['date'] = pd.to_datetime(ptf_df['date'])
-        else:
-            ptf_df['date'] = pd.to_datetime(ptf_df['date'])
-        
-        # Query forecast data based on horizon (D+1 or D+2)
-        if forecast_horizon.lower() == 'd+2':
-            # Query Meteologica D+2 forecast data
-            meteologica_query = """
-            SELECT date, min_price AS meteologica_min, avg_price AS meteologica_avg, max_price AS meteologica_max
-            FROM public."meteologica_forecast_d+2"
-            """
-            
-            with engine.connect() as conn:
-                meteologica_forecast = pd.read_sql(text(meteologica_query), con=conn)
-            
-            # Handle date parsing - meteologica_forecast_d+2 has date as text
-            if not meteologica_forecast.empty:
-                if not pd.api.types.is_datetime64_any_dtype(meteologica_forecast['date']):
-                    meteologica_forecast['date'] = meteologica_forecast['date'].apply(
-                        lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x
-                    )
-                meteologica_forecast['date'] = pd.to_datetime(meteologica_forecast['date'])
-            
-            # Query model forecast D+2 data (model_forecast_sfc)
-            # Try best_price first, fallback to other common column names
-            try:
-                model_query = "SELECT date, best_price FROM public.model_forecast_sfc"
-                with engine.connect() as conn:
-                    model_forecast = pd.read_sql(text(model_query), con=conn)
-            except Exception:
-                # Fallback: try to get all columns and use the first price column
-                model_query = "SELECT * FROM public.model_forecast_sfc"
-                with engine.connect() as conn:
-                    model_forecast = pd.read_sql(text(model_query), con=conn)
-                    # Find price column (best_price, forecasted_price, or price)
-                    price_cols = [col for col in model_forecast.columns if 'price' in col.lower() or 'forecast' in col.lower()]
-                    if price_cols:
-                        model_forecast = model_forecast[['date', price_cols[0]]].rename(columns={price_cols[0]: 'best_price'})
-                    else:
-                        # Use first numeric column after date
-                        numeric_cols = model_forecast.select_dtypes(include=['number']).columns.tolist()
-                        if numeric_cols:
-                            model_forecast = model_forecast[['date', numeric_cols[0]]].rename(columns={numeric_cols[0]: 'best_price'})
-            
-            if not model_forecast.empty:
-                if not pd.api.types.is_datetime64_any_dtype(model_forecast['date']):
-                    model_forecast['date'] = model_forecast['date'].apply(
-                        lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x
-                    )
-                model_forecast['date'] = pd.to_datetime(model_forecast['date'])
-            
-            # Query cemre D+2 forecast data
-            cemre_query = """
-            SELECT date, forecasted_price AS cemre_forecast
-            FROM public."cemre_ptf_d+2"
-            """
-            
-            with engine.connect() as conn:
-                cemre_forecast = pd.read_sql(text(cemre_query), con=conn)
-            
-            if not cemre_forecast.empty:
-                if not pd.api.types.is_datetime64_any_dtype(cemre_forecast['date']):
-                    cemre_forecast['date'] = cemre_forecast['date'].apply(
-                        lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x
-                    )
-                cemre_forecast['date'] = pd.to_datetime(cemre_forecast['date'])
-        else:
-            # Default: D+1 forecasts
-            # Query Meteologica forecast data - fetch all data
-            meteologica_query = """
-            SELECT date, min_price AS meteologica_min, avg_price AS meteologica_avg, max_price AS meteologica_max
-            FROM public.meteologica_forecast
-            """
-            
-            with engine.connect() as conn:
-                meteologica_forecast = pd.read_sql(text(meteologica_query), con=conn)
-            
-            meteologica_forecast['date'] = pd.to_datetime(meteologica_forecast['date'])
-            
-            # Query model forecast data - fetch all data
-            model_query = "SELECT * FROM public.model_forecast_ptf"
-            
-            with engine.connect() as conn:
-                model_forecast = pd.read_sql(text(model_query), con=conn)
-            
-            model_forecast['date'] = pd.to_datetime(model_forecast['date'])
-            
-            # Query cemre forecast data - D+1 only
-            cemre_query = """
-            SELECT date, forecasted_price AS cemre_forecast
-            FROM public."cemre_ptf_d+1"
-            """
-            
-            with engine.connect() as conn:
-                cemre_forecast = pd.read_sql(text(cemre_query), con=conn)
-            
-            if not cemre_forecast.empty:
-                cemre_forecast['date'] = pd.to_datetime(cemre_forecast['date'])
-        
-        # Merge all dataframes
-        price_df = pd.merge(ptf_df, meteologica_forecast, on='date', how='outer').sort_values(by='date')
-        price_df = pd.merge(price_df, model_forecast, on='date', how='left')
-        
-        # Merge cemre forecast if available
-        if not cemre_forecast.empty:
-            price_df = pd.merge(price_df, cemre_forecast, on='date', how='left')
-        
-        # Apply date filtering after merging
+        engine = _get_supabase_engine()
+
+        # Resolve date range before querying so we can push it into SQL
         if start_date and end_date:
-            # Custom date range
             start_dt = pd.to_datetime(start_date)
-            end_dt = pd.to_datetime(end_date)
-            price_df = price_df[(price_df['date'] >= start_dt) & (price_df['date'] <= end_dt)]
+            end_dt   = pd.to_datetime(end_date)
             period_info = f"{start_date} to {end_date}"
         else:
-            # Use period in days
-            cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=period_days)
-            price_df = price_df[price_df['date'] >= cutoff_date]
+            end_dt   = pd.Timestamp.now()
+            start_dt = end_dt - pd.Timedelta(days=period_days)
             period_info = f"Last {period_days} Days"
+
+        sq = {"start_dt": start_dt, "end_dt": end_dt}
+
+        if forecast_horizon.lower() == 'd+2':
+            met_table   = 'public."meteologica_forecast_d+2"'
+            model_table = 'public.model_forecast_sfc'
+            cemre_table = 'public."cemre_ptf_d+2"'
+        else:
+            met_table   = 'public.meteologica_forecast'
+            model_table = 'public.model_forecast_ptf'
+            cemre_table = 'public."cemre_ptf_d+1"'
+
+        def _parse_dates(df):
+            if not pd.api.types.is_datetime64_any_dtype(df['date']):
+                df['date'] = df['date'].apply(
+                    lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x
+                )
+            df['date'] = pd.to_datetime(df['date'])
+            return df
+
+        with engine.connect() as conn:
+            ptf_df = pd.read_sql(text(
+                "SELECT date, price AS actual_price FROM epias.ptf"
+                " WHERE date >= :start_dt AND date <= :end_dt"
+            ), con=conn, params=sq)
+
+            if ptf_df.empty:
+                return jsonify({'error': 'No PTF data available'}), 404
+
+            meteologica_forecast = pd.read_sql(text(
+                f"SELECT date, min_price AS meteologica_min,"
+                f" avg_price AS meteologica_avg, max_price AS meteologica_max"
+                f" FROM {met_table}"
+                f" WHERE date::timestamp >= :start_dt AND date::timestamp <= :end_dt"
+            ), con=conn, params=sq)
+
+            try:
+                model_forecast = pd.read_sql(text(
+                    f"SELECT date, best_price FROM {model_table}"
+                    f" WHERE date::timestamp >= :start_dt AND date::timestamp <= :end_dt"
+                ), con=conn, params=sq)
+            except Exception as e:
+                current_app.logger.warning(
+                    "Forecast query SELECT date,best_price failed for %r (%s); falling back to SELECT *",
+                    model_table, e,
+                )
+                conn.rollback()
+                model_forecast = pd.read_sql(text(
+                    f"SELECT * FROM {model_table}"
+                    f" WHERE date::timestamp >= :start_dt AND date::timestamp <= :end_dt"
+                ), con=conn, params=sq)
+                price_cols = [c for c in model_forecast.columns
+                              if 'price' in c.lower() or 'forecast' in c.lower()]
+                if price_cols:
+                    model_forecast = model_forecast[['date', price_cols[0]]].rename(
+                        columns={price_cols[0]: 'best_price'})
+                else:
+                    num_cols = model_forecast.select_dtypes(include=['number']).columns.tolist()
+                    if num_cols:
+                        model_forecast = model_forecast[['date', num_cols[0]]].rename(
+                            columns={num_cols[0]: 'best_price'})
+
+            cemre_forecast = pd.read_sql(text(
+                f"SELECT date, forecasted_price AS cemre_forecast FROM {cemre_table}"
+                f" WHERE date >= :start_dt AND date <= :end_dt"
+            ), con=conn, params=sq)
+
+        ptf_df              = _parse_dates(ptf_df)
+        meteologica_forecast = _parse_dates(meteologica_forecast)
+        model_forecast      = _parse_dates(model_forecast) if not model_forecast.empty else model_forecast
+        cemre_forecast      = _parse_dates(cemre_forecast) if not cemre_forecast.empty else cemre_forecast
+
+        ptf_df['actual_price'] = ptf_df['actual_price'].apply(lambda x: 1 if x <= 0 else x)
+
+        price_df = pd.merge(ptf_df, meteologica_forecast, on='date', how='outer').sort_values(by='date')
+        price_df = pd.merge(price_df, model_forecast, on='date', how='left')
+        if not cemre_forecast.empty:
+            price_df = pd.merge(price_df, cemre_forecast, on='date', how='left')
         
         # Remove rows with missing actual prices for evaluation
         evaluation_df = price_df.dropna(subset=['actual_price']).copy()
@@ -3875,14 +3801,10 @@ def get_forecast_performance_data():
         
     except Exception as e:
         print(f"Error in get_forecast_performance_data: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            'code': 500,
-            'error': f'Error fetching forecast performance data: {str(e)}'
-        }), 500
+        return _err("get_forecast_performance_data", e)
 
 @main.route('/download-forecast-performance-excel')
+@login_required
 def download_forecast_performance_excel():
     """Download forecast performance data as Excel file"""
     try:
@@ -3897,106 +3819,88 @@ def download_forecast_performance_excel():
         end_date = request.args.get('end_date')
         forecast_horizon = request.args.get('horizon', 'd+1')
         
-        # Get database connection
-        user = os.getenv("SUPABASE_USER")
-        password = os.getenv("SUPABASE_PASSWORD")
-        
-        if not user or not password:
-            return jsonify({'error': 'Database credentials not configured'}), 500
-        
-        from sqlalchemy import create_engine
-        connection_str = f"postgresql+psycopg2://{user}:{password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
-        engine = create_engine(connection_str)
-        
-        # Query actual price data
-        ptf_query = "SELECT date, price AS actual_price FROM epias.ptf"
-        with engine.connect() as conn:
-            ptf_df = pd.read_sql(text(ptf_query), con=conn)
-        
-        if ptf_df.empty:
-            return jsonify({'error': 'No PTF data available'}), 404
-        
-        # Clean PTF data
-        ptf_df['actual_price'] = ptf_df['actual_price'].apply(lambda x: 1 if x <= 0 else x)
-        if not pd.api.types.is_datetime64_any_dtype(ptf_df['date']):
-            ptf_df['date'] = ptf_df['date'].apply(lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x)
-        ptf_df['date'] = pd.to_datetime(ptf_df['date'])
-        
-        # Query forecast data based on horizon
-        if forecast_horizon.lower() == 'd+2':
-            meteologica_query = """
-            SELECT date, min_price AS meteologica_min, avg_price AS meteologica_avg, max_price AS meteologica_max
-            FROM public."meteologica_forecast_d+2"
-            """
-            with engine.connect() as conn:
-                meteologica_forecast = pd.read_sql(text(meteologica_query), con=conn)
-            if not meteologica_forecast.empty:
-                if not pd.api.types.is_datetime64_any_dtype(meteologica_forecast['date']):
-                    meteologica_forecast['date'] = meteologica_forecast['date'].apply(
-                        lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x)
-                meteologica_forecast['date'] = pd.to_datetime(meteologica_forecast['date'])
-            
-            try:
-                model_query = "SELECT date, best_price FROM public.model_forecast_sfc"
-                with engine.connect() as conn:
-                    model_forecast = pd.read_sql(text(model_query), con=conn)
-            except Exception:
-                model_query = "SELECT * FROM public.model_forecast_sfc"
-                with engine.connect() as conn:
-                    model_forecast = pd.read_sql(text(model_query), con=conn)
-                    price_cols = [col for col in model_forecast.columns if 'price' in col.lower() or 'forecast' in col.lower()]
-                    if price_cols:
-                        model_forecast = model_forecast[['date', price_cols[0]]].rename(columns={price_cols[0]: 'best_price'})
-            
-            if not model_forecast.empty:
-                if not pd.api.types.is_datetime64_any_dtype(model_forecast['date']):
-                    model_forecast['date'] = model_forecast['date'].apply(
-                        lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x)
-                model_forecast['date'] = pd.to_datetime(model_forecast['date'])
-            
-            cemre_query = """SELECT date, forecasted_price AS cemre_forecast FROM public."cemre_ptf_d+2" """
-            with engine.connect() as conn:
-                cemre_forecast = pd.read_sql(text(cemre_query), con=conn)
-            if not cemre_forecast.empty:
-                if not pd.api.types.is_datetime64_any_dtype(cemre_forecast['date']):
-                    cemre_forecast['date'] = cemre_forecast['date'].apply(
-                        lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x)
-                cemre_forecast['date'] = pd.to_datetime(cemre_forecast['date'])
+        engine = _get_supabase_engine()
+
+        if start_date and end_date:
+            start_dt = pd.to_datetime(start_date)
+            end_dt   = pd.to_datetime(end_date)
         else:
-            meteologica_query = """
-            SELECT date, min_price AS meteologica_min, avg_price AS meteologica_avg, max_price AS meteologica_max
-            FROM public.meteologica_forecast
-            """
-            with engine.connect() as conn:
-                meteologica_forecast = pd.read_sql(text(meteologica_query), con=conn)
-            meteologica_forecast['date'] = pd.to_datetime(meteologica_forecast['date'])
-            
-            model_query = "SELECT * FROM public.model_forecast_ptf"
-            with engine.connect() as conn:
-                model_forecast = pd.read_sql(text(model_query), con=conn)
-            model_forecast['date'] = pd.to_datetime(model_forecast['date'])
-            
-            cemre_query = """SELECT date, forecasted_price AS cemre_forecast FROM public."cemre_ptf_d+1" """
-            with engine.connect() as conn:
-                cemre_forecast = pd.read_sql(text(cemre_query), con=conn)
-            if not cemre_forecast.empty:
-                cemre_forecast['date'] = pd.to_datetime(cemre_forecast['date'])
-        
-        # Merge dataframes
+            end_dt   = pd.Timestamp.now()
+            start_dt = end_dt - pd.Timedelta(days=period_days)
+
+        sq = {"start_dt": start_dt, "end_dt": end_dt}
+
+        if forecast_horizon.lower() == 'd+2':
+            met_table   = 'public."meteologica_forecast_d+2"'
+            model_table = 'public.model_forecast_sfc'
+            cemre_table = 'public."cemre_ptf_d+2"'
+        else:
+            met_table   = 'public.meteologica_forecast'
+            model_table = 'public.model_forecast_ptf'
+            cemre_table = 'public."cemre_ptf_d+1"'
+
+        def _parse_dates(df):
+            if not df.empty and not pd.api.types.is_datetime64_any_dtype(df['date']):
+                df['date'] = df['date'].apply(
+                    lambda x: str(x).split('+')[0].replace('T', ' ') if isinstance(x, str) else x
+                )
+            if not df.empty:
+                df['date'] = pd.to_datetime(df['date'])
+            return df
+
+        with engine.connect() as conn:
+            ptf_df = pd.read_sql(text(
+                "SELECT date, price AS actual_price FROM epias.ptf"
+                " WHERE date >= :start_dt AND date <= :end_dt"
+            ), con=conn, params=sq)
+
+            if ptf_df.empty:
+                return jsonify({'error': 'No PTF data available'}), 404
+
+            meteologica_forecast = pd.read_sql(text(
+                f"SELECT date, min_price AS meteologica_min,"
+                f" avg_price AS meteologica_avg, max_price AS meteologica_max"
+                f" FROM {met_table} WHERE date::timestamp >= :start_dt AND date::timestamp <= :end_dt"
+            ), con=conn, params=sq)
+
+            try:
+                model_forecast = pd.read_sql(text(
+                    f"SELECT date, best_price FROM {model_table}"
+                    f" WHERE date::timestamp >= :start_dt AND date::timestamp <= :end_dt"
+                ), con=conn, params=sq)
+            except Exception as e:
+                current_app.logger.warning(
+                    "Forecast query SELECT date,best_price failed for %r (%s); falling back to SELECT *",
+                    model_table, e,
+                )
+                conn.rollback()
+                model_forecast = pd.read_sql(text(
+                    f"SELECT * FROM {model_table}"
+                    f" WHERE date::timestamp >= :start_dt AND date::timestamp <= :end_dt"
+                ), con=conn, params=sq)
+                price_cols = [c for c in model_forecast.columns
+                              if 'price' in c.lower() or 'forecast' in c.lower()]
+                if price_cols:
+                    model_forecast = model_forecast[['date', price_cols[0]]].rename(
+                        columns={price_cols[0]: 'best_price'})
+
+            cemre_forecast = pd.read_sql(text(
+                f"SELECT date, forecasted_price AS cemre_forecast FROM {cemre_table}"
+                f" WHERE date >= :start_dt AND date <= :end_dt"
+            ), con=conn, params=sq)
+
+        ptf_df              = _parse_dates(ptf_df)
+        meteologica_forecast = _parse_dates(meteologica_forecast)
+        model_forecast      = _parse_dates(model_forecast)
+        cemre_forecast      = _parse_dates(cemre_forecast)
+
+        ptf_df['actual_price'] = ptf_df['actual_price'].apply(lambda x: 1 if x <= 0 else x)
+
         price_df = pd.merge(ptf_df, meteologica_forecast, on='date', how='outer').sort_values(by='date')
         price_df = pd.merge(price_df, model_forecast, on='date', how='left')
         if not cemre_forecast.empty:
             price_df = pd.merge(price_df, cemre_forecast, on='date', how='left')
-        
-        # Apply date filtering
-        if start_date and end_date:
-            start_dt = pd.to_datetime(start_date)
-            end_dt = pd.to_datetime(end_date)
-            price_df = price_df[(price_df['date'] >= start_dt) & (price_df['date'] <= end_dt)]
-        else:
-            cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=period_days)
-            price_df = price_df[price_df['date'] >= cutoff_date]
-        
+
         # Prepare data for Excel
         evaluation_df = price_df.dropna(subset=['actual_price']).copy()
         
@@ -4058,11 +3962,7 @@ def download_forecast_performance_excel():
         
     except Exception as e:
         print(f"Error in download_forecast_performance_excel: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            'error': f'Error downloading forecast performance data: {str(e)}'
-        }), 500
+        return _err("download_forecast_performance_excel", e)
 
 
 def _calculate_merit_order_price(supply_demand_df, capacity_deltas):
@@ -4105,27 +4005,26 @@ def _calculate_merit_order_price(supply_demand_df, capacity_deltas):
 
 
 @main.route('/merit-order-data')
+@login_required
 def get_merit_order_data():
     """Get merit order comparison data between a reference date and a prediction date"""
     try:
         gen_date = request.args.get('gen_date')
         pred_date = request.args.get('pred_date')
-        
+
         if not gen_date or not pred_date:
             return jsonify({'code': 400, 'message': 'Both gen_date and pred_date are required'}), 400
-        
-        # Database connection
-        user = os.getenv("SUPABASE_USER")
-        password = os.getenv("SUPABASE_PASSWORD")
-        
-        if not user or not password:
-            return jsonify({'code': 500, 'error': 'Database credentials not configured'}), 500
-        
-        connection_str = f"postgresql+psycopg2://{user}:{password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
-        engine = create_engine(connection_str)
-        
+
+        try:
+            gen_date_parsed = datetime.strptime(gen_date, '%Y-%m-%d').date()
+            pred_date_parsed = datetime.strptime(pred_date, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'code': 400, 'message': 'Dates must be in YYYY-MM-DD format'}), 400
+
+        engine = _get_supabase_engine()
+
         # Reference query — historical forecast data
-        ref_query = f"""
+        ref_query = text("""
         SELECT
             hf.date AS date,
             DATE(hf.date) AS day,
@@ -4137,12 +4036,12 @@ def get_merit_order_data():
             hf.runofriver_forecast AS river
         FROM meteologica.historical_forecast hf
         JOIN epias.ptf ptf ON ptf.date = hf.date
-        WHERE DATE(hf.date) = '{gen_date}'
+        WHERE DATE(hf.date) = :gen_date
         ORDER BY hf.date
-        """
-        
+        """)
+
         # Prediction query — current forecast data
-        pred_query = f"""
+        pred_query = text("""
         SELECT
             CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP) AS date,
             DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) AS day,
@@ -4158,24 +4057,24 @@ def get_merit_order_data():
         JOIN meteologica.licensed_solar ls ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ls."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.unlicensed_solar us ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.runofriver_hydro ror ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ror."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
-        WHERE DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) = '{pred_date}'
+        WHERE DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) = :pred_date
         ORDER BY date
-        """
-        
+        """)
+
         # Supply/demand curve for reference date (for merit order price calculation)
-        supply_demand_query = f"""
+        supply_demand_query = text("""
         SELECT date, TO_CHAR(date, 'HH24:MI') AS hour, price, supply, demand
         FROM epias.supply_demand
-        WHERE DATE(date) = '{gen_date}'
+        WHERE DATE(date) = :gen_date
         ORDER BY date, price
-        """
-        
+        """)
+
         with engine.connect() as conn:
-            ref_df = pd.read_sql(text(ref_query), con=conn)
-            pred_df = pd.read_sql(text(pred_query), con=conn)
+            ref_df = pd.read_sql(ref_query, con=conn, params={"gen_date": gen_date_parsed})
+            pred_df = pd.read_sql(pred_query, con=conn, params={"pred_date": pred_date_parsed})
             pred_df['day'] = pd.to_datetime(pred_df['day'])
             pred_df['mcp_pred'] = pred_df['mcp_pred'].round(2)
-            supply_demand_df = pd.read_sql(text(supply_demand_query), con=conn)
+            supply_demand_df = pd.read_sql(supply_demand_query, con=conn, params={"gen_date": gen_date_parsed})
 
         if ref_df.empty:
             return jsonify({'code': 404, 'message': f'No reference data found for {gen_date}'}), 404
@@ -4271,33 +4170,31 @@ def get_merit_order_data():
 
     except Exception as e:
         print(f"Error in get_merit_order_data: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'code': 500, 'error': f'Error fetching merit order data: {str(e)}'}), 500
+        return _err("get_merit_order_data", e)
 
 
 @main.route('/merit-order-power-plant-results')
+@login_required
 def get_merit_order_power_plant_results():
     """Recalculate merit order results after subtracting a power plant's AIC from capacity"""
     try:
         gen_date = request.args.get('gen_date')
         pred_date = request.args.get('pred_date')
         plant_name = request.args.get('plant_name')
-        
+
         if not gen_date or not pred_date or not plant_name:
             return jsonify({'code': 400, 'message': 'gen_date, pred_date, and plant_name are required'}), 400
-        
-        user = os.getenv("SUPABASE_USER")
-        password = os.getenv("SUPABASE_PASSWORD")
-        
-        if not user or not password:
-            return jsonify({'code': 500, 'error': 'Database credentials not configured'}), 500
-        
-        connection_str = f"postgresql+psycopg2://{user}:{password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
-        engine = create_engine(connection_str)
-        
+
+        try:
+            gen_date_parsed = datetime.strptime(gen_date, '%Y-%m-%d').date()
+            pred_date_parsed = datetime.strptime(pred_date, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'code': 400, 'message': 'Dates must be in YYYY-MM-DD format'}), 400
+
+        engine = _get_supabase_engine()
+
         # Reference query
-        ref_query = f"""
+        ref_query = text("""
         SELECT
             hf.date AS date,
             DATE(hf.date) AS day,
@@ -4309,12 +4206,12 @@ def get_merit_order_power_plant_results():
             hf.runofriver_forecast AS river
         FROM meteologica.historical_forecast hf
         JOIN meteologica.price p ON TO_TIMESTAMP(p."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI:SI') = hf.date
-        WHERE DATE(hf.date) = '{gen_date}'
+        WHERE DATE(hf.date) = :gen_date
         ORDER BY hf.date
-        """
-        
+        """)
+
         # Prediction query
-        pred_query = f"""
+        pred_query = text("""
         SELECT
             CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP) AS date,
             DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) AS day,
@@ -4330,22 +4227,22 @@ def get_merit_order_power_plant_results():
         JOIN meteologica.licensed_solar ls ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ls."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.unlicensed_solar us ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.runofriver_hydro ror ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ror."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
-        WHERE DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) = '{pred_date}'
+        WHERE DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) = :pred_date
         ORDER BY date
-        """
-        
-        supply_demand_query = f"""
+        """)
+
+        supply_demand_query = text("""
         SELECT date, TO_CHAR(date, 'HH24:MI') AS hour, price, supply, demand
         FROM epias.supply_demand
-        WHERE DATE(date) = '{gen_date}'
+        WHERE DATE(date) = :gen_date
         ORDER BY date, price
-        """
-        
+        """)
+
         with engine.connect() as conn:
-            ref_df = pd.read_sql(text(ref_query), con=conn)
-            pred_df = pd.read_sql(text(pred_query), con=conn)
+            ref_df = pd.read_sql(ref_query, con=conn, params={"gen_date": gen_date_parsed})
+            pred_df = pd.read_sql(pred_query, con=conn, params={"pred_date": pred_date_parsed})
             pred_df['mcp_pred'] = pred_df['mcp_pred'].round(2)
-            supply_demand_df = pd.read_sql(text(supply_demand_query), con=conn)
+            supply_demand_df = pd.read_sql(supply_demand_query, con=conn, params={"gen_date": gen_date_parsed})
 
         if ref_df.empty or pred_df.empty or supply_demand_df.empty:
             return jsonify({'code': 404, 'message': 'Insufficient data for calculation'}), 404
@@ -4378,42 +4275,40 @@ def get_merit_order_power_plant_results():
         tz = pytz.timezone('Europe/Istanbul')
         today_start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
         
-        session_api = Session()
         retries_api = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
-        session_api.mount('https://', HTTPAdapter(max_retries=retries_api))
-        
-        # Fetch AIC data for all plants
         all_aic = []
         aic_url = 'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/aic'
-        
-        for _, row in uevcb.iterrows():
-            try:
-                aic_response = session_api.post(
-                    aic_url,
-                    json={
-                        "startDate": today_start.isoformat(),
-                        "endDate": today_start.isoformat(),
-                        "region": "TR1",
-                        "organizationId": int(row['organizationId']),
-                        "uevcbId": int(row['id'])
-                    },
-                    headers={
-                        "Accept-Language": "en",
-                        "Accept": "application/json",
-                        "Content-Type": "application/json",
-                        "TGT": tgt_token
-                    },
-                    timeout=15
-                )
-                
-                if aic_response.status_code == 200:
-                    response_data = aic_response.json()
-                    for item in response_data.get("items", []):
-                        item["uevcbId"] = int(row['id'])
-                    all_aic.extend(response_data.get("items", []))
-            except Exception as e:
-                print(f"AIC fetch error for {row['name']}: {str(e)}")
-                continue
+
+        with Session() as session_api:
+            session_api.mount('https://', HTTPAdapter(max_retries=retries_api))
+            for _, row in uevcb.iterrows():
+                try:
+                    aic_response = session_api.post(
+                        aic_url,
+                        json={
+                            "startDate": today_start.isoformat(),
+                            "endDate": today_start.isoformat(),
+                            "region": "TR1",
+                            "organizationId": int(row['organizationId']),
+                            "uevcbId": int(row['id'])
+                        },
+                        headers={
+                            "Accept-Language": "en",
+                            "Accept": "application/json",
+                            "Content-Type": "application/json",
+                            "TGT": tgt_token
+                        },
+                        timeout=15
+                    )
+
+                    if aic_response.status_code == 200:
+                        response_data = aic_response.json()
+                        for item in response_data.get("items", []):
+                            item["uevcbId"] = int(row['id'])
+                        all_aic.extend(response_data.get("items", []))
+                except Exception as e:
+                    print(f"AIC fetch error for {row['name']}: {str(e)}")
+                    continue
         
         if not all_aic:
             return jsonify({'code': 404, 'message': 'No AIC data available to subtract'}), 404
@@ -4502,12 +4397,11 @@ def get_merit_order_power_plant_results():
         
     except Exception as e:
         print(f"Error in get_merit_order_power_plant_results: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'code': 500, 'error': f'Error: {str(e)}'}), 500
+        return _err("get_merit_order_power_plant_results", e)
 
 
 @main.route('/merit-order-aic-data')
+@login_required
 def get_merit_order_aic_data():
     """Get AIC data for tracked power plants"""
     try:
@@ -4525,80 +4419,82 @@ def get_merit_order_aic_data():
         tz = pytz.timezone('Europe/Istanbul')
         today_start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
         
-        # First get organization list to match names
-        session = Session()
         retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-        
-        org_response = session.post(
-            'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/organization-list',
-            json={
-                "startDate": today_start.isoformat(),
-                "endDate": today_start.isoformat()
-            },
-            headers={
-                "Accept-Language": "en",
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "TGT": tgt_token
-            },
-            timeout=30
-        )
-        
-        if org_response.status_code == 200:
-            org_df = pd.DataFrame.from_records(org_response.json().get('items', []))
-            if not org_df.empty:
-                uevcb = uevcb.merge(
-                    org_df[['organizationId', 'organizationName']], 
-                    left_on="organizationId", right_on="organizationId", how="left"
-                )
-        
-        # Fetch AIC data for each plant
         all_response = []
+        aic_fetch_failures = 0
         aic_url = 'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/aic'
-        
-        for _, row in uevcb.iterrows():
-            try:
-                aic_response = session.post(
-                    aic_url,
-                    json={
-                        "startDate": today_start.isoformat(),
-                        "endDate": today_start.isoformat(),
-                        "region": "TR1",
-                        "organizationId": int(row['organizationId']),
-                        "uevcbId": int(row['id'])
-                    },
-                    headers={
-                        "Accept-Language": "en",
-                        "Accept": "application/json",
-                        "Content-Type": "application/json",
-                        "TGT": tgt_token
-                    },
-                    timeout=15
-                )
-                
-                if aic_response.status_code == 200:
-                    response_data = aic_response.json()
-                    for item in response_data.get("items", []):
-                        item["uevcbId"] = int(row['id'])
-                    all_response.extend(response_data.get("items", []))
-            except Exception as e:
-                print(f"Error fetching AIC for {row['name']}: {str(e)}")
-                continue
-        
+
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+
+            org_response = session.post(
+                'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/organization-list',
+                json={
+                    "startDate": today_start.isoformat(),
+                    "endDate": today_start.isoformat()
+                },
+                headers={
+                    "Accept-Language": "en",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "TGT": tgt_token
+                },
+                timeout=30
+            )
+
+            if org_response.status_code == 200:
+                org_df = pd.DataFrame.from_records(org_response.json().get('items', []))
+                if not org_df.empty:
+                    uevcb = uevcb.merge(
+                        org_df[['organizationId', 'organizationName']],
+                        left_on="organizationId", right_on="organizationId", how="left"
+                    )
+
+            for _, row in uevcb.iterrows():
+                try:
+                    aic_response = session.post(
+                        aic_url,
+                        json={
+                            "startDate": today_start.isoformat(),
+                            "endDate": today_start.isoformat(),
+                            "region": "TR1",
+                            "organizationId": int(row['organizationId']),
+                            "uevcbId": int(row['id'])
+                        },
+                        headers={
+                            "Accept-Language": "en",
+                            "Accept": "application/json",
+                            "Content-Type": "application/json",
+                            "TGT": tgt_token
+                        },
+                        timeout=15
+                    )
+
+                    if aic_response.status_code == 200:
+                        response_data = aic_response.json()
+                        for item in response_data.get("items", []):
+                            item["uevcbId"] = int(row['id'])
+                        all_response.extend(response_data.get("items", []))
+                    else:
+                        aic_fetch_failures += 1
+                except Exception as e:
+                    print(f"Error fetching AIC for {row['name']}: {str(e)}")
+                    aic_fetch_failures += 1
+                    continue
+
         if not all_response:
             return jsonify({'code': 404, 'message': 'No AIC data available'}), 404
-        
+
         # Process AIC data into pivot table
         eak_df = pd.DataFrame.from_records(all_response)
         eak_df = eak_df[['date', 'uevcbId', 'toplam']].copy()
         eak_df = eak_df.merge(uevcb[["id", "name"]], left_on="uevcbId", right_on="id", how="left").drop(columns=['id', 'uevcbId'])
-        
+
         eak_df['date'] = pd.to_datetime(eak_df['date'])
         eak_df['hour'] = eak_df['date'].dt.strftime('%H:%M')
         pivot_df = eak_df.pivot(index="name", columns="hour", values="toplam")
         pivot_df = pivot_df.fillna(0)
-        
+
         base_date = today_start.strftime('%Y-%m-%d')
 
         return jsonify({
@@ -4607,31 +4503,23 @@ def get_merit_order_aic_data():
                 'plants': pivot_df.index.tolist(),
                 'hours': pivot_df.columns.tolist(),
                 'values': pivot_df.values.tolist(),
-                'base_date': base_date
+                'base_date': base_date,
+                'fetch_failures': aic_fetch_failures,
             }
         })
         
     except Exception as e:
         print(f"Error in get_merit_order_aic_data: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'code': 500, 'error': f'Error fetching AIC data: {str(e)}'}), 500
+        return _err("get_merit_order_aic_data", e)
 
 
 @main.route('/merit-order-failure-data')
+@login_required
 def get_merit_order_failure_data():
     """Get current power plant failure data from market messages"""
     try:
-        # Database connection
-        user = os.getenv("SUPABASE_USER")
-        password = os.getenv("SUPABASE_PASSWORD")
-        
-        if not user or not password:
-            return jsonify({'code': 500, 'error': 'Database credentials not configured'}), 500
-        
-        connection_str = f"postgresql+psycopg2://{user}:{password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
-        engine = create_engine(connection_str)
-        
+        engine = _get_supabase_engine()
+
         failure_query = """
         SELECT 
             "uevcbName", 
@@ -4680,12 +4568,11 @@ def get_merit_order_failure_data():
         
     except Exception as e:
         print(f"Error in get_merit_order_failure_data: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'code': 500, 'error': f'Error fetching failure data: {str(e)}'}), 500
+        return _err("get_merit_order_failure_data", e)
 
 
 @main.route('/download-merit-order-excel', methods=['GET', 'POST'])
+@login_required
 def download_merit_order_excel():
     """Download merit order data as a multi-sheet Excel file.
     Accepts GET (no custom deltas) or POST with JSON body {gen_date, pred_date, capacity_deltas}.
@@ -4705,19 +4592,17 @@ def download_merit_order_excel():
 
         if not gen_date or not pred_date:
             return jsonify({'error': 'Both gen_date and pred_date are required'}), 400
-        
-        # Database connection
-        user = os.getenv("SUPABASE_USER")
-        password_db = os.getenv("SUPABASE_PASSWORD")
-        
-        if not user or not password_db:
-            return jsonify({'error': 'Database credentials not configured'}), 500
-        
-        connection_str = f"postgresql+psycopg2://{user}:{password_db}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
-        engine = create_engine(connection_str)
-        
+
+        try:
+            gen_date_parsed = datetime.strptime(gen_date, '%Y-%m-%d').date()
+            pred_date_parsed = datetime.strptime(pred_date, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'error': 'Dates must be in YYYY-MM-DD format'}), 400
+
+        engine = _get_supabase_engine()
+
         # --- Sheet 1: Results ---
-        ref_query = f"""
+        ref_query = text("""
         SELECT
             hf.date AS date,
             DATE(hf.date) AS day,
@@ -4729,11 +4614,11 @@ def download_merit_order_excel():
             hf.runofriver_forecast AS river
         FROM meteologica.historical_forecast hf
         JOIN meteologica.price p ON TO_TIMESTAMP(p."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI:SI') = hf.date
-        WHERE DATE(hf.date) = '{gen_date}'
+        WHERE DATE(hf.date) = :gen_date
         ORDER BY hf.date
-        """
-        
-        pred_query = f"""
+        """)
+
+        pred_query = text("""
         SELECT
             CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP) AS date,
             DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) AS day,
@@ -4749,22 +4634,22 @@ def download_merit_order_excel():
         JOIN meteologica.licensed_solar ls ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ls."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.unlicensed_solar us ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.runofriver_hydro ror ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ror."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
-        WHERE DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) = '{pred_date}'
+        WHERE DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) = :pred_date
         ORDER BY date
-        """
-        
-        supply_demand_query = f"""
+        """)
+
+        supply_demand_query = text("""
         SELECT date, TO_CHAR(date, 'HH24:MI') AS hour, price, supply, demand
         FROM epias.supply_demand
-        WHERE DATE(date) = '{gen_date}'
+        WHERE DATE(date) = :gen_date
         ORDER BY date, price
-        """
-        
+        """)
+
         with engine.connect() as conn:
-            ref_df = pd.read_sql(text(ref_query), con=conn)
-            pred_df = pd.read_sql(text(pred_query), con=conn)
+            ref_df = pd.read_sql(ref_query, con=conn, params={"gen_date": gen_date_parsed})
+            pred_df = pd.read_sql(pred_query, con=conn, params={"pred_date": pred_date_parsed})
             pred_df['mcp_pred'] = pred_df['mcp_pred'].round(2)
-            supply_demand_df = pd.read_sql(text(supply_demand_query), con=conn)
+            supply_demand_df = pd.read_sql(supply_demand_query, con=conn, params={"gen_date": gen_date_parsed})
 
         # Merge and calculate deltas
         cols = ['demand', 'river', 'wind', 'solar']
@@ -4847,41 +4732,40 @@ def download_merit_order_excel():
                 tz = pytz.timezone('Europe/Istanbul')
                 today_start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
                 
-                session_api = Session()
                 retries_api = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
-                session_api.mount('https://', HTTPAdapter(max_retries=retries_api))
-                
                 all_aic = []
                 aic_url = 'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/aic'
-                
-                for _, row in uevcb.iterrows():
-                    try:
-                        aic_response = session_api.post(
-                            aic_url,
-                            json={
-                                "startDate": today_start.isoformat(),
-                                "endDate": today_start.isoformat(),
-                                "region": "TR1",
-                                "organizationId": int(row['organizationId']),
-                                "uevcbId": int(row['id'])
-                            },
-                            headers={
-                                "Accept-Language": "en",
-                                "Accept": "application/json",
-                                "Content-Type": "application/json",
-                                "TGT": tgt_token
-                            },
-                            timeout=15
-                        )
-                        
-                        if aic_response.status_code == 200:
-                            response_data = aic_response.json()
-                            for item in response_data.get("items", []):
-                                item["uevcbId"] = int(row['id'])
-                            all_aic.extend(response_data.get("items", []))
-                    except Exception as e:
-                        print(f"AIC fetch error for {row['name']}: {str(e)}")
-                        continue
+
+                with Session() as session_api:
+                    session_api.mount('https://', HTTPAdapter(max_retries=retries_api))
+                    for _, row in uevcb.iterrows():
+                        try:
+                            aic_response = session_api.post(
+                                aic_url,
+                                json={
+                                    "startDate": today_start.isoformat(),
+                                    "endDate": today_start.isoformat(),
+                                    "region": "TR1",
+                                    "organizationId": int(row['organizationId']),
+                                    "uevcbId": int(row['id'])
+                                },
+                                headers={
+                                    "Accept-Language": "en",
+                                    "Accept": "application/json",
+                                    "Content-Type": "application/json",
+                                    "TGT": tgt_token
+                                },
+                                timeout=15
+                            )
+
+                            if aic_response.status_code == 200:
+                                response_data = aic_response.json()
+                                for item in response_data.get("items", []):
+                                    item["uevcbId"] = int(row['id'])
+                                all_aic.extend(response_data.get("items", []))
+                        except Exception as e:
+                            print(f"AIC fetch error for {row['name']}: {str(e)}")
+                            continue
                 
                 if all_aic:
                     eak_df = pd.DataFrame.from_records(all_aic)
@@ -4963,9 +4847,7 @@ def download_merit_order_excel():
         
     except Exception as e:
         print(f"Error in download_merit_order_excel: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Error downloading merit order data: {str(e)}'}), 500
+        return _err("download_merit_order_excel", e)
 
 
 @main.route('/api/supply_demand_price', methods=['GET'])
@@ -4978,13 +4860,15 @@ def get_supply_demand_price():
         if not selected_date:
             return jsonify({'error': 'Date parameter is required'}), 400
 
-        sb_user = os.getenv('SUPABASE_USER')
-        sb_password = os.getenv('SUPABASE_PASSWORD')
-        connection_str = f"postgresql+psycopg2://{sb_user}:{sb_password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
-        engine_sb = create_engine(connection_str)
+        try:
+            selected_date_parsed = datetime.strptime(selected_date, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'error': 'Date must be in YYYY-MM-DD format'}), 400
+
+        engine_sb = _get_supabase_engine()
 
         query = text(
-            f"""
+            """
             WITH base AS (
                 SELECT *,
                        supply + demand AS total,
@@ -5001,7 +4885,7 @@ def get_supply_demand_price():
                     AVG(total) AS avg_total,
                     AVG(diff) AS avg_diff
                 FROM base
-                WHERE DATE(date) = '{selected_date}'
+                WHERE DATE(date) = :selected_date
                 GROUP BY DATE(date), price, EXTRACT(HOUR FROM date)
             )
             SELECT
@@ -5038,7 +4922,7 @@ def get_supply_demand_price():
         )
 
         with engine_sb.connect() as conn:
-            df = pd.read_sql(query, con=conn)
+            df = pd.read_sql(query, con=conn, params={"selected_date": selected_date_parsed})
 
         hour_cols = [col for col in df.columns if col.endswith(':00')]
 
@@ -5098,6 +4982,4 @@ def get_supply_demand_price():
 
     except Exception as e:
         print(f"Error in get_supply_demand_price: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return _err("get_supply_demand_price", e)

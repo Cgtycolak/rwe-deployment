@@ -193,9 +193,20 @@ export const importCoalHeatmap = {
             const maxValue = Math.max(...allValues);
             const minValue = Math.min(...allValues);
 
+            const scaleValues = (version === 'date_comparison')
+                ? data.values.flatMap(row => row.slice(0, row.length - 1))
+                : allValues;
+            const scaleAbsMax = Math.max(
+                Math.abs(Math.max(...scaleValues)),
+                Math.abs(Math.min(...scaleValues))
+            ) || 1;
+
             // Function to determine text color based on background value
             const getTextColor = (value) => {
-                if ((version === 'difference' || version === 'date_comparison') && value === 0) return 'black';
+                if (version === 'difference' || version === 'date_comparison') {
+                    const normalizedAbs = Math.abs(value) / scaleAbsMax;
+                    return normalizedAbs > 0.6 ? 'white' : 'black';
+                }
                 const threshold = 0.3;
                 const normalizedValue = (value - minValue) / (maxValue - minValue);
                 return normalizedValue > threshold ? 'black' : 'white';
@@ -285,6 +296,8 @@ export const importCoalHeatmap = {
                     len: 1.029
                 },
                 zmid: (version === 'difference' || version === 'date_comparison') ? 0 : undefined,
+                zmin: (version === 'date_comparison') ? -scaleAbsMax : undefined,
+                zmax: (version === 'date_comparison') ? scaleAbsMax : undefined,
                 hoverongaps: false,
                 xgap: 1,
                 ygap: 1

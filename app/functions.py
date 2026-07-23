@@ -1,6 +1,7 @@
 import pytz
 from requests import post
-from flask import current_app
+from flask import current_app, session, jsonify, redirect, url_for, request
+from functools import wraps
 from datetime import datetime, date
 from datetime import datetime
 import time
@@ -116,27 +117,44 @@ def fetch_plant_data(start_date, end_date, org_id, plant_id, url, token, max_ret
         'uevcbId': int(plant_id)
     }
     
-    session = requests.Session()
     retries = Retry(
         total=max_retries,
-        backoff_factor=0.5,  # Reduced backoff factor for faster retries
+        backoff_factor=0.5,
         status_forcelist=[500, 502, 503, 504, 406],
         allowed_methods=["POST"]
     )
-    session.mount('https://', HTTPAdapter(max_retries=retries))
-    
-    for retry_count in range(max_retries):
-        try:
-            response = session.post(
-                url, 
-                headers=headers, 
-                json=data,
-                timeout=15  # Reduced timeout for faster failure detection
+
+    with requests.Session() as session:
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+        for retry_count in range(max_retries):
+            try:
+                response = session.post(
+                    url,
+                    headers=headers,
+                    json=data,
+                    timeout=15
+                )
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.RequestException as e:
+                if retry_count == max_retries - 1:
+                    current_app.logger.error(f"Error in fetch_plant_data after {max_retries} retries: {str(e)}")
+                    return None
+                time.sleep(0.5 * (2 ** retry_count))
+
+
+def login_required(f):
+    """Single canonical auth decorator — imported by all blueprints."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('authenticated'):
+            current_app.logger.warning(
+                "Unauthenticated request blocked: %s %s (ip=%s)",
+                request.method, request.path,
+                request.headers.get('X-Forwarded-For', request.remote_addr),
             )
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            if retry_count == max_retries - 1:
-                current_app.logger.error(f"Error in fetch_plant_data after {max_retries} retries: {str(e)}")
-                return None
-            time.sleep(0.5 * (2 ** retry_count))  # Faster exponential backoff
+            if request.path.startswith('/api/') or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'error': 'Not authenticated'}), 401
+            return redirect(url_for('main.login'))
+        return f(*args, **kwargs)
+    return decorated_function

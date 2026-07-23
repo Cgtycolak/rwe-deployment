@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request, current_app, session
 from datetime import datetime, timedelta
 import requests
 from dateutil.relativedelta import relativedelta
@@ -6,7 +6,7 @@ import logging
 from requests import Session
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
-from ..functions import get_tgt_token, asutc, invalidates_or_none
+from ..functions import get_tgt_token, asutc, invalidates_or_none, login_required
 import pandas as pd
 
 realtime_generation_bp = Blueprint('realtime_generation', __name__)
@@ -14,28 +14,20 @@ realtime_generation_bp = Blueprint('realtime_generation', __name__)
 def fetch_realtime_data(start_date, end_date):
     """Fetch realtime generation data from EPIAS API"""
     try:
-        # Set up session with retries (matching main.py pattern)
-        session = Session()
-        retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-        
-        # Get TGT token (matching main.py pattern)
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
-        
-        payload = {
-            "startDate": asutc(start_date),
-            "endDate": asutc(end_date)
-        }
-        
-        # Make request (matching main.py pattern)
-        res = session.post(
-            current_app.config['REALTIME_URL'],
-            json=payload,
-            headers={"TGT": tgt_token},
-            timeout=30
-        )
-        res.raise_for_status()
-        return res.json()
+        retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
+        payload = {"startDate": asutc(start_date), "endDate": asutc(end_date)}
+
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            res = session.post(
+                current_app.config['REALTIME_URL'],
+                json=payload,
+                headers={"TGT": tgt_token},
+                timeout=30
+            )
+            res.raise_for_status()
+            return res.json()
     except Exception as e:
         logging.error(f"Error From fetch_realtime_data: {str(e)}")
         return None
@@ -43,29 +35,20 @@ def fetch_realtime_data(start_date, end_date):
 def fetch_dpp_data(start_date, end_date):
     """Fetch DPP data from EPIAS API"""
     try:
-        # Set up session with retries (matching main.py pattern)
-        session = Session()
-        retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-        
-        # Get TGT token (matching main.py pattern)
         tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
-        
-        payload = {
-            "startDate": asutc(start_date),
-            "endDate": asutc(end_date),
-            "region": "TR1"
-        }
-        
-        # Make request (matching main.py pattern)
-        res = session.post(
-            current_app.config['DPP_URL'],
-            json=payload,
-            headers={"TGT": tgt_token},
-            timeout=30
-        )
-        res.raise_for_status()
-        return res.json()
+        retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
+        payload = {"startDate": asutc(start_date), "endDate": asutc(end_date), "region": "TR1"}
+
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            res = session.post(
+                current_app.config['DPP_URL'],
+                json=payload,
+                headers={"TGT": tgt_token},
+                timeout=30
+            )
+            res.raise_for_status()
+            return res.json()
     except Exception as e:
         logging.error(f"Error From fetch_dpp_data: {str(e)}")
         return None
@@ -162,6 +145,7 @@ def fetch_data_in_chunks(start_date, end_date, fetch_func):
     return all_data
 
 @realtime_generation_bp.route('/api/generation-comparison', methods=['POST'])
+@login_required
 def get_generation_comparison():
     try:
         args = request.get_json()

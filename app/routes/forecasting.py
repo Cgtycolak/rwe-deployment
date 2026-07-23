@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, session
 import pandas as pd
 import numpy as np
 import traceback
@@ -7,6 +7,7 @@ import os
 import base64
 import requests as http_requests
 from datetime import datetime
+from ..functions import login_required
 
 from ..forecasting.utils import (
     get_database_connection,
@@ -131,16 +132,26 @@ def _call_modal(train_df, cov_df, prediction_length, model_name):
     body = json.dumps(payload, default=_json_default)
     current_app.logger.info(f"Sending to Modal: train={len(payload['train'])} rows, cov={len(payload['covariates'])} rows, n={prediction_length}")
 
-    resp = http_requests.post(
-        url,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        timeout=300,
-    )
-    if not resp.ok:
-        current_app.logger.error(f"Modal {resp.status_code}: {resp.text[:1000]}")
-    resp.raise_for_status()
-    return resp.json()
+    last_exc = None
+    for attempt in range(2):
+        try:
+            resp = http_requests.post(
+                url,
+                data=body,
+                headers={"Content-Type": "application/json"},
+                timeout=300,
+            )
+            if not resp.ok:
+                current_app.logger.error(f"Modal {resp.status_code}: {resp.text[:1000]}")
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            last_exc = exc
+            if attempt == 0:
+                import time as _time
+                current_app.logger.warning(f"Modal attempt {attempt + 1} failed ({exc}), retrying in 5s…")
+                _time.sleep(5)
+    raise last_exc
 
 
 def _clean_cache():
@@ -158,6 +169,7 @@ def _clean_cache():
 # ---------------------------------------------------------------------------
 
 @forecasting_bp.route('/recent-data', methods=['POST'])
+@login_required
 def get_recent_data():
     try:
         if 'file' not in request.files or request.files['file'].filename == '':
@@ -183,12 +195,13 @@ def get_recent_data():
 
         return jsonify({'success': True, 'data': data_list})
 
-    except Exception as e:
+    except Exception:
         current_app.logger.error(traceback.format_exc())
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 @forecasting_bp.route('/evaluate', methods=['POST'])
+@login_required
 def evaluate():
     try:
         if 'file' not in request.files or request.files['file'].filename == '':
@@ -248,12 +261,13 @@ def evaluate():
 
         return jsonify({'success': True, 'result': result})
 
-    except Exception as e:
+    except Exception:
         current_app.logger.error(traceback.format_exc())
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 @forecasting_bp.route('/predict', methods=['POST'])
+@login_required
 def predict():
     try:
         if 'file' not in request.files or request.files['file'].filename == '':
@@ -348,6 +362,14 @@ def predict():
             f'system_direction_{q_high_val}': future_upper,
         })
 
+        # Pre-compute Excel bytes here so any gunicorn worker can serve the download.
+        # forecast_cache is per-process; without this, download-forecast fails ~50% of
+        # the time because gunicorn round-robins the request to the other worker.
+        _excel_bytes = to_excel_bytes(forecast_df)
+        _first_date  = future_dates[0] if future_dates else ''
+        _last_date   = future_dates[-1] if future_dates else ''
+        _filename    = f"direction_forecast_{model_name}_{_first_date}_{_last_date}.xlsx"
+
         forecast_id = str(uuid.uuid4())
         forecast_cache[forecast_id] = {
             'model_name':        model_name,
@@ -356,6 +378,10 @@ def predict():
             'timestamp':         datetime.now().isoformat(),
         }
         _clean_cache()
+        session.setdefault('forecast_downloads', {})[forecast_id] = {
+            'excel_b64': base64.b64encode(_excel_bytes).decode('utf-8'),
+            'filename':  _filename,
+        }
 
         response_data = {
             'success':            True,
@@ -373,12 +399,13 @@ def predict():
 
         return jsonify(response_data)
 
-    except Exception as e:
+    except Exception:
         current_app.logger.error(traceback.format_exc())
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 @forecasting_bp.route('/download-forecast', methods=['POST'])
+@login_required
 def download_forecast():
     try:
         if 'file' not in request.files or request.files['file'].filename == '':
@@ -387,6 +414,7 @@ def download_forecast():
         reuse_results = request.form.get('reuse_results', 'false').lower() == 'true'
         forecast_id   = request.form.get('forecast_id')
 
+        # Same-worker fast path: in-process cache still holds the DataFrame
         if reuse_results and forecast_id and forecast_id in forecast_cache:
             cached      = forecast_cache[forecast_id]
             fr          = cached['forecast_result']
@@ -400,9 +428,19 @@ def download_forecast():
                 'filename':   f"direction_forecast_{cached['model_name']}_{first_date}_{last_date}.xlsx",
             })
 
-        # No cache hit — cannot re-run without a fresh predict call
+        # Cross-worker fallback: Excel bytes were pre-computed in predict() and stored in the
+        # filesystem-backed Flask session, which is readable by any worker on the same host.
+        session_cache = session.get('forecast_downloads', {})
+        if reuse_results and forecast_id and forecast_id in session_cache:
+            entry = session_cache[forecast_id]
+            return jsonify({
+                'success':    True,
+                'excel_data': entry['excel_b64'],
+                'filename':   entry['filename'],
+            })
+
         return jsonify({'error': 'Forecast session expired. Please run Predict again.'}), 400
 
-    except Exception as e:
+    except Exception:
         current_app.logger.error(traceback.format_exc())
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal server error'}), 500

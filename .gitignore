@@ -42,3 +42,4 @@ build/
 
 # Local development settings
 instance/
+.scheduler.lock

@@ -1,6 +1,10 @@
 """
 Modal deployment for Chronos-2 inference using predict_df API.
 
+This file runs on Modal's cloud infrastructure, NOT on the Flask/Render server.
+It is NOT covered by requirements.txt. To work with it locally, install separately:
+    pip install modal pydantic
+
 Deploy with:
     modal deploy modal_chronos.py
 

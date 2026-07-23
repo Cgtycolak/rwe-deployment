@@ -32,10 +32,6 @@ def register_error_handlers(app):
 # Create the application instance
 app = create_app()
 
-# Initialize scheduler after app creation
-from .tasks.scheduler import init_scheduler
-init_scheduler(app)
-
 # Register error handlers
 @app.errorhandler(404)
 def handle_not_found(e):

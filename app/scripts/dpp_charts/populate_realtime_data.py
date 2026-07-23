@@ -29,7 +29,9 @@ TYPE_MAPPINGS = {
 
 def get_local_session():
     """Create a session for the local database"""
-    local_db_url = "postgresql://rwe_user:123Cagatay123@localhost:5432/rwe_data"
+    local_db_url = os.getenv('LOCAL_DATABASE_URL')
+    if not local_db_url:
+        raise RuntimeError("LOCAL_DATABASE_URL environment variable must be set")
     engine = create_engine(local_db_url)
     Session = sessionmaker(bind=engine)
     return Session()
@@ -80,7 +82,7 @@ def populate_realtime_data(plant_type: str, start_date: datetime.date, end_date:
             for chunk_start, chunk_end in chunks:
                 print(f"\nProcessing chunk {chunk_start} to {chunk_end}")
                 
-                # Delete existing data for this chunk
+                # Delete existing data for this chunk (kept in-transaction; committed together with INSERT below)
                 try:
                     # Delete from deployed database
                     delete_query = model.query.filter(
@@ -89,7 +91,6 @@ def populate_realtime_data(plant_type: str, start_date: datetime.date, end_date:
                     if plants:
                         delete_query = delete_query.filter(model.plant_name.in_(plants))
                     delete_query.delete(synchronize_session='fetch')
-                    db.session.commit()
 
                     # Delete from local database
                     if local_db:
@@ -99,7 +100,6 @@ def populate_realtime_data(plant_type: str, start_date: datetime.date, end_date:
                         if plants:
                             delete_query_local = delete_query_local.filter(model.plant_name.in_(plants))
                         delete_query_local.delete(synchronize_session='fetch')
-                        local_session.commit()
                 except Exception as e:
                     print(f"Error clearing existing data: {str(e)}")
                     db.session.rollback()

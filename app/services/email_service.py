@@ -170,133 +170,127 @@ class EmailService:
             date_str = date.strftime('%Y-%m-%d')
             
             logger.info(f"Generating heatmap report for {date_str}")
-            
-            # Import here to avoid circular imports
-            from app import create_app
-            
-            app = create_app()
-            
-            with app.app_context():
-                # Fetch all heatmap data
-                heatmaps = []
-                
-                # Natural Gas - First Version ONLY
-                try:
-                    ng_first = fetch_natural_gas_heatmap_data(date, 'first')
-                    if ng_first and ng_first.get('code') == 200:
-                        img = self.create_heatmap_image(
-                            ng_first['data'],
-                            f'Natural Gas DPP First Version - {date_str}',
-                            colorscale='RdBu'  # Same as dashboard: Red (high) to Blue (low)
-                        )
-                        heatmaps.append(('natural_gas_first', img, 'Natural Gas - First Version'))
-                except Exception as e:
-                    logger.error(f"Error generating Natural Gas first version: {str(e)}")
-                
-                # Import Coal - First Version
-                try:
-                    ic_first = fetch_import_coal_heatmap_data(date, 'first')
-                    if ic_first and ic_first.get('code') == 200:
-                        img = self.create_heatmap_image(
-                            ic_first['data'],
-                            f'Import Coal DPP First Version - {date_str}',
-                            colorscale='RdBu'  # Same as dashboard
-                        )
-                        heatmaps.append(('import_coal_first', img, 'Import Coal - First Version'))
-                except Exception as e:
-                    logger.error(f"Error generating Import Coal first version: {str(e)}")
-                
-                # Hydro - First Version
-                try:
-                    hydro_first = fetch_hydro_heatmap_data(date, 'first')
-                    if hydro_first and hydro_first.get('code') == 200:
-                        img = self.create_heatmap_image(
-                            hydro_first['data'],
-                            f'Hydro DPP First Version - {date_str}',
-                            colorscale='RdBu'  # Same as dashboard
-                        )
-                        heatmaps.append(('hydro_first', img, 'Hydro - First Version'))
-                except Exception as e:
-                    logger.error(f"Error generating Hydro first version: {str(e)}")
-                
-                # Lignite - First Version
-                try:
-                    lignite_first = fetch_lignite_heatmap_data(date, 'first')
-                    if lignite_first and lignite_first.get('code') == 200:
-                        img = self.create_heatmap_image(
-                            lignite_first['data'],
-                            f'Lignite DPP First Version - {date_str}',
-                            colorscale='RdBu'  # Same as dashboard
-                        )
-                        heatmaps.append(('lignite_first', img, 'Lignite - First Version'))
-                except Exception as e:
-                    logger.error(f"Error generating Lignite first version: {str(e)}")
-                
-                if not heatmaps:
-                    logger.error("No heatmaps generated successfully")
-                    return False
-                
-                # Create email
-                msg = MIMEMultipart('related')
-                msg['Subject'] = f'Daily Power Generation Heatmap Report - {date_str}'
-                msg['From'] = self.sender_email
-                msg['To'] = ', '.join(self.recipient_emails)
-                
-                # Create HTML body
-                html_body = f"""
-                <html>
-                    <head></head>
-                    <body style="font-family: Arial, sans-serif;">
-                        <h2>Daily Power Generation Heatmap Report</h2>
-                        <p><strong>Report Date:</strong> {date_str}</p>
-                        <p><strong>Generated:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-                        <hr>
-                        <p>This automated report contains the DPP (Day-Ahead Production Plan) heatmaps for various generation types.</p>
-                        
-                        <h3>Heatmaps:</h3>
+
+            # Fetch all heatmap data — runs in the caller's app context (scheduler provides it)
+            heatmaps = []
+
+            # Natural Gas - First Version ONLY
+            try:
+                ng_first = fetch_natural_gas_heatmap_data(date, 'first')
+                if ng_first and ng_first.get('code') == 200:
+                    img = self.create_heatmap_image(
+                        ng_first['data'],
+                        f'Natural Gas DPP First Version - {date_str}',
+                        colorscale='RdBu'
+                    )
+                    heatmaps.append(('natural_gas_first', img, 'Natural Gas - First Version'))
+            except Exception as e:
+                logger.error(f"Error generating Natural Gas first version: {str(e)}")
+
+            # Import Coal - First Version
+            try:
+                ic_first = fetch_import_coal_heatmap_data(date, 'first')
+                if ic_first and ic_first.get('code') == 200:
+                    img = self.create_heatmap_image(
+                        ic_first['data'],
+                        f'Import Coal DPP First Version - {date_str}',
+                        colorscale='RdBu'
+                    )
+                    heatmaps.append(('import_coal_first', img, 'Import Coal - First Version'))
+            except Exception as e:
+                logger.error(f"Error generating Import Coal first version: {str(e)}")
+
+            # Hydro - First Version
+            try:
+                hydro_first = fetch_hydro_heatmap_data(date, 'first')
+                if hydro_first and hydro_first.get('code') == 200:
+                    img = self.create_heatmap_image(
+                        hydro_first['data'],
+                        f'Hydro DPP First Version - {date_str}',
+                        colorscale='RdBu'
+                    )
+                    heatmaps.append(('hydro_first', img, 'Hydro - First Version'))
+            except Exception as e:
+                logger.error(f"Error generating Hydro first version: {str(e)}")
+
+            # Lignite - First Version
+            try:
+                lignite_first = fetch_lignite_heatmap_data(date, 'first')
+                if lignite_first and lignite_first.get('code') == 200:
+                    img = self.create_heatmap_image(
+                        lignite_first['data'],
+                        f'Lignite DPP First Version - {date_str}',
+                        colorscale='RdBu'
+                    )
+                    heatmaps.append(('lignite_first', img, 'Lignite - First Version'))
+            except Exception as e:
+                logger.error(f"Error generating Lignite first version: {str(e)}")
+
+            if not heatmaps:
+                logger.error("No heatmaps generated successfully")
+                return False
+
+            # Create email
+            msg = MIMEMultipart('related')
+            msg['Subject'] = f'Daily Power Generation Heatmap Report - {date_str}'
+            msg['From'] = self.sender_email
+            msg['To'] = ', '.join(self.recipient_emails)
+
+            # Create HTML body
+            html_body = f"""
+            <html>
+                <head></head>
+                <body style="font-family: Arial, sans-serif;">
+                    <h2>Daily Power Generation Heatmap Report</h2>
+                    <p><strong>Report Date:</strong> {date_str}</p>
+                    <p><strong>Generated:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                    <hr>
+                    <p>This automated report contains the DPP (Day-Ahead Production Plan) heatmaps for various generation types.</p>
+
+                    <h3>Heatmaps:</h3>
+            """
+
+            # Add each heatmap to HTML
+            for idx, (cid, img_data, title) in enumerate(heatmaps):
+                html_body += f"""
+                    <div style="margin-bottom: 30px;">
+                        <h4>{title}</h4>
+                        <img src="cid:{cid}" style="max-width: 100%; height: auto;">
+                    </div>
                 """
-                
-                # Add each heatmap to HTML
-                for idx, (cid, img_data, title) in enumerate(heatmaps):
-                    html_body += f"""
-                        <div style="margin-bottom: 30px;">
-                            <h4>{title}</h4>
-                            <img src="cid:{cid}" style="max-width: 100%; height: auto;">
-                        </div>
-                    """
-                
-                html_body += """
-                        <hr>
-                        <p style="color: #666; font-size: 12px;">
-                            This is an automated email from RWE Dashboard. 
-                            For questions, please contact your system administrator.
-                        </p>
-                    </body>
-                </html>
-                """
-                
-                # Attach HTML body
-                msg_alternative = MIMEMultipart('alternative')
-                msg.attach(msg_alternative)
-                msg_alternative.attach(MIMEText(html_body, 'html'))
-                
-                # Attach images
-                for cid, img_data, title in heatmaps:
-                    img = MIMEImage(img_data)
-                    img.add_header('Content-ID', f'<{cid}>')
-                    img.add_header('Content-Disposition', 'inline', filename=f'{cid}.png')
-                    msg.attach(img)
-                
-                # Send email
-                logger.info(f"Sending email to {self.recipient_emails}")
-                
-                with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                    server.starttls()
-                    server.login(self.sender_email, self.sender_password)
-                    server.send_message(msg)
-                
-                logger.info("Email sent successfully")
-                return True
+
+            html_body += """
+                    <hr>
+                    <p style="color: #666; font-size: 12px;">
+                        This is an automated email from RWE Dashboard.
+                        For questions, please contact your system administrator.
+                    </p>
+                </body>
+            </html>
+            """
+
+            # Attach HTML body
+            msg_alternative = MIMEMultipart('alternative')
+            msg.attach(msg_alternative)
+            msg_alternative.attach(MIMEText(html_body, 'html'))
+
+            # Attach images
+            for cid, img_data, title in heatmaps:
+                img = MIMEImage(img_data)
+                img.add_header('Content-ID', f'<{cid}>')
+                img.add_header('Content-Disposition', 'inline', filename=f'{cid}.png')
+                msg.attach(img)
+
+            # Send email
+            logger.info(f"Sending email to {len(self.recipient_emails)} recipients")
+
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                server.starttls()
+                server.login(self.sender_email, self.sender_password)
+                server.send_message(msg)
+
+            logger.info("Email sent successfully")
+            return True
                 
         except Exception as e:
             logger.error(f"Error sending daily heatmap report: {str(e)}")

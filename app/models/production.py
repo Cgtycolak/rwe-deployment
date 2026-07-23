@@ -3,9 +3,10 @@ from datetime import datetime, timezone
 
 class ProductionData(db.Model):
     __tablename__ = 'production_data'
-    
+    __table_args__ = (db.UniqueConstraint('datetime', name='uq_production_data_datetime'),)
+
     id = db.Column(db.Integer, primary_key=True)
-    datetime = db.Column(db.DateTime, nullable=False)
+    datetime = db.Column(db.DateTime, nullable=False, index=True)
     fueloil = db.Column(db.Float)
     gasoil = db.Column(db.Float)
     blackcoal = db.Column(db.Float)

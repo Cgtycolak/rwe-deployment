@@ -25,7 +25,9 @@ CHUNK_SIZE = 90  # Days per chunk
 
 def get_local_session():
     """Create a session for the local database"""
-    local_db_url = "postgresql://rwe_user:123Cagatay123@localhost:5432/rwe_data"
+    local_db_url = os.getenv('LOCAL_DATABASE_URL')
+    if not local_db_url:
+        raise RuntimeError("LOCAL_DATABASE_URL environment variable must be set")
     engine = create_engine(local_db_url)
     Session = sessionmaker(bind=engine)
     return Session()

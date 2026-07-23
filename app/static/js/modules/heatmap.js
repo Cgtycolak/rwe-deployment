@@ -233,10 +233,23 @@ export const heatmap = {
         const maxValue = Math.max(...allValues);
         const minValue = Math.min(...allValues);
 
+        // For date_comparison the NET column (last col) totals are far larger than
+        // individual plant differences — exclude it from the colorscale so plant
+        // cells get proper color depth instead of appearing near-white.
+        const scaleValues = (version === 'date_comparison')
+            ? values.flatMap(row => row.slice(0, row.length - 1))
+            : allValues;
+        const scaleAbsMax = Math.max(
+            Math.abs(Math.max(...scaleValues)),
+            Math.abs(Math.min(...scaleValues))
+        ) || 1;
+
         // Function to determine text color based on background value
         const getTextColor = (value) => {
             if (version === 'difference' || version === 'realtime_difference' || version === 'date_comparison') {
-                if (value === 0) return 'black';
+                // Diverging scale (blue→white→red): use absolute distance from 0.
+                const normalizedAbs = Math.abs(value) / scaleAbsMax;
+                return normalizedAbs > 0.6 ? 'white' : 'black';
             }
             const threshold = 0.3;
             const normalizedValue = (value - minValue) / (maxValue - minValue);
@@ -331,6 +344,9 @@ export const heatmap = {
             },
             // For difference heatmap, center the color scale at zero
             zmid: (version === 'difference' || version === 'realtime_difference' || version === 'date_comparison') ? 0 : undefined,
+            // For date_comparison, clamp the scale to non-NET values so plant cells aren't washed out
+            zmin: (version === 'date_comparison') ? -scaleAbsMax : undefined,
+            zmax: (version === 'date_comparison') ? scaleAbsMax : undefined,
             hoverongaps: false,
             xgap: 1,
             ygap: 1

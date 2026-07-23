@@ -12,29 +12,27 @@ import random
 # Load environment variables
 load_dotenv()
 
+_engine = None
+
 def get_database_connection():
-    """Create a database connection using environment variables with better connection pooling."""
-    sb_user = os.getenv("SUPABASE_USER")
-    sb_password = os.getenv("SUPABASE_PASSWORD")
-    
-    if not sb_user or not sb_password:
-        raise ValueError("Database credentials not found in environment variables")
-    
-    # Add connection pooling parameters to avoid hitting connection limits
-    connection_str = f"postgresql+psycopg2://{sb_user}:{sb_password}@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
-    
-    # Create engine with connection pooling settings
-    engine = create_engine(
-        connection_str,
-        poolclass=pool.QueuePool,
-        pool_size=5,  # Reduce pool size
-        max_overflow=10,
-        pool_timeout=30,
-        pool_recycle=1800,  # Recycle connections after 30 minutes
-        pool_pre_ping=True  # Check connection validity before using
-    )
-    
-    return engine
+    """Return the module-level Supabase engine, creating it once on first call."""
+    global _engine
+    if _engine is None:
+        sb_user = os.getenv("SUPABASE_USER")
+        sb_password = os.getenv("SUPABASE_PASSWORD")
+        if not sb_user or not sb_password:
+            raise ValueError("Database credentials not found in environment variables")
+        _engine = create_engine(
+            f"postgresql+psycopg2://{sb_user}:{sb_password}"
+            "@aws-0-us-east-2.pooler.supabase.com:5432/postgres",
+            poolclass=pool.QueuePool,
+            pool_size=3,
+            max_overflow=5,
+            pool_timeout=30,
+            pool_recycle=1800,
+            pool_pre_ping=True,
+        )
+    return _engine
 
 def fetch_with_retry(query, engine, max_retries=3):
     """Fetch data with retry logic to handle connection issues."""
@@ -57,6 +55,7 @@ CONTEXT_LENGTHS = {"Model 1": 168, "Model 2": 336}
 
 def fetch_generation_data(engine):
     """Fetch generation data (wind/hydro/solar/demand) including future Meteologica forecasts."""
+    # 90 days covers the longest context window (336 h) plus warm-up margin many times over
     query = """
     SELECT u."From-yyyy-mm-dd-hh-mm" AS date,
     mdem.demand_forecast AS demand,
@@ -69,6 +68,7 @@ def fetch_generation_data(engine):
     JOIN meteologica.dam_hydro dam on u."From-yyyy-mm-dd-hh-mm" = dam."From-yyyy-mm-dd-hh-mm"
     JOIN meteologica.runofriver_hydro r on u."From-yyyy-mm-dd-hh-mm" = r."From-yyyy-mm-dd-hh-mm"
     JOIN meteologica.demand mdem on u."From-yyyy-mm-dd-hh-mm" = mdem."From-yyyy-mm-dd-hh-mm"
+    WHERE u."From-yyyy-mm-dd-hh-mm"::timestamp >= NOW() - INTERVAL '90 days'
     ORDER BY 1
     """
 
@@ -84,6 +84,7 @@ def fetch_smf_ptf_data(engine):
     smf."systemMarginalPrice" - ptf.price AS smf_ptf_diff
     FROM epias.smf
     RIGHT JOIN epias.ptf ON smf.date = ptf.date
+    WHERE ptf.date >= NOW() - INTERVAL '90 days'
     ORDER BY 1
     """
 

@@ -4,10 +4,9 @@ import os
 port = os.getenv('PORT', '8000')
 bind = f"0.0.0.0:{port}"
 
-# gthread: 1 process × 8 threads — avoids duplicating heavy ML libraries (Darts etc.)
-# across multiple worker processes on the 2GB Render Standard plan.
+# 2 workers × 4 threads = 8 concurrent request slots.
+# gthread avoids forking the heavy ML process memory on each worker start.
 workers = 2
 threads = 4
 worker_class = "gthread"
 timeout = 180
-wsgi_app = "wsgi:app"
