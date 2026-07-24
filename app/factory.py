@@ -113,7 +113,7 @@ def create_app():
     @app.after_request
     def set_security_headers(response):
         response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
         response.headers['Permissions-Policy'] = 'geolocation=(), camera=(), microphone=()'
@@ -126,8 +126,8 @@ def create_app():
             "font-src 'self' https://cdnjs.cloudflare.com; "
             "img-src 'self' data:; "
             "connect-src 'self' https://cdn.jsdelivr.net; "
-            "frame-src https://dbc-6991d07f-d61a.cloud.databricks.com; "
-            "frame-ancestors 'none';"
+            "frame-src 'self' https://dbc-6991d07f-d61a.cloud.databricks.com; "
+            "frame-ancestors 'self';"
         )
         return response
 
