@@ -39,8 +39,8 @@ APScheduler>=3.10.4
 plotly>=5.19.0,<6            # NEEDS-CONTEXT: plotly@5.19.0 — chart JSON parsing surface
 kaleido==0.2.1               # NEEDS-CONTEXT: kaleido@0.2.1 — last 0.2.x release (2021),
                              # verify subprocess starts in Render Python 3.11 container
-openpyxl>=3.1.2              # Excel write (main.py merit order export)
-# xlrd removed: xlrd 2.x only reads .xls; all pd.read_excel() calls use .xlsx (openpyxl)
+openpyxl>=3.1.2              # Excel read/write .xlsx
+xlrd>=2.0.1                  # Excel read .xls (old format uploads in forecasting routes)
 xlsxwriter>=3.1.0            # Excel write via pd.ExcelWriter(engine='xlsxwriter')
 
 # Forecasting support
