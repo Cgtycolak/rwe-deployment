@@ -68,7 +68,6 @@ def fetch_generation_data(engine):
     JOIN meteologica.dam_hydro dam on u."From-yyyy-mm-dd-hh-mm" = dam."From-yyyy-mm-dd-hh-mm"
     JOIN meteologica.runofriver_hydro r on u."From-yyyy-mm-dd-hh-mm" = r."From-yyyy-mm-dd-hh-mm"
     JOIN meteologica.demand mdem on u."From-yyyy-mm-dd-hh-mm" = mdem."From-yyyy-mm-dd-hh-mm"
-    WHERE u."From-yyyy-mm-dd-hh-mm"::timestamp >= NOW() - INTERVAL '90 days'
     ORDER BY 1
     """
 
@@ -84,7 +83,6 @@ def fetch_smf_ptf_data(engine):
     smf."systemMarginalPrice" - ptf.price AS smf_ptf_diff
     FROM epias.smf
     RIGHT JOIN epias.ptf ON smf.date = ptf.date
-    WHERE ptf.date >= NOW() - INTERVAL '90 days'
     ORDER BY 1
     """
 
@@ -217,13 +215,20 @@ def build_chronos_features(engine, excel_data, model_name, lagged_hour_selection
 
     # 9. System direction lags and rolling averages
     lagged_hour_selection = 1
-    df['system_direction_lag1'] = df['system_direction'].shift(lagged_hour_selection)
+    df[f'system_direction_lag{lagged_hour_selection}'] = df['system_direction'].shift(lagged_hour_selection)
+    df[f'system_direction_lag{lagged_hour_selection+1}'] = df['system_direction'].shift(lagged_hour_selection+1)
+    df[f'system_direction_lag{lagged_hour_selection+2}'] = df['system_direction'].shift(lagged_hour_selection+2)
+    df[f'system_direction_lag{lagged_hour_selection+23}'] = df['system_direction'].shift(lagged_hour_selection+23)
+    df['system_direction_diff1'] = df[f'system_direction_lag{lagged_hour_selection}'] - df[f'system_direction_lag{lagged_hour_selection+1}']
+    df['system_direction_diff2'] = df[f'system_direction_lag{lagged_hour_selection+1}'] - df[f'system_direction_lag{lagged_hour_selection+2}']
     df['system_direction_ma3']  = df['system_direction'].rolling(3).mean().shift(lagged_hour_selection)
     df['system_direction_ma6']  = df['system_direction'].rolling(6).mean().shift(lagged_hour_selection)
     df['system_direction_ma12'] = df['system_direction'].rolling(12).mean().shift(lagged_hour_selection)
 
     if model_name == "Model 1":
-        df.drop(columns=['system_direction_lag1', 'system_direction_ma3', 'system_direction_ma6', 'system_direction_ma12'], inplace=True, errors='ignore')
+        df.drop(columns=[f'system_direction_lag{lagged_hour_selection}',f'system_direction_lag{lagged_hour_selection+1}',
+                         f'system_direction_lag{lagged_hour_selection+2}', f'system_direction_lag{lagged_hour_selection+23}',
+                         'system_direction_diff1', 'system_direction_diff2' ,'system_direction_ma3', 'system_direction_ma6', 'system_direction_ma12'], inplace=True, errors='ignore')
 
     # 10. Drop warmup rows needed for smf_lag168
     df = df.iloc[168:].copy()

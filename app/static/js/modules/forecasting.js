@@ -499,11 +499,11 @@ export const forecasting = {
             }
         ];
 
-        // Default view: last 48h of validation + full forecast, range slider for full history
+        // Default view: last 72h of validation + full forecast, range slider for full history
         const forecastStart = forecast.x.length ? new Date(forecast.x[0]) : null;
         const forecastEnd   = forecast.x.length ? new Date(forecast.x[forecast.x.length - 1]) : null;
         const zoomStart     = forecastStart
-            ? new Date(forecastStart.getTime() - 48 * 60 * 60 * 1000)
+            ? new Date(forecastStart.getTime() - 72 * 60 * 60 * 1000)
             : undefined;
 
         const layout = {
@@ -512,9 +512,6 @@ export const forecasting = {
                 type: 'date',
                 title: 'Date & Time',
                 tickangle: -45,
-                range: zoomStart && forecastEnd
-                    ? [zoomStart.toISOString(), forecastEnd.toISOString()]
-                    : undefined,
                 rangeslider: { visible: true, thickness: 0.08 },
             },
             yaxis: {

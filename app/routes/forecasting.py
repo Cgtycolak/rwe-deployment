@@ -44,7 +44,7 @@ def _get_modal_url():
 
 
 
-EVAL_PERIOD = 168  # validation window shown before the forecast (1 week)
+EVAL_PERIOD = 72  # validation window shown before the forecast (3 days)
 
 def _covariate_drop_cols(model_name, lagged_hour_selection=1):
     """Columns to remove from covariates (match notebook behavior).
@@ -58,7 +58,11 @@ def _covariate_drop_cols(model_name, lagged_hour_selection=1):
     return [
         'system_direction',
         f'system_direction_lag{lagged_hour_selection}',
-        'system_direction_ma2',
+        f'system_direction_lag{lagged_hour_selection+1}',
+        f'system_direction_lag{lagged_hour_selection+2}',
+        f'system_direction_lag{lagged_hour_selection+23}',
+        'system_direction_diff1',
+        'system_direction_diff2',
         'system_direction_ma3',
         'system_direction_ma6',
         'system_direction_ma12',
