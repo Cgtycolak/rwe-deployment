@@ -55,7 +55,6 @@ CONTEXT_LENGTHS = {"Model 1": 168, "Model 2": 336}
 
 def fetch_generation_data(engine):
     """Fetch generation data (wind/hydro/solar/demand) including future Meteologica forecasts."""
-    # 90 days covers the longest context window (336 h) plus warm-up margin many times over
     query = """
     SELECT u."From-yyyy-mm-dd-hh-mm" AS date,
     mdem.demand_forecast AS demand,
@@ -105,7 +104,8 @@ def fetch_dgp_data(engine):
     d1_start    = today_start - timedelta(days=1)
     
     query = f"""
-    SELECT date, net AS system_direction FROM epias.yal
+    SELECT date, net_direction AS system_direction
+    FROM epias.system_direction
     WHERE date < '{d1_start.isoformat().split('T')[0]}'
     """
     
