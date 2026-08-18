@@ -322,7 +322,7 @@ def fetch_natural_gas_heatmap_data(date, version):
         "data": {
             "hours": df.index.tolist(),
             "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
-                plant_mapping['plant_names'],
+                plant_mapping['display_names'],
                 plant_mapping['capacities']
             )],
             "values": df.values.tolist()
