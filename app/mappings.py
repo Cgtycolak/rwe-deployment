@@ -1,13 +1,27 @@
 # Plant mappings for different types of power plants
 
 plant_mapping = {
+    # NOTE: 'plant_names' MUST exactly match the plant_name values stored in the
+    # NaturalGasHeatmapData DB table — process_heatmap_data() joins DB records to
+    # these column labels. Do NOT edit these for display purposes; changing them
+    # silently orphans DB rows into phantom columns (misaligned heatmap).
+    # For display labels (e.g. adding an "EUAS" prefix), edit 'display_names' below.
     'plant_names': [
-        "ACWA", "AKENRJ ERZIN", "AKSA ANT", "BAN1", "BAN2", "BAYMINA", 
+        "ACWA", "AKENRJ ERZIN", "AKSA ANT", "BAN1", "BAN2", "BAYMINA",
         "BILGIN1", "BILGIN2", "BURSA BLOK1", "BURSA BLOK2", "CENGIZ",
         "ENKA ADP", "ENKA GBZ1", "ENKA GBZ2", "ENKA IZM1", "ENKA IZM2", "ENKA KIRKLARELİ",
         "GAMA ICAN", "HABAS", "HAM-10", "HAM-20", "RWE", "TEKİRA",
         "TEKİRB", "YENI", "İST A-(A)", "İST A-(B)", "İST A-(C)",
         "İST B (Blok40+ Blok50)"
+    ],
+    # Human-readable labels shown on the heatmap axis. Safe to edit freely.
+    'display_names': [
+        "ACWA", "AKENRJ ERZIN", "AKSA ANT", "BAN1", "BAN2", "BAYMINA",
+        "BILGIN1", "BILGIN2", "(EUAS) BURSA BLOK1", "(EUAS) BURSA BLOK2", "CENGIZ",
+        "ENKA ADP", "ENKA GBZ1", "ENKA GBZ2", "ENKA IZM1", "ENKA IZM2", "ENKA KIRKLARELİ",
+        "GAMA ICAN", "HABAS", "HAM-10", "HAM-20", "RWE", "(EUAS) TEKİRA",
+        "(EUAS) TEKİRB", "YENI", "(EUAS) İST A-(A)", "(EUAS) İST A-(B)", "(EUAS) İST A-(C)",
+        "(EUAS) İST B (40 + 50)"
     ],
     'o_ids': [
         10372, 166, 396, 282, 282, 11816, 294, 294, 195, 195, 1964,

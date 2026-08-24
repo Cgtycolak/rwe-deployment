@@ -581,7 +581,7 @@ def heatmap_data():
                 "data": {
                     "hours": df.index.tolist(),
                     "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
-                        plant_mapping['plant_names'],
+                        plant_mapping['display_names'],
                         plant_mapping['capacities']
                     )],
                     "values": df.values.tolist()
@@ -604,7 +604,7 @@ def heatmap_data():
             "data": {
                 "hours": df.index.tolist(),
                 "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
-                    plant_mapping['plant_names'],
+                    plant_mapping['display_names'],
                     plant_mapping['capacities']
                 )],
                 "values": df.values.tolist()
@@ -652,7 +652,7 @@ def realtime_heatmap_data():
                 "data": {
                     "hours": df.index.tolist(),
                     "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
-                        plant_mapping['plant_names'],
+                        plant_mapping['display_names'],
                         plant_mapping['capacities']
                     )],
                     "values": df.values.tolist()
@@ -743,7 +743,7 @@ def realtime_heatmap_data():
             "data": {
                 "hours": df.index.tolist(),
                 "plants": [f"{name}--{capacity} Mw" for name, capacity in zip(
-                    plant_mapping['plant_names'],
+                    plant_mapping['display_names'],
                     plant_mapping['capacities']
                 )],
                 "values": df.values.tolist()
