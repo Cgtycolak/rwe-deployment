@@ -2638,6 +2638,42 @@
     </div>
 
     <!-- Databricks Dashboard Test -->
+    <div class="content-section" data-section="sfc-price">
+        <div class="container-fluid">
+            <h2 class="mb-3">SFC Price (Secondary Frequency Capacity)</h2>
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-auto">
+                            <label for="sfc_start_date" class="form-label">Start Date</label>
+                            <input type="date" id="sfc_start_date" class="form-control">
+                        </div>
+                        <div class="col-auto">
+                            <label for="sfc_end_date" class="form-label">End Date</label>
+                            <input type="date" id="sfc_end_date" class="form-control">
+                        </div>
+                        <div class="col-auto">
+                            <button id="load_sfc_chart" class="btn btn-primary">
+                                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                <span class="button-content">Load</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div id="sfc_line_chart"></div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                    <div id="sfc_heatmap"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="content-section" data-section="databricks-test">
         <div class="container-fluid">
             <h2 class="mb-3">Databricks Dashboard Test</h2>

@@ -12,6 +12,7 @@ import { hydroHeatmap } from './modules/hydro-heatmap.js';
 import { forecasting } from './modules/forecasting.js';
 import { forecastPerformance } from './modules/forecast-performance.js';
 import { meritOrder } from './modules/merit-order.js';
+import { sfcChart } from './modules/sfc-chart.js';
 
 // Main app object
 const app = {
@@ -31,6 +32,7 @@ const app = {
     forecasting,
     forecastPerformance,
     meritOrder,
+    sfcChart,
     helpers: {
         toggleLoading: function (show) {
             const loader = document.getElementById('aic_loading');
@@ -125,6 +127,10 @@ const app = {
             // Initialize merit order module
             this.meritOrder.setup(this.helpers);
             this.meritOrder.init();
+
+            // Initialize SFC price module (line chart + heatmap)
+            this.sfcChart.setup(this.helpers);
+            this.sfcChart.init();
             
             // Initialize mini-tables when showing home section
             this.miniTables.init();

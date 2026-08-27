@@ -1110,6 +1110,112 @@ def get_sfc_data():
         print(f"Error in get_sfc_data: {str(e)}")
         return _err("get_sfc_data", e)
 
+@main.route('/get_sfc_chart_data', methods=['POST'])
+@login_required
+def get_sfc_chart_data():
+    """SFC (Secondary Frequency Capacity) price for the line chart + heatmap views.
+
+    Source is the same EPİAS transparency endpoint as /get_sfc_data, but fetched
+    for an arbitrary date range so we can render the Databricks-style visuals
+    natively. Returns both a flat time series (for the line chart) and an
+    hour x date pivot matrix (for the heatmap).
+    Body: {"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"} or {"days": 14}.
+    """
+    try:
+        tz = pytz.timezone('Europe/Istanbul')
+        now = datetime.now(tz)
+        body = request.get_json(silent=True) or {}
+
+        # Resolve date range: explicit start/end wins, else last N days (default 14)
+        if body.get('start_date') and body.get('end_date'):
+            start_dt = datetime.strptime(body['start_date'], '%Y-%m-%d')
+            end_dt = datetime.strptime(body['end_date'], '%Y-%m-%d')
+        else:
+            days = int(body.get('days', 14))
+            end_dt = now
+            start_dt = now - timedelta(days=days - 1)
+
+        start_date = start_dt.strftime("%Y-%m-%dT00:00:00+03:00")
+        end_date = end_dt.strftime("%Y-%m-%dT23:59:59+03:00")
+
+        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504])
+        with Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=retries))
+            response = session.post(
+                'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/secondary-frequency-capacity-price',
+                json={"startDate": start_date, "endDate": end_date},
+                headers={'TGT': tgt_token},
+                timeout=60,
+            )
+            response.raise_for_status()
+
+        payload = response.json()
+        items = payload.get('items', [])
+
+        hours = [f"{str(h).zfill(2)}:00" for h in range(24)]
+        series = []
+        pivot = {}        # 'YYYY-MM-DD' -> {hour_int: price}
+        date_order = []   # chronological list of date keys
+
+        for item in items:
+            dt = datetime.strptime(item['date'], '%Y-%m-%dT%H:%M:%S+03:00')
+            date_key = dt.strftime('%Y-%m-%d')
+            hour_int = dt.hour
+            price = item.get('price')
+            series.append({
+                'datetime': f"{date_key} {str(hour_int).zfill(2)}:00",
+                'value': price
+            })
+            if date_key not in pivot:
+                pivot[date_key] = {}
+                date_order.append(date_key)
+            pivot[date_key][hour_int] = price
+
+        # Heatmap matrix: 24 rows (hours) x N columns (dates, chronological)
+        values = [[pivot.get(d, {}).get(h) for d in date_order] for h in range(24)]
+        date_labels = [datetime.strptime(d, '%Y-%m-%d').strftime('%d %b %Y') for d in date_order]
+
+        # Also fetch MCP (Market Clearing Price / PTF) for the same range — shown as
+        # the line chart next to the SFC heatmap. Wrapped separately so an MCP failure
+        # doesn't take down the SFC heatmap.
+        mcp_series = []
+        try:
+            with Session() as mcp_session:
+                mcp_session.mount('https://', HTTPAdapter(max_retries=retries))
+                mcp_response = mcp_session.post(
+                    'https://seffaflik.epias.com.tr/electricity-service/v1/markets/dam/data/mcp',
+                    json={"startDate": start_date, "endDate": end_date},
+                    headers={'TGT': tgt_token},
+                    timeout=60,
+                )
+                mcp_response.raise_for_status()
+            for item in mcp_response.json().get('items', []):
+                dt = datetime.strptime(item['date'], '%Y-%m-%dT%H:%M:%S+03:00')
+                mcp_series.append({
+                    'datetime': f"{dt.strftime('%Y-%m-%d')} {str(dt.hour).zfill(2)}:00",
+                    'value': item.get('price')
+                })
+        except Exception as mcp_err:
+            current_app.logger.warning(f"MCP fetch failed in get_sfc_chart_data: {mcp_err}")
+
+        return jsonify({
+            'code': 200,
+            'data': {
+                'series': series,
+                'mcp_series': mcp_series,
+                'heatmap': {
+                    'hours': hours,
+                    'dates': date_labels,
+                    'values': values
+                },
+                'average': payload.get('statistics', {}).get('priceAvg', 0)
+            }
+        })
+    except Exception as e:
+        current_app.logger.error(f"Error in get_sfc_chart_data: {str(e)}")
+        return _err("get_sfc_chart_data", e)
+
 @main.route('/get_all_table_data', methods=['GET'])
 @login_required
 def get_all_table_data():
