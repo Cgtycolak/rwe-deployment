@@ -30,8 +30,15 @@ class EmailService:
         self.smtp_port = int(os.environ.get('SMTP_PORT', '587'))
         self.sender_email = os.environ.get('SENDER_EMAIL')
         self.sender_password = os.environ.get('SENDER_PASSWORD')
-        self.recipient_emails = os.environ.get('RECIPIENT_EMAILS', '').split(',')
-        
+        # RECIPIENT_EMAILS is hand-edited and routinely carries a trailing comma
+        # and space-padded addresses, so strip each entry and drop the empties
+        # rather than handing the SMTP server a blank recipient.
+        self.recipient_emails = [
+            email.strip()
+            for email in os.environ.get('RECIPIENT_EMAILS', '').split(',')
+            if email.strip()
+        ]
+
         if not self.sender_email or not self.sender_password:
             logger.warning("Email credentials not configured. Email service will not work.")
     
@@ -145,18 +152,22 @@ class EmailService:
             logger.error(f"Error creating heatmap image: {str(e)}")
             raise
     
-    def send_daily_heatmap_report(self, date=None):
+    def send_daily_heatmap_report(self, date=None, data_warnings=None):
         """
         Send daily heatmap report email
-        
+
         Args:
             date: Date to generate report for (defaults to yesterday)
+            data_warnings: Optional list of known data problems (see
+                check_heatmap_completeness). When set, the report is still sent
+                but carries a banner naming what is missing or zero-filled, so
+                recipients are not left guessing why a heatmap looks empty.
         """
         if not self.sender_email or not self.sender_password:
             logger.error("Email credentials not configured")
             return False
         
-        if not self.recipient_emails or not self.recipient_emails[0]:
+        if not self.recipient_emails:
             logger.error("No recipient emails configured")
             return False
         
@@ -232,9 +243,28 @@ class EmailService:
 
             # Create email
             msg = MIMEMultipart('related')
-            msg['Subject'] = f'Daily Power Generation Heatmap Report - {date_str}'
+            subject = f'Daily Power Generation Heatmap Report - {date_str}'
+            if data_warnings:
+                subject += ' [INCOMPLETE DATA]'
+            msg['Subject'] = subject
             msg['From'] = self.sender_email
             msg['To'] = ', '.join(self.recipient_emails)
+
+            # Flag known data problems up front rather than letting a blank
+            # heatmap look like a real zero-generation day
+            warning_banner = ''
+            if data_warnings:
+                warning_items = ''.join(f'<li>{w}</li>' for w in data_warnings)
+                warning_banner = f"""
+                    <div style="border-left: 4px solid #c00; background: #fdf0f0;
+                                padding: 12px 16px; margin-bottom: 20px;">
+                        <strong>Warning: EPIAS data for this date is incomplete.</strong>
+                        <p style="margin: 8px 0 0;">The report was sent anyway after all
+                        retries were exhausted. The following generation types may be
+                        missing or showing zeros:</p>
+                        <ul style="margin: 8px 0 0;">{warning_items}</ul>
+                    </div>
+                """
 
             # Create HTML body
             html_body = f"""
@@ -242,6 +272,7 @@ class EmailService:
                 <head></head>
                 <body style="font-family: Arial, sans-serif;">
                     <h2>Daily Power Generation Heatmap Report</h2>
+                    {warning_banner}
                     <p><strong>Report Date:</strong> {date_str}</p>
                     <p><strong>Generated:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
                     <hr>

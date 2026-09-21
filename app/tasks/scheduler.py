@@ -12,8 +12,16 @@ from apscheduler.events import (
     EVENT_SCHEDULER_SHUTDOWN,
     JobExecutionEvent
 )
+from apscheduler.triggers.date import DateTrigger
 from ..scripts.dpp_charts.populate_historical_data import populate_multiple_types
 from flask import current_app
+
+# Delays (minutes from the previous attempt) used when the email job finds the
+# DPP data incomplete. EPIAS sometimes publishes rows full of zeros before the
+# real values land, which is how empty reports used to go out at 16:10.
+# Attempts land at 16:10, 16:20, 16:40, 17:20 and 18:20 — the last delay is 60
+# rather than a doubled 80 so the window closes exactly at 18:20.
+EMAIL_RETRY_DELAYS_MINUTES = [10, 20, 40, 60]
 
 def update_daily_data(app):
     """Fetch and store data for today and attempt tomorrow if available"""
@@ -109,20 +117,128 @@ def update_realtime_data(app):
         app.logger.error(f"Error in update_realtime_data: {str(e)}")
         raise
 
-def send_daily_email_report(app):
-    """Send daily heatmap email report"""
+def check_heatmap_completeness(date):
+    """
+    Check whether the first-version DPP data backing the email report is usable.
+
+    Must be called inside an app context. A type counts as incomplete when it is
+    missing rows (EPIAS returned nothing for some plants) or when every value is
+    zero (EPIAS published placeholder rows). Only the 'first' version is checked
+    because that is the only version the email renders.
+
+    Returns:
+        list[str]: human-readable descriptions of incomplete types, empty if all good
+    """
+    from sqlalchemy import func
+    from ..database.config import db
+    from ..models.heatmap import (
+        HydroHeatmapData,
+        NaturalGasHeatmapData,
+        ImportedCoalHeatmapData,
+        LigniteHeatmapData
+    )
+    from ..mappings import hydro_mapping, plant_mapping, import_coal_mapping, lignite_mapping
+
+    type_specs = [
+        ('Natural Gas', NaturalGasHeatmapData, plant_mapping),
+        ('Import Coal', ImportedCoalHeatmapData, import_coal_mapping),
+        ('Hydro', HydroHeatmapData, hydro_mapping),
+        ('Lignite', LigniteHeatmapData, lignite_mapping)
+    ]
+
+    problems = []
+    for label, model, mapping in type_specs:
+        expected_rows = len(mapping['plant_names']) * 24
+        rows, total = db.session.query(
+            func.count(),
+            func.coalesce(func.sum(model.value), 0)
+        ).filter(
+            model.date == date,
+            model.version == 'first'
+        ).one()
+
+        if rows < expected_rows:
+            problems.append(f"{label}: {rows}/{expected_rows} rows present")
+        elif total == 0:
+            problems.append(f"{label}: all {rows} values are zero")
+
+    return problems
+
+
+def send_daily_email_report(app, attempt=1):
+    """
+    Send the daily heatmap email report, retrying with backoff on incomplete data.
+
+    EPIAS does not always have tomorrow's DPP ready when the 16:05 population job
+    runs, and populate_multiple_types stores whatever it gets — so the data can be
+    missing or all zeros at 16:10. Rather than mail out an empty report, refetch and
+    reschedule on the EMAIL_RETRY_DELAYS_MINUTES backoff. On the final attempt the
+    report goes out regardless, flagged with whatever is still incomplete, so a bad
+    day is visible to recipients instead of silently skipped.
+
+    Args:
+        app: Flask app
+        attempt: 1-based attempt number; drives the backoff schedule
+    """
     try:
         with app.app_context():
             tz = timezone('Europe/Istanbul')
             current_time = datetime.now(tz)
             tomorrow = (current_time + timedelta(days=1)).date()
-            
-            app.logger.info(f"Email report job triggered at {current_time}")
-            app.logger.info(f"Sending heatmap report for {tomorrow}")
-            
+            max_attempts = len(EMAIL_RETRY_DELAYS_MINUTES) + 1
+
+            app.logger.info(
+                f"Email report job triggered at {current_time} "
+                f"(attempt {attempt}/{max_attempts})"
+            )
+
+            # Retries refetch first — the whole point is to pick up data that
+            # EPIAS published after the previous attempt.
+            if attempt > 1:
+                app.logger.info(f"Refetching DPP data for {tomorrow} before retrying")
+                try:
+                    populate_multiple_types(tomorrow, local_db=False, versions=['first', 'current'])
+                except Exception as e:
+                    app.logger.warning(f"Refetch failed for {tomorrow}: {str(e)}")
+
+            problems = check_heatmap_completeness(tomorrow)
+
+            if problems and attempt < max_attempts:
+                delay = EMAIL_RETRY_DELAYS_MINUTES[attempt - 1]
+                next_run = current_time + timedelta(minutes=delay)
+                app.logger.warning(
+                    f"DPP data for {tomorrow} incomplete ({'; '.join(problems)}). "
+                    f"Retrying at {next_run.strftime('%H:%M')} "
+                    f"(attempt {attempt + 1}/{max_attempts})"
+                )
+
+                scheduler = app.config.get('SCHEDULER')
+                if scheduler is None:
+                    app.logger.error("No scheduler available to retry; sending report as-is")
+                else:
+                    scheduler.add_job(
+                        send_daily_email_report,
+                        trigger=DateTrigger(run_date=next_run, timezone=tz),
+                        id=f'daily_email_report_retry_{tomorrow}_{attempt + 1}',
+                        name=f'Retry heatmap email for {tomorrow} (attempt {attempt + 1})',
+                        args=[app, attempt + 1],
+                        replace_existing=True,
+                        max_instances=1,
+                        misfire_grace_time=900
+                    )
+                    return
+
+            if problems:
+                app.logger.error(
+                    f"DPP data for {tomorrow} still incomplete after {attempt} attempts "
+                    f"({'; '.join(problems)}). Sending report with a warning."
+                )
+            else:
+                app.logger.info(f"DPP data for {tomorrow} complete; sending heatmap report")
+
             # Check which email service to use
             email_service_type = os.environ.get('EMAIL_SERVICE', 'smtp')
-            
+
             if email_service_type == 'sendgrid':
                 # Use SendGrid (no personal email needed)
                 app.logger.info("Using SendGrid email service")
@@ -133,14 +249,14 @@ def send_daily_email_report(app):
                 app.logger.info("Using SMTP email service")
                 from ..services.email_service import EmailService
                 email_service = EmailService(app)
-            
-            success = email_service.send_daily_heatmap_report(tomorrow)
-            
+
+            success = email_service.send_daily_heatmap_report(tomorrow, data_warnings=problems)
+
             if success:
                 app.logger.info(f"Successfully sent daily email report for {tomorrow}")
             else:
                 app.logger.error(f"Failed to send daily email report for {tomorrow}")
-            
+
     except Exception as e:
         app.logger.error(f"Error in send_daily_email_report: {str(e)}")
         raise
@@ -149,7 +265,10 @@ def init_scheduler(app):
     """Initialize the scheduler with proper timezone and error handling"""
     tz = timezone('Europe/Istanbul')
     scheduler = BackgroundScheduler(timezone=tz)
-    
+
+    # send_daily_email_report queues its own backoff retries through this
+    app.config['SCHEDULER'] = scheduler
+
     # Log current time in both UTC and Istanbul time
     current_utc = datetime.utcnow()
     current_ist = datetime.now(tz)
@@ -168,18 +287,9 @@ def init_scheduler(app):
         misfire_grace_time=900  # 15 minutes grace time
     )
 
-    # Schedule retry update task for data that might not be available at 16:05
-    daily_retry = CronTrigger(hour=16, minute=45, timezone=tz)
-    scheduler.add_job(
-        update_daily_data,
-        trigger=daily_retry,
-        id='daily_data_retry',
-        name='Retry heatmap data update at 16:45',
-        args=[app],
-        replace_existing=True,
-        max_instances=1,
-        misfire_grace_time=900  # 15 minutes grace time
-    )
+    # The old 16:45 'daily_data_retry' job was removed: send_daily_email_report
+    # now refetches tomorrow's data itself before each backoff retry, so a second
+    # unconditional population job only risked racing it on the same rows.
 
     # Schedule the hourly update task (runs every hour)
     hourly_run = CronTrigger(minute=30, timezone=tz)  # Run at 30 minutes past every hour
@@ -228,8 +338,8 @@ def init_scheduler(app):
         send_daily_email_report,
         trigger=email_report,
         id='daily_email_report',
-        name='Send daily heatmap email at 16:10',
-        args=[app],
+        name='Send daily heatmap email at 16:10 (retries on incomplete data)',
+        args=[app, 1],
         replace_existing=True,
         max_instances=1,
         coalesce=True,          # collapse multiple missed fires into one run
@@ -268,6 +378,6 @@ def init_scheduler(app):
     
     try:
         scheduler.start()
-        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates at 16:05 (retry at 16:45), hourly updates at :30, realtime updates at 05:00 and 12:00, email report at 16:10")
+        app.logger.info(f"Scheduler started at {datetime.now(tz)}. Daily updates at 16:05, hourly updates at :30, realtime updates at 05:00 and 12:00, email report at 16:10 (retries with refetch until 18:20 if data is incomplete)")
     except Exception as e:
         app.logger.error(f"Error starting scheduler: {str(e)}")
