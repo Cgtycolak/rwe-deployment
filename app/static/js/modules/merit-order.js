@@ -15,6 +15,16 @@ export const meritOrder = {
     init() {
         this.setupEventListeners();
         this.setupDateDefaults();
+
+        // init() runs for every module at page load, so the suggestions for the
+        // default date wait until the tab is actually opened rather than firing a
+        // Supabase query on every visit to the dashboard.
+        document.addEventListener('section:activated', (e) => {
+            if (e.detail?.section === 'merit-order' && !this._similarDaysLoaded) {
+                this._similarDaysLoaded = true;
+                this.loadSimilarDays();
+            }
+        });
     },
 
     setupDateDefaults() {
@@ -57,6 +67,96 @@ export const meritOrder = {
                 this.resetAicToZero();
             });
         }
+
+        // Suggestions describe the prediction date, so they refresh with it rather
+        // than waiting for Load Data — the point is to help pick a reference date.
+        const predDateInput = document.getElementById('merit_pred_date');
+        if (predDateInput) {
+            predDateInput.addEventListener('change', () => {
+                this.loadSimilarDays();
+            });
+        }
+    },
+
+    async loadSimilarDays() {
+        const row = document.getElementById('merit_similar_days_row');
+        const container = document.getElementById('merit_similar_days');
+        const predDate = document.getElementById('merit_pred_date')?.value;
+
+        if (!row || !container) return;
+
+        if (!predDate) {
+            row.classList.add('d-none');
+            return;
+        }
+
+        // A slow request must not overwrite a newer one's results
+        const requestId = (this._similarDaysRequestId || 0) + 1;
+        this._similarDaysRequestId = requestId;
+
+        row.classList.remove('d-none');
+        container.innerHTML = '<div class="text-muted small"><span class="spinner-border spinner-border-sm"></span> Finding comparable reference dates...</div>';
+
+        try {
+            const params = new URLSearchParams({ pred_date: predDate });
+            const response = await fetch(`/merit-order-similar-days?${params}`);
+            const data = await response.json();
+
+            if (this._similarDaysRequestId !== requestId) return;
+
+            if (data.code === 200 && data.data) {
+                this.renderSimilarDays(data.data, container);
+            } else {
+                container.innerHTML = `<div class="text-muted small"><i class="fas fa-info-circle"></i> ${data.message || 'No comparable reference dates found'}</div>`;
+            }
+        } catch (error) {
+            if (this._similarDaysRequestId !== requestId) return;
+            console.error('Error loading similar days:', error);
+            container.innerHTML = `<div class="text-muted small"><i class="fas fa-exclamation-triangle"></i> Could not load suggestions: ${error.message}</div>`;
+        }
+    },
+
+    renderSimilarDays(data, container) {
+        const { days, pred_capacity_mean, window_days, days_considered } = data;
+
+        if (!days || days.length === 0) {
+            container.innerHTML = '<div class="text-muted small"><i class="fas fa-info-circle"></i> No comparable reference dates found.</div>';
+            return;
+        }
+
+        const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+
+        const buttons = days.map(d => `
+            <button type="button" class="btn btn-sm btn-outline-primary me-2 mb-2 merit-similar-day" data-day="${d.day}"
+                    title="Mean capacity ${fmt(d.ref_capacity)} MW — ${fmt(d.mean_diff)} MW from the prediction date">
+                ${d.day}
+                <span class="badge bg-light text-dark ms-1">±${fmt(d.mean_diff)}</span>
+            </button>
+        `).join('');
+
+        container.innerHTML = `
+            <div class="text-muted small mb-2">
+                Prediction date mean capacity <strong>${fmt(pred_capacity_mean)} MW</strong>.
+                Closest of ${days_considered} complete days in the last ${window_days}.
+                Click to use as Reference Date.
+            </div>
+            <div>${buttons}</div>
+        `;
+
+        container.querySelectorAll('.merit-similar-day').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const genDateInput = document.getElementById('merit_gen_date');
+                if (genDateInput) {
+                    genDateInput.value = btn.dataset.day;
+                }
+                container.querySelectorAll('.merit-similar-day').forEach(b => {
+                    b.classList.remove('btn-primary');
+                    b.classList.add('btn-outline-primary');
+                });
+                btn.classList.remove('btn-outline-primary');
+                btn.classList.add('btn-primary');
+            });
+        });
     },
 
     async loadMeritOrderData() {

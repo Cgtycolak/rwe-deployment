@@ -4306,6 +4306,7 @@ def get_merit_order_power_plant_results():
             DATE(hf.date) AS day,
             TO_CHAR(hf.date, 'HH24:MI') AS hour,
             p.price_forecast AS mcp_ref,
+            hf.demand_forecast - hf.wind_forecast - hf.licensed_solar_forecast - hf.unlicensed_solar_forecast - hf.runofriver_forecast AS ref_capacity,
             hf.demand_forecast AS demand,
             hf.wind_forecast AS wind,
             hf.licensed_solar_forecast + hf.unlicensed_solar_forecast AS solar,
@@ -4323,6 +4324,7 @@ def get_merit_order_power_plant_results():
             DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) AS day,
             TO_CHAR(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP), 'HH24:MI') AS hour,
             p.price_forecast AS mcp_pred,
+            d.demand_forecast - w.wind_forecast - ls.licensed_forecast - us.unlicensed_forecast - ror.runofriver_forecast AS pred_capacity,
             d.demand_forecast AS demand,
             w.wind_forecast AS wind,
             ls.licensed_forecast + us.unlicensed_forecast AS solar,
@@ -4504,6 +4506,113 @@ def get_merit_order_power_plant_results():
     except Exception as e:
         print(f"Error in get_merit_order_power_plant_results: {str(e)}")
         return _err("get_merit_order_power_plant_results", e)
+
+
+# How far back to look for comparable reference days, and how many to suggest.
+MERIT_ORDER_SIMILAR_WINDOW_DAYS = 30
+MERIT_ORDER_SIMILAR_LIMIT = 5
+
+
+@main.route('/merit-order-similar-days')
+@login_required
+def get_merit_order_similar_days():
+    """Suggest reference dates whose mean capacity is closest to the prediction date's.
+
+    Capacity is demand minus the must-run renewables (wind, solar, run-of-river) — the
+    load the dispatchable fleet has to cover, i.e. the same expression behind
+    ref_capacity/pred_capacity in the merit order queries. A reference day with a
+    similar capacity level produces the most comparable merit order curve, so this
+    ranks the last MERIT_ORDER_SIMILAR_WINDOW_DAYS days by how close their daily mean
+    sits to the prediction date's.
+    """
+    try:
+        pred_date = request.args.get('pred_date')
+        if not pred_date:
+            return jsonify({'code': 400, 'message': 'pred_date is required'}), 400
+
+        try:
+            pred_date_parsed = datetime.strptime(pred_date, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'code': 400, 'message': 'Dates must be in YYYY-MM-DD format'}), 400
+
+        start_date = pred_date_parsed - timedelta(days=MERIT_ORDER_SIMILAR_WINDOW_DAYS)
+
+        engine = _get_supabase_engine()
+
+        # Mean capacity for the prediction date itself. Kept to a single day: these
+        # joins match on TO_TIMESTAMP of text columns, so no index applies and
+        # widening the range makes the query unusably slow.
+        pred_query = text("""
+        SELECT
+            COUNT(*) AS hours,
+            AVG(d.demand_forecast - w.wind_forecast - ls.licensed_forecast
+                - us.unlicensed_forecast - ror.runofriver_forecast) AS pred_capacity_mean
+        FROM meteologica.demand d
+        JOIN meteologica.wind w ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(w."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.licensed_solar ls ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ls."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.unlicensed_solar us ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        JOIN meteologica.runofriver_hydro ror ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ror."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
+        WHERE DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) = :pred_date
+        """)
+
+        # Daily mean capacity across the window. Aggregating in SQL returns one row per
+        # day instead of 24, and HAVING COUNT(*) = 24 drops partially loaded days whose
+        # mean would otherwise be computed from a handful of hours and rank spuriously.
+        ref_query = text("""
+        SELECT
+            DATE(hf.date) AS day,
+            AVG(hf.demand_forecast - hf.wind_forecast - hf.licensed_solar_forecast
+                - hf.unlicensed_solar_forecast - hf.runofriver_forecast) AS ref_capacity,
+            COUNT(*) AS hours
+        FROM meteologica.historical_forecast hf
+        WHERE DATE(hf.date) BETWEEN :start_date AND :pred_date
+        GROUP BY DATE(hf.date)
+        HAVING COUNT(*) = 24
+        ORDER BY day
+        """)
+
+        with engine.connect() as conn:
+            pred_row = conn.execute(pred_query, {"pred_date": pred_date_parsed}).one_or_none()
+            ref_df = pd.read_sql(
+                ref_query, con=conn,
+                params={"start_date": start_date, "pred_date": pred_date_parsed}
+            )
+
+        if pred_row is None or pred_row.pred_capacity_mean is None:
+            return jsonify({'code': 404, 'message': f'No prediction data found for {pred_date}'}), 404
+
+        if ref_df.empty:
+            return jsonify({
+                'code': 404,
+                'message': f'No complete reference days between {start_date} and {pred_date}'
+            }), 404
+
+        pred_mean = float(pred_row.pred_capacity_mean)
+        ref_df['mean_diff'] = (ref_df['ref_capacity'] - pred_mean).abs()
+        closest = ref_df.sort_values('mean_diff').head(MERIT_ORDER_SIMILAR_LIMIT)
+
+        return jsonify({
+            'code': 200,
+            'data': {
+                'pred_date': pred_date,
+                'pred_capacity_mean': pred_mean,
+                'window_start': start_date.isoformat(),
+                'window_days': MERIT_ORDER_SIMILAR_WINDOW_DAYS,
+                'days_considered': int(len(ref_df)),
+                'days': [
+                    {
+                        'day': row['day'].isoformat(),
+                        'ref_capacity': float(row['ref_capacity']),
+                        'mean_diff': float(row['mean_diff']),
+                    }
+                    for _, row in closest.iterrows()
+                ]
+            }
+        })
+
+    except Exception as e:
+        print(f"Error in get_merit_order_similar_days: {str(e)}")
+        return _err("get_merit_order_similar_days", e)
 
 
 @main.route('/merit-order-aic-data')
