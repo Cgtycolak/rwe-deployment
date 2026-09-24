@@ -128,17 +128,18 @@ export const meritOrder = {
 
         const buttons = days.map(d => `
             <button type="button" class="btn btn-sm btn-outline-primary me-2 mb-2 merit-similar-day" data-day="${d.day}"
-                    title="Mean capacity ${fmt(d.ref_capacity)} MW — ${fmt(d.mean_diff)} MW from the prediction date">
+                    title="Mean capacity ${fmt(d.ref_capacity)} MW — differs from the prediction date by ${fmt(d.mean_diff)} MW per hour on average">
                 ${d.day}
-                <span class="badge bg-light text-dark ms-1">±${fmt(d.mean_diff)}</span>
+                <span class="badge bg-light text-dark ms-1">${fmt(d.mean_diff)} MW/h</span>
             </button>
         `).join('');
 
         container.innerHTML = `
             <div class="text-muted small mb-2">
                 Prediction date mean capacity <strong>${fmt(pred_capacity_mean)} MW</strong>.
-                Closest of ${days_considered} complete days in the last ${window_days}.
-                Click to use as Reference Date.
+                Ranked by mean hourly difference across all 24 hours, so the shape of the
+                day is matched and not just its average. Closest of ${days_considered}
+                complete days in the last ${window_days}. Click to use as Reference Date.
             </div>
             <div>${buttons}</div>
         `;

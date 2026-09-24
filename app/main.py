@@ -4516,14 +4516,17 @@ MERIT_ORDER_SIMILAR_LIMIT = 5
 @main.route('/merit-order-similar-days')
 @login_required
 def get_merit_order_similar_days():
-    """Suggest reference dates whose mean capacity is closest to the prediction date's.
+    """Suggest reference dates whose hourly capacity profile is closest to the
+    prediction date's.
 
-    Capacity is demand minus the must-run renewables (wind, solar, run-of-river) — the
-    load the dispatchable fleet has to cover, i.e. the same expression behind
-    ref_capacity/pred_capacity in the merit order queries. A reference day with a
-    similar capacity level produces the most comparable merit order curve, so this
-    ranks the last MERIT_ORDER_SIMILAR_WINDOW_DAYS days by how close their daily mean
-    sits to the prediction date's.
+    Capacity is demand minus the must-run renewables (wind, solar, run-of-river) —
+    the load the dispatchable fleet has to cover, i.e. the same expression behind
+    ref_capacity/pred_capacity in the merit order queries.
+
+    Days are ranked by the mean absolute hourly difference, not by the gap between
+    daily averages: two days can average the same while one peaks in the morning
+    and the other in the evening, and those produce quite different merit order
+    curves. Comparing hour by hour matches the shape of the day, not just its level.
     """
     try:
         pred_date = request.args.get('pred_date')
@@ -4539,46 +4542,50 @@ def get_merit_order_similar_days():
 
         engine = _get_supabase_engine()
 
-        # Mean capacity for the prediction date itself. Kept to a single day: these
-        # joins match on TO_TIMESTAMP of text columns, so no index applies and
-        # widening the range makes the query unusably slow.
+        # Hourly capacity for the prediction date. Kept to a single day: these joins
+        # match on TO_TIMESTAMP of text columns, so no index applies and widening the
+        # range makes the query unusably slow.
         pred_query = text("""
         SELECT
-            COUNT(*) AS hours,
-            AVG(d.demand_forecast - w.wind_forecast - ls.licensed_forecast
-                - us.unlicensed_forecast - ror.runofriver_forecast) AS pred_capacity_mean
+            TO_CHAR(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP), 'HH24:MI') AS hour,
+            d.demand_forecast - w.wind_forecast - ls.licensed_forecast
+                - us.unlicensed_forecast - ror.runofriver_forecast AS pred_capacity
         FROM meteologica.demand d
         JOIN meteologica.wind w ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(w."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.licensed_solar ls ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ls."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.unlicensed_solar us ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(us."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         JOIN meteologica.runofriver_hydro ror ON TO_TIMESTAMP(d."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI') = TO_TIMESTAMP(ror."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI')
         WHERE DATE(CAST(d."From-yyyy-mm-dd-hh-mm" AS TIMESTAMP)) = :pred_date
+        ORDER BY 1
         """)
 
-        # Daily mean capacity across the window. Aggregating in SQL returns one row per
-        # day instead of 24, and HAVING COUNT(*) = 24 drops partially loaded days whose
-        # mean would otherwise be computed from a handful of hours and rank spuriously.
+        # Hourly capacity across the window, restricted to days that actually carry
+        # all 24 hours — a partially loaded day would otherwise be compared on a
+        # handful of hours and rank spuriously well.
         ref_query = text("""
         SELECT
             DATE(hf.date) AS day,
-            AVG(hf.demand_forecast - hf.wind_forecast - hf.licensed_solar_forecast
-                - hf.unlicensed_solar_forecast - hf.runofriver_forecast) AS ref_capacity,
-            COUNT(*) AS hours
+            TO_CHAR(hf.date, 'HH24:MI') AS hour,
+            hf.demand_forecast - hf.wind_forecast - hf.licensed_solar_forecast
+                - hf.unlicensed_solar_forecast - hf.runofriver_forecast AS ref_capacity
         FROM meteologica.historical_forecast hf
         WHERE DATE(hf.date) BETWEEN :start_date AND :pred_date
-        GROUP BY DATE(hf.date)
-        HAVING COUNT(*) = 24
-        ORDER BY day
+          AND DATE(hf.date) IN (
+              SELECT DATE(date) FROM meteologica.historical_forecast
+              WHERE DATE(date) BETWEEN :start_date AND :pred_date
+              GROUP BY DATE(date) HAVING COUNT(*) = 24
+          )
+        ORDER BY day, hour
         """)
 
         with engine.connect() as conn:
-            pred_row = conn.execute(pred_query, {"pred_date": pred_date_parsed}).one_or_none()
+            pred_df = pd.read_sql(pred_query, con=conn, params={"pred_date": pred_date_parsed})
             ref_df = pd.read_sql(
                 ref_query, con=conn,
                 params={"start_date": start_date, "pred_date": pred_date_parsed}
             )
 
-        if pred_row is None or pred_row.pred_capacity_mean is None:
+        if pred_df.empty or pred_df['pred_capacity'].isna().all():
             return jsonify({'code': 404, 'message': f'No prediction data found for {pred_date}'}), 404
 
         if ref_df.empty:
@@ -4587,18 +4594,34 @@ def get_merit_order_similar_days():
                 'message': f'No complete reference days between {start_date} and {pred_date}'
             }), 404
 
-        pred_mean = float(pred_row.pred_capacity_mean)
-        ref_df['mean_diff'] = (ref_df['ref_capacity'] - pred_mean).abs()
-        closest = ref_df.sort_values('mean_diff').head(MERIT_ORDER_SIMILAR_LIMIT)
+        # Align on the hour label rather than row order, so a missing or reordered
+        # hour cannot silently shift the comparison by one slot.
+        merged = ref_df.merge(pred_df, on='hour', how='inner')
+        merged['abs_diff'] = (merged['pred_capacity'] - merged['ref_capacity']).abs()
+
+        per_day = merged.groupby('day').agg(
+            mean_diff=('abs_diff', 'mean'),
+            ref_capacity=('ref_capacity', 'mean'),
+            hours=('abs_diff', 'size'),
+        ).reset_index()
+        per_day = per_day[per_day['hours'] == 24]
+
+        if per_day.empty:
+            return jsonify({
+                'code': 404,
+                'message': f'No reference day overlaps all 24 hours of {pred_date}'
+            }), 404
+
+        closest = per_day.nsmallest(MERIT_ORDER_SIMILAR_LIMIT, 'mean_diff')
 
         return jsonify({
             'code': 200,
             'data': {
                 'pred_date': pred_date,
-                'pred_capacity_mean': pred_mean,
+                'pred_capacity_mean': float(pred_df['pred_capacity'].mean()),
                 'window_start': start_date.isoformat(),
                 'window_days': MERIT_ORDER_SIMILAR_WINDOW_DAYS,
-                'days_considered': int(len(ref_df)),
+                'days_considered': int(len(per_day)),
                 'days': [
                     {
                         'day': row['day'].isoformat(),
@@ -5198,3 +5221,160 @@ def get_supply_demand_price():
     except Exception as e:
         print(f"Error in get_supply_demand_price: {str(e)}")
         return _err("get_supply_demand_price", e)
+
+
+# The map payload for a given day never changes once the 06:00 job has written
+# it, but building it costs four database round trips — ~1.7 s when the app is
+# far from the Render database. Cache the finished payload per (date, type);
+# the short TTL on the "latest date" lookup is what lets a new day appear.
+_HYDRO_MAP_CACHE = {}
+_HYDRO_MAP_LATEST = {'date': None, 'checked_at': 0.0}
+_HYDRO_LATEST_TTL = 300      # seconds
+_HYDRO_CACHE_MAX = 12        # payloads kept, ~115 KB each
+
+
+def _hydro_latest_date(model):
+    """Newest stored day, re-checked at most every _HYDRO_LATEST_TTL seconds."""
+    now = time.time()
+    if _HYDRO_MAP_LATEST['date'] is None or now - _HYDRO_MAP_LATEST['checked_at'] > _HYDRO_LATEST_TTL:
+        _HYDRO_MAP_LATEST['date'] = db.session.query(db.func.max(model.date)).scalar()
+        _HYDRO_MAP_LATEST['checked_at'] = now
+    return _HYDRO_MAP_LATEST['date']
+
+
+@main.route('/hydro-map-data', methods=['GET'])
+@login_required
+def get_hydro_map_data():
+    """District-level hydro generation for the map.
+
+    Plants are placed by district centroid, not their own coordinates — the EPDK
+    licence file only carries province/district — so they are aggregated per
+    district rather than drawn individually, which would imply a precision we do
+    not have.
+
+    `fill` is the capacity factor (MWh generated / (MW installed x 24)); it is
+    what fills the bubble.
+    """
+    try:
+        from .models.hydro_map import HydroPlant, HydroDailyGeneration
+
+        plant_type = request.args.get('type', 'river')
+        if plant_type not in ('river', 'dammed', 'all'):
+            return jsonify({'code': 400, 'message': "type must be river, dammed or all"}), 400
+
+        date_str = request.args.get('date')
+        if date_str:
+            try:
+                date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({'code': 400, 'message': 'Date must be YYYY-MM-DD'}), 400
+        else:
+            date = _hydro_latest_date(HydroDailyGeneration)
+            if date is None:
+                return jsonify({'code': 404, 'message': 'No hydro generation data loaded yet'}), 404
+
+        cached = _HYDRO_MAP_CACHE.get((date, plant_type))
+        if cached is not None:
+            return jsonify(cached)
+
+        query = HydroPlant.query.filter(HydroPlant.latitude.isnot(None))
+        if plant_type != 'all':
+            query = query.filter(HydroPlant.plant_type == plant_type)
+        plants = query.all()
+        if not plants:
+            return jsonify({'code': 404, 'message': f'No plants classified as {plant_type}'}), 404
+
+        generation = {
+            row.epias_id: row
+            for row in HydroDailyGeneration.query.filter_by(date=date).all()
+        }
+        # An explicitly requested day with no rows must not render as a map full of
+        # empty bubbles — that is indistinguishable from a real day of zero output.
+        if not generation:
+            stored = [
+                d.isoformat() for (d,) in db.session.query(HydroDailyGeneration.date)
+                .distinct().order_by(HydroDailyGeneration.date.desc()).limit(60).all()
+            ]
+            hint = (f' Loaded days: {stored[-1]} to {stored[0]}.' if stored
+                    else ' No days are loaded yet.')
+            return jsonify({
+                'code': 404,
+                'message': f'No hydro generation data stored for {date.isoformat()}.{hint}',
+                'available_dates': stored,
+            }), 404
+
+        districts = {}
+        for p in plants:
+            key = (p.province, p.district)
+            d = districts.setdefault(key, {
+                'region': p.region, 'province': p.province, 'district': p.district,
+                'lat': p.latitude, 'lon': p.longitude,
+                'capacity_mw': 0.0, 'generation_mwh': 0.0, 'plants': [],
+            })
+            capacity = p.operating_mw or 0.0
+            row = generation.get(p.epias_id)
+            # river and dammed are reported separately; sum only what this filter shows
+            if row is None:
+                produced = None
+            elif plant_type == 'river':
+                produced = row.river_mwh
+            elif plant_type == 'dammed':
+                produced = row.dammed_mwh
+            else:
+                produced = row.total_mwh
+
+            d['capacity_mw'] += capacity
+            if produced is not None:
+                d['generation_mwh'] += produced
+            d['plants'].append({
+                'name': p.name, 'capacity_mw': round(capacity, 1),
+                'generation_mwh': None if produced is None else round(produced, 1),
+                'type': p.plant_type,
+            })
+
+        out = []
+        for d in districts.values():
+            ceiling = d['capacity_mw'] * 24
+            d['fill'] = round(min(d['generation_mwh'] / ceiling, 1.0), 4) if ceiling > 0 else 0.0
+            d['capacity_mw'] = round(d['capacity_mw'], 1)
+            d['generation_mwh'] = round(d['generation_mwh'], 1)
+            d['plants'].sort(key=lambda x: x['capacity_mw'], reverse=True)
+            out.append(d)
+        out.sort(key=lambda x: x['capacity_mw'], reverse=True)
+
+        # Bounds come from the full table, not the truncated list below: capping the
+        # list at 60 days would otherwise make the date picker reject days that are
+        # actually stored.
+        first_day, last_day = db.session.query(
+            db.func.min(HydroDailyGeneration.date), db.func.max(HydroDailyGeneration.date)
+        ).one()
+        available = [
+            d.isoformat() for (d,) in db.session.query(HydroDailyGeneration.date)
+            .distinct().order_by(HydroDailyGeneration.date.desc()).limit(120).all()
+        ]
+
+        payload = {
+            'code': 200,
+            'data': {
+                'date': date.isoformat(),
+                'type': plant_type,
+                'available_dates': available,
+                'date_range': {'min': first_day.isoformat(), 'max': last_day.isoformat()},
+                'districts': out,
+                'summary': {
+                    'plants': sum(len(d['plants']) for d in out),
+                    'districts': len(out),
+                    'capacity_mw': round(sum(d['capacity_mw'] for d in out), 1),
+                    'generation_mwh': round(sum(d['generation_mwh'] for d in out), 1),
+                },
+            },
+        }
+
+        if len(_HYDRO_MAP_CACHE) >= _HYDRO_CACHE_MAX:
+            _HYDRO_MAP_CACHE.clear()
+        _HYDRO_MAP_CACHE[(date, plant_type)] = payload
+        return jsonify(payload)
+
+    except Exception as e:
+        print(f"Error in get_hydro_map_data: {str(e)}")
+        return _err("get_hydro_map_data", e)

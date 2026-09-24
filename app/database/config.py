@@ -22,6 +22,7 @@ def init_db(app):
     from ..models.production import ProductionData
     from ..models.demand import DemandData
     from ..models.forecasting import UnlicensedSolar, LicensedSolar, Wind, DamHydro, RunOfRiverHydro, Demand, SystemDirection
+    from ..models.hydro_map import HydroPlant, HydroDailyGeneration
     
     # Create all tables
     with app.app_context():

@@ -1,0 +1,326 @@
+{
+ "ADANA": {
+  "region": "Akdeniz",
+  "region_en": "Mediterranean"
+ },
+ "ADIYAMAN": {
+  "region": "Güneydoğu Anadolu",
+  "region_en": "Southeast Anatolia"
+ },
+ "AFYONKARAHİSAR": {
+  "region": "Ege",
+  "region_en": "Aegean"
+ },
+ "AĞRI": {
+  "region": "Kuzeydoğu Anadolu",
+  "region_en": "Northeast Anatolia"
+ },
+ "AKSARAY": {
+  "region": "Orta Anadolu",
+  "region_en": "Central Anatolia"
+ },
+ "AMASYA": {
+  "region": "Batı Karadeniz",
+  "region_en": "West Black Sea"
+ },
+ "ANKARA": {
+  "region": "Batı Anadolu",
+  "region_en": "West Anatolia"
+ },
+ "ANTALYA": {
+  "region": "Akdeniz",
+  "region_en": "Mediterranean"
+ },
+ "ARDAHAN": {
+  "region": "Kuzeydoğu Anadolu",
+  "region_en": "Northeast Anatolia"
+ },
+ "ARTVİN": {
+  "region": "Doğu Karadeniz",
+  "region_en": "East Black Sea"
+ },
+ "AYDIN": {
+  "region": "Ege",
+  "region_en": "Aegean"
+ },
+ "BALIKESİR": {
+  "region": "Batı Marmara",
+  "region_en": "West Marmara"
+ },
+ "BARTIN": {
+  "region": "Batı Karadeniz",
+  "region_en": "West Black Sea"
+ },
+ "BATMAN": {
+  "region": "Güneydoğu Anadolu",
+  "region_en": "Southeast Anatolia"
+ },
+ "BAYBURT": {
+  "region": "Kuzeydoğu Anadolu",
+  "region_en": "Northeast Anatolia"
+ },
+ "BİLECİK": {
+  "region": "Doğu Marmara",
+  "region_en": "East Marmara"
+ },
+ "BİNGÖL": {
+  "region": "Ortadoğu Anadolu",
+  "region_en": "Central East Anatolia"
+ },
+ "BİTLİS": {
+  "region": "Ortadoğu Anadolu",
+  "region_en": "Central East Anatolia"
+ },
+ "BOLU": {
+  "region": "Doğu Marmara",
+  "region_en": "East Marmara"
+ },
+ "BURDUR": {
+  "region": "Akdeniz",
+  "region_en": "Mediterranean"
+ },
+ "BURSA": {
+  "region": "Doğu Marmara",
+  "region_en": "East Marmara"
+ },
+ "ÇANAKKALE": {
+  "region": "Batı Marmara",
+  "region_en": "West Marmara"
+ },
+ "ÇANKIRI": {
+  "region": "Batı Karadeniz",
+  "region_en": "West Black Sea"
+ },
+ "ÇORUM": {
+  "region": "Batı Karadeniz",
+  "region_en": "West Black Sea"
+ },
+ "DENİZLİ": {
+  "region": "Ege",
+  "region_en": "Aegean"
+ },
+ "DİYARBAKIR": {
+  "region": "Güneydoğu Anadolu",
+  "region_en": "Southeast Anatolia"
+ },
+ "DÜZCE": {
+  "region": "Doğu Marmara",
+  "region_en": "East Marmara"
+ },
+ "EDİRNE": {
+  "region": "Batı Marmara",
+  "region_en": "West Marmara"
+ },
+ "ELAZIĞ": {
+  "region": "Ortadoğu Anadolu",
+  "region_en": "Central East Anatolia"
+ },
+ "ERZİNCAN": {
+  "region": "Kuzeydoğu Anadolu",
+  "region_en": "Northeast Anatolia"
+ },
+ "ERZURUM": {
+  "region": "Kuzeydoğu Anadolu",
+  "region_en": "Northeast Anatolia"
+ },
+ "ESKİŞEHİR": {
+  "region": "Doğu Marmara",
+  "region_en": "East Marmara"
+ },
+ "GAZİANTEP": {
+  "region": "Güneydoğu Anadolu",
+  "region_en": "Southeast Anatolia"
+ },
+ "GİRESUN": {
+  "region": "Doğu Karadeniz",
+  "region_en": "East Black Sea"
+ },
+ "GÜMÜŞHANE": {
+  "region": "Doğu Karadeniz",
+  "region_en": "East Black Sea"
+ },
+ "HAKKARİ": {
+  "region": "Ortadoğu Anadolu",
+  "region_en": "Central East Anatolia"
+ },
+ "HATAY": {
+  "region": "Akdeniz",
+  "region_en": "Mediterranean"
+ },
+ "IĞDIR": {
+  "region": "Kuzeydoğu Anadolu",
+  "region_en": "Northeast Anatolia"
+ },
+ "ISPARTA": {
+  "region": "Akdeniz",
+  "region_en": "Mediterranean"
+ },
+ "İSTANBUL": {
+  "region": "İstanbul",
+  "region_en": "İstanbul"
+ },
+ "İZMİR": {
+  "region": "Ege",
+  "region_en": "Aegean"
+ },
+ "KAHRAMANMARAŞ": {
+  "region": "Akdeniz",
+  "region_en": "Mediterranean"
+ },
+ "KARABÜK": {
+  "region": "Batı Karadeniz",
+  "region_en": "West Black Sea"
+ },
+ "KARAMAN": {
+  "region": "Batı Anadolu",
+  "region_en": "West Anatolia"
+ },
+ "KARS": {
+  "region": "Kuzeydoğu Anadolu",
+  "region_en": "Northeast Anatolia"
+ },
+ "KASTAMONU": {
+  "region": "Batı Karadeniz",
+  "region_en": "West Black Sea"
+ },
+ "KAYSERİ": {
+  "region": "Orta Anadolu",
+  "region_en": "Central Anatolia"
+ },
+ "KIRIKKALE": {
+  "region": "Orta Anadolu",
+  "region_en": "Central Anatolia"
+ },
+ "KIRKLARELİ": {
+  "region": "Batı Marmara",
+  "region_en": "West Marmara"
+ },
+ "KIRŞEHİR": {
+  "region": "Orta Anadolu",
+  "region_en": "Central Anatolia"
+ },
+ "KİLİS": {
+  "region": "Güneydoğu Anadolu",
+  "region_en": "Southeast Anatolia"
+ },
+ "KOCAELİ": {
+  "region": "Doğu Marmara",
+  "region_en": "East Marmara"
+ },
+ "KONYA": {
+  "region": "Batı Anadolu",
+  "region_en": "West Anatolia"
+ },
+ "KÜTAHYA": {
+  "region": "Ege",
+  "region_en": "Aegean"
+ },
+ "MALATYA": {
+  "region": "Ortadoğu Anadolu",
+  "region_en": "Central East Anatolia"
+ },
+ "MANİSA": {
+  "region": "Ege",
+  "region_en": "Aegean"
+ },
+ "MARDİN": {
+  "region": "Güneydoğu Anadolu",
+  "region_en": "Southeast Anatolia"
+ },
+ "MERSİN": {
+  "region": "Akdeniz",
+  "region_en": "Mediterranean"
+ },
+ "MUĞLA": {
+  "region": "Ege",
+  "region_en": "Aegean"
+ },
+ "MUŞ": {
+  "region": "Ortadoğu Anadolu",
+  "region_en": "Central East Anatolia"
+ },
+ "NEVŞEHİR": {
+  "region": "Orta Anadolu",
+  "region_en": "Central Anatolia"
+ },
+ "NİĞDE": {
+  "region": "Orta Anadolu",
+  "region_en": "Central Anatolia"
+ },
+ "ORDU": {
+  "region": "Doğu Karadeniz",
+  "region_en": "East Black Sea"
+ },
+ "OSMANİYE": {
+  "region": "Akdeniz",
+  "region_en": "Mediterranean"
+ },
+ "RİZE": {
+  "region": "Doğu Karadeniz",
+  "region_en": "East Black Sea"
+ },
+ "SAKARYA": {
+  "region": "Doğu Marmara",
+  "region_en": "East Marmara"
+ },
+ "SAMSUN": {
+  "region": "Batı Karadeniz",
+  "region_en": "West Black Sea"
+ },
+ "SİİRT": {
+  "region": "Güneydoğu Anadolu",
+  "region_en": "Southeast Anatolia"
+ },
+ "SİNOP": {
+  "region": "Batı Karadeniz",
+  "region_en": "West Black Sea"
+ },
+ "SİVAS": {
+  "region": "Orta Anadolu",
+  "region_en": "Central Anatolia"
+ },
+ "ŞANLIURFA": {
+  "region": "Güneydoğu Anadolu",
+  "region_en": "Southeast Anatolia"
+ },
+ "ŞIRNAK": {
+  "region": "Güneydoğu Anadolu",
+  "region_en": "Southeast Anatolia"
+ },
+ "TEKİRDAĞ": {
+  "region": "Batı Marmara",
+  "region_en": "West Marmara"
+ },
+ "TOKAT": {
+  "region": "Batı Karadeniz",
+  "region_en": "West Black Sea"
+ },
+ "TRABZON": {
+  "region": "Doğu Karadeniz",
+  "region_en": "East Black Sea"
+ },
+ "TUNCELİ": {
+  "region": "Ortadoğu Anadolu",
+  "region_en": "Central East Anatolia"
+ },
+ "UŞAK": {
+  "region": "Ege",
+  "region_en": "Aegean"
+ },
+ "VAN": {
+  "region": "Ortadoğu Anadolu",
+  "region_en": "Central East Anatolia"
+ },
+ "YALOVA": {
+  "region": "Doğu Marmara",
+  "region_en": "East Marmara"
+ },
+ "YOZGAT": {
+  "region": "Orta Anadolu",
+  "region_en": "Central Anatolia"
+ },
+ "ZONGULDAK": {
+  "region": "Batı Karadeniz",
+  "region_en": "West Black Sea"
+ }
+}

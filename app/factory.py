@@ -2,7 +2,7 @@ import os
 import pytz
 import logging
 from datetime import timedelta
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from flask_session import Session
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -109,6 +109,20 @@ def create_app():
     for _var, _consequence in _optional_vars.items():
         if not os.getenv(_var):
             app.logger.warning(f"Missing env var {_var!r}: {_consequence}")
+
+    @app.after_request
+    def cache_static_data(response):
+        """Long-cache the reference data under /static/data/.
+
+        tr-provinces.geojson is 242 KB and is refetched on every map load because
+        Flask serves static files with Cache-Control: no-cache. These files are
+        build artifacts that change only when regenerated, unlike the JS/CSS next
+        to them — which deliberately keeps its revalidating default so a deploy is
+        picked up immediately.
+        """
+        if request.path.startswith('/static/data/') and response.status_code == 200:
+            response.headers['Cache-Control'] = 'public, max-age=86400'
+        return response
 
     @app.after_request
     def set_security_headers(response):

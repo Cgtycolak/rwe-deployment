@@ -2592,6 +2592,70 @@
     </div>
 
     <!-- Supply Demand Price -->
+    <div class="content-section" data-section="hydro-map">
+        <div class="container-fluid">
+            <h2 class="mb-3"><i class="fas fa-water"></i> Hydro Generation Map</h2>
+            <div class="alert alert-info" role="alert">
+                <i class="fas fa-info-circle"></i>
+                Bubble size is the district's total operating capacity; the fill level is that
+                day's generation as a share of capacity (capacity factor). Licence data locates
+                plants only to province/district, so plants are aggregated per district.
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <h5 class="mb-0"><i class="fas fa-sliders-h"></i> Map Controls</h5>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <button id="load_hydro_map" class="btn btn-primary">
+                                <span class="button-content"><i class="fas fa-sync-alt"></i> Reload</span>
+                                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row align-items-end">
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Date</label>
+                            <input type="date" id="hydro_map_date" class="form-control">
+                            <small class="text-muted">Defaults to the latest loaded day</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Plant Type</label>
+                            <div class="btn-group d-block" role="group" id="hydro_map_type">
+                                <button type="button" class="btn btn-outline-primary active" data-type="river">Run-of-river</button>
+                                <button type="button" class="btn btn-outline-primary" data-type="dammed">Dammed</button>
+                                <button type="button" class="btn btn-outline-primary" data-type="all">All</button>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <div id="hydro_map_summary" class="text-muted small"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body p-0">
+                    <div id="hydro_map_chart" style="width:100%;height:640px;">
+                        <div class="text-center p-5 text-muted">
+                            <i class="fas fa-map-marked-alt fa-3x mb-3"></i>
+                            <p>Loading map...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header"><h5 class="mb-0"><i class="fas fa-table"></i> District Detail</h5></div>
+                <div class="card-body p-0"><div id="hydro_map_table"></div></div>
+            </div>
+        </div>
+    </div>
+
     <div class="content-section" data-section="supply-demand-price">
         <div class="container-fluid">
             <h2 class="mb-4">Supply Demand Price Analysis</h2>

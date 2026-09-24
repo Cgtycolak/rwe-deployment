@@ -261,6 +261,27 @@ def send_daily_email_report(app, attempt=1):
         app.logger.error(f"Error in send_daily_email_report: {str(e)}")
         raise
 
+def update_hydro_map_data(app):
+    """Fetch yesterday's per-plant hydro generation for the map.
+
+    Runs nightly rather than on request: EPIAS rate-limits the realtime endpoint,
+    so ~670 plants take roughly 12 minutes to walk through.
+    """
+    try:
+        with app.app_context():
+            tz = timezone('Europe/Istanbul')
+            yesterday = (datetime.now(tz) - timedelta(days=1)).date()
+            app.logger.info(f"Hydro map job triggered for {yesterday}")
+
+            from ..scripts.hydro_map.populate_hydro_generation import populate_hydro_generation
+            stored, failed = populate_hydro_generation(app, yesterday, yesterday)
+            app.logger.info(f"Hydro map update for {yesterday}: {stored} stored, {failed} failed")
+
+    except Exception as e:
+        app.logger.error(f"Error in update_hydro_map_data: {str(e)}")
+        raise
+
+
 def init_scheduler(app):
     """Initialize the scheduler with proper timezone and error handling"""
     tz = timezone('Europe/Istanbul')
@@ -330,6 +351,21 @@ def init_scheduler(app):
         replace_existing=True,
         max_instances=1,
         misfire_grace_time=900  # 15 minutes grace time
+    )
+
+    # Hydro map data (runs at 06:00, after EPIAS has settled the previous day).
+    # Takes ~12 minutes because of the per-plant rate limit, so it sits well away
+    # from the 16:05/16:10 data+email window.
+    hydro_map_run = CronTrigger(hour=6, minute=0, timezone=tz)
+    scheduler.add_job(
+        update_hydro_map_data,
+        trigger=hydro_map_run,
+        id='hydro_map_update',
+        name='Update hydro map generation at 06:00',
+        args=[app],
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=3600  # long job; allow a late start
     )
 
     # Schedule daily email report (runs at 16:10 every day)
