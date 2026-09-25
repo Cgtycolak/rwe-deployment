@@ -4562,6 +4562,9 @@ def get_merit_order_similar_days():
         # Hourly capacity across the window, restricted to days that actually carry
         # all 24 hours — a partially loaded day would otherwise be compared on a
         # handful of hours and rank spuriously well.
+        # The prediction date is excluded from its own candidates: it would always
+        # rank first and picking it as the reference makes every delta collapse to
+        # zero, which tells you nothing about the merit order.
         ref_query = text("""
         SELECT
             DATE(hf.date) AS day,
@@ -4569,10 +4572,10 @@ def get_merit_order_similar_days():
             hf.demand_forecast - hf.wind_forecast - hf.licensed_solar_forecast
                 - hf.unlicensed_solar_forecast - hf.runofriver_forecast AS ref_capacity
         FROM meteologica.historical_forecast hf
-        WHERE DATE(hf.date) BETWEEN :start_date AND :pred_date
+        WHERE DATE(hf.date) >= :start_date AND DATE(hf.date) < :pred_date
           AND DATE(hf.date) IN (
               SELECT DATE(date) FROM meteologica.historical_forecast
-              WHERE DATE(date) BETWEEN :start_date AND :pred_date
+              WHERE DATE(date) >= :start_date AND DATE(date) < :pred_date
               GROUP BY DATE(date) HAVING COUNT(*) = 24
           )
         ORDER BY day, hour

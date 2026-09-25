@@ -1,0 +1,417 @@
+<title>Hydro Fleet Coverage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ground:      #F4F7F8;
+    --surface:     #FFFFFF;
+    --surface-alt: #EDF2F4;
+    --line:        #D3DEE3;
+    --line-soft:   #E3EBEE;
+    --ink:         #0E1E26;
+    --ink-soft:    #3D5058;
+    --muted:       #6A7C85;
+    --accent:      #0E6E9E;
+    --river:       #2E7D6B;
+    --dammed:      #0E6E9E;
+    --unknown:     #B07A1E;
+    --missing:     #B04A3C;
+    --inactive:    #94A3AA;
+    --shadow:      0 1px 2px rgba(14, 30, 38, .05), 0 6px 20px rgba(14, 30, 38, .05);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0B1418;
+      --surface:     #121F26;
+      --surface-alt: #18272F;
+      --line:        #26363E;
+      --line-soft:   #1D2C34;
+      --ink:         #E4EDF0;
+      --ink-soft:    #B3C4CB;
+      --muted:       #8199A3;
+      --accent:      #58AEDC;
+      --river:       #58B79F;
+      --dammed:      #58AEDC;
+      --unknown:     #D8A53F;
+      --missing:     #DE7F70;
+      --inactive:    #6C7E86;
+      --shadow:      0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0B1418;
+    --surface:     #121F26;
+    --surface-alt: #18272F;
+    --line:        #26363E;
+    --line-soft:   #1D2C34;
+    --ink:         #E4EDF0;
+    --ink-soft:    #B3C4CB;
+    --muted:       #8199A3;
+    --accent:      #58AEDC;
+    --river:       #58B79F;
+    --dammed:      #58AEDC;
+    --unknown:     #D8A53F;
+    --missing:     #DE7F70;
+    --inactive:    #6C7E86;
+    --shadow:      0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 62rem;
+    margin: 0 auto;
+    padding: clamp(2rem, 5vw, 4rem) clamp(1.1rem, 4vw, 2.5rem) 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3rem;
+  }
+
+  h1, h2, h3 { font-family: Archivo, "IBM Plex Sans", sans-serif; text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(2rem, 5vw, 2.9rem); font-weight: 700; letter-spacing: -.022em; line-height: 1.1; }
+  h2 { font-size: 1.28rem; font-weight: 600; letter-spacing: -.01em; }
+  h3 { font-size: .95rem; font-weight: 600; }
+  p  { margin: 0; }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .72rem;
+    font-weight: 500;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ---- header ---- */
+  header { display: flex; flex-direction: column; gap: .85rem; }
+  .standfirst {
+    font-size: 1.1rem;
+    color: var(--ink-soft);
+    max-width: 62ch;
+  }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- section scaffolding ---- */
+  section { display: flex; flex-direction: column; gap: 1.1rem; }
+  .section-head { display: flex; flex-direction: column; gap: .3rem; }
+  .section-head p { color: var(--muted); font-size: .92rem; max-width: 68ch; }
+
+  /* ---- proportional bars ---- */
+  .bars { display: flex; flex-direction: column; gap: 1.6rem; }
+  .bar-block { display: flex; flex-direction: column; gap: .5rem; }
+  .bar-label {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 1rem; flex-wrap: wrap;
+  }
+  .bar-label .n {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+  .bar {
+    display: flex; width: 100%; height: 2.4rem;
+    border-radius: 3px; overflow: hidden;
+    background: var(--surface-alt);
+    box-shadow: var(--shadow);
+  }
+  .seg {
+    display: flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .72rem; font-weight: 600; color: #fff;
+    font-variant-numeric: tabular-nums;
+    min-width: 0; overflow: hidden; white-space: nowrap;
+  }
+  .seg.river    { background: var(--river); }
+  .seg.dammed   { background: var(--dammed); }
+  .seg.unknown  { background: var(--unknown); }
+  .seg.missing  { background: var(--missing); }
+  .seg.inactive { background: var(--inactive); }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: .4rem 1.4rem;
+    font-size: .84rem; color: var(--ink-soft);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: .45rem; }
+  .swatch { width: .7rem; height: .7rem; border-radius: 2px; flex: none; }
+
+  /* ---- stats ---- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 1px;
+    background: var(--line-soft);
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .stat { background: var(--surface); padding: 1.1rem 1.2rem; display: flex; flex-direction: column; gap: .2rem; }
+  .stat .v {
+    font-family: Archivo, sans-serif;
+    font-size: 1.75rem; font-weight: 700; letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .stat .k { font-size: .8rem; color: var(--muted); }
+
+  /* ---- tables ---- */
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line-soft); border-radius: 4px; background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th, td { padding: .62rem .9rem; text-align: left; border-bottom: 1px solid var(--line-soft); }
+  th {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .7rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); background: var(--surface-alt);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num { text-align: right; font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: .4rem;
+    font-family: "IBM Plex Mono", monospace; font-size: .7rem; font-weight: 600;
+    letter-spacing: .04em; padding: .16rem .5rem; border-radius: 999px;
+    border: 1px solid currentColor;
+  }
+  .pill.river   { color: var(--river); }
+  .pill.dammed  { color: var(--dammed); }
+
+  /* ---- gap cards ---- */
+  .gaps { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; }
+  .gap {
+    background: var(--surface); border: 1px solid var(--line-soft);
+    border-top: 3px solid var(--edge, var(--line));
+    border-radius: 4px; padding: 1.1rem 1.2rem;
+    display: flex; flex-direction: column; gap: .45rem;
+  }
+  .gap.unknown  { --edge: var(--unknown); }
+  .gap.missing  { --edge: var(--missing); }
+  .gap.inactive { --edge: var(--inactive); }
+  .gap .v { font-family: Archivo, sans-serif; font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .gap p { font-size: .87rem; color: var(--ink-soft); }
+  .gap .mw { font-family: "IBM Plex Mono", monospace; font-size: .78rem; color: var(--muted); }
+
+  /* ---- note ---- */
+  .note {
+    background: var(--surface); border: 1px solid var(--line-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px; padding: 1.1rem 1.3rem;
+    display: flex; flex-direction: column; gap: .6rem;
+    font-size: .9rem; color: var(--ink-soft);
+  }
+  .note dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: .35rem 1rem; font-size: .87rem; }
+  .note dt { color: var(--muted); font-family: "IBM Plex Mono", monospace; font-size: .76rem; white-space: nowrap; padding-top: .12rem; }
+  .note dd { margin: 0; }
+
+  footer { border-top: 1px solid var(--line-soft); padding-top: 1.2rem; color: var(--muted); font-size: .82rem; }
+
+  @media (max-width: 34rem) {
+    .seg { font-size: 0; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Dashboard data audit &middot; 24 Sep 2026 &middot; rev. 2</p>
+    <h1>Hydro Fleet Coverage</h1>
+    <p class="standfirst">
+      Of Turkey's <strong>758 licensed hydro plants</strong>, the map now carries per-plant
+      generation for <strong>648</strong> &mdash; <strong>95% of operating capacity</strong>.
+      Every plant is classed run-of-river or dammed from EPİAŞ's own fuel breakdown, not inferred
+      from size or name.
+    </p>
+  </header>
+
+  <section>
+    <div class="section-head">
+      <h2>The fleet, two ways</h2>
+      <p>
+        Run-of-river dominates by plant count; dammed dominates by capacity. The same
+        accounting shown against both measures is why a single headline number would mislead.
+      </p>
+    </div>
+
+    <div class="bars">
+      <div class="bar-block">
+        <div class="bar-label">
+          <h3>By plant count</h3>
+          <span class="n">758 licensed plants</span>
+        </div>
+        <div class="bar" role="img" aria-label="Plant count: 511 run-of-river, 137 dammed, 26 unclassified, 46 missing, 38 not yet operating">
+          <div class="seg river"    style="flex: 511 0 0">511</div>
+          <div class="seg dammed"   style="flex: 137 0 0">137</div>
+          <div class="seg unknown"  style="flex: 26 0 0">26</div>
+          <div class="seg missing"  style="flex: 46 0 0">46</div>
+          <div class="seg inactive" style="flex: 38 0 0">38</div>
+        </div>
+      </div>
+
+      <div class="bar-block">
+        <div class="bar-label">
+          <h3>By operating capacity</h3>
+          <span class="n">32,763 MW in service</span>
+        </div>
+        <div class="bar" role="img" aria-label="Operating capacity: 7,806 MW run-of-river, 23,349 MW dammed, 392 MW unclassified, 1,217 MW missing">
+          <div class="seg river"   style="flex: 7806 0 0">7,806</div>
+          <div class="seg dammed"  style="flex: 23349 0 0">23,349</div>
+          <div class="seg unknown" style="flex: 392 0 0"></div>
+          <div class="seg missing" style="flex: 1217 0 0"></div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><i class="swatch" style="background: var(--river)"></i>Run-of-river</span>
+        <span><i class="swatch" style="background: var(--dammed)"></i>Dammed</span>
+        <span><i class="swatch" style="background: var(--unknown)"></i>Unclassified</span>
+        <span><i class="swatch" style="background: var(--missing)"></i>Missing</span>
+        <span><i class="swatch" style="background: var(--inactive)"></i>Not yet operating</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Confirmed</h2>
+    <div class="stats">
+      <div class="stat"><span class="v">648</span><span class="k">plants with generation data</span></div>
+      <div class="stat"><span class="v">90%</span><span class="k">of operating plants</span></div>
+      <div class="stat"><span class="v">95%</span><span class="k">of operating capacity</span></div>
+      <div class="stat"><span class="v">1,096</span><span class="k">days loaded (3 years)</span></div>
+    </div>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Class</th>
+            <th class="num">Plants</th>
+            <th class="num">Operating MW</th>
+            <th class="num">Share of capacity</th>
+            <th>Generation data</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="pill river">RUN-OF-RIVER</span></td>
+            <td class="num">511</td>
+            <td class="num">7,806</td>
+            <td class="num">24%</td>
+            <td>All 511</td>
+          </tr>
+          <tr>
+            <td><span class="pill dammed">DAMMED</span></td>
+            <td class="num">137</td>
+            <td class="num">23,349</td>
+            <td class="num">71%</td>
+            <td>All 137</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Gaps</h2>
+      <p>Three different situations, only one of which is a real shortfall.</p>
+    </div>
+
+    <div class="gaps">
+      <article class="gap inactive">
+        <p class="eyebrow">Correctly absent</p>
+        <span class="v">38</span>
+        <span class="mw">1,524 MWm licensed</span>
+        <p>Licensed but not yet in service — the EPDK file lists zero operating capacity. They produce nothing, so their absence from the map is right.</p>
+      </article>
+
+      <article class="gap unknown">
+        <p class="eyebrow">Matched, never reported</p>
+        <span class="v">26</span>
+        <span class="mw">392 MW operating</span>
+        <p>Found in EPİAŞ, but no output in three years, so neither class applies. Mostly small. The exception is Ermenek (306 MW), which likely reports under another name.</p>
+      </article>
+
+      <article class="gap missing">
+        <p class="eyebrow">The real shortfall</p>
+        <span class="v">46</span>
+        <span class="mw">1,217 MW operating</span>
+        <p>In service and generating, but not yet matched to an EPİAŞ record. Around 30 appear in the day-ahead (uevcb) list under a different name.</p>
+      </article>
+    </div>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Largest unmatched plants</th>
+            <th>Province</th>
+            <th class="num">Operating MW</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>KÖROĞLU BARAJI VE KOTANLI HES</td><td>Ardahan</td><td class="num">129.9</td></tr>
+          <tr><td>MURATLI HES</td><td>Artvin</td><td class="num">117.6</td></tr>
+          <tr><td>ULUABAT KUVVET TÜNELİ VE HES</td><td>Bursa</td><td class="num">102.1</td></tr>
+          <tr><td>KARGI BARAJI VE HES</td><td>Ankara</td><td class="num">99.8</td></tr>
+          <tr><td>AKINCI (KAYABEYİ) HES</td><td>Ardahan</td><td class="num">86.7</td></tr>
+          <tr><td>ARAKLI KARADERE PRJ ERİKLİ-AKOCAK RG</td><td>Trabzon</td><td class="num">84.2</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>What closes the gap</h2>
+    <div class="note">
+      <p>
+        These plants are not missing from EPİAŞ — they are filed under different names.
+        Yedigöze proved it: EPİAŞ carries it as <strong>SANİBEY HES</strong>. It is now mapped
+        by hand and contributes its full 317 MW, which is why the missing pool fell from
+        1,534 MW to 1,217 MW.
+      </p>
+      <p>
+        The same method closes the rest. Aliases live in
+        <code>hydro_plant_aliases.json</code>; adding an entry and re-seeding pulls the plant in.
+        Name matching alone cannot get there — it already took three passes to reach 90%.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>How the numbers were derived</h2>
+    <div class="note">
+      <dl>
+        <dt>Fleet list</dt>
+        <dd>EPDK production licence export — 758 hydro plants after de-duplication, 34,437 MWm installed.</dd>
+
+        <dt>Classification</dt>
+        <dd>EPİAŞ realtime-generation splits output into <em>river</em> and <em>dammedHydro</em> per plant. Read directly, never inferred — a 50 MW size rule was tested and agreed with reality only 80% of the time.</dd>
+
+        <dt>Location</dt>
+        <dd>The licence file has no coordinates, only province and district. Plants sit at district centroids and are aggregated per district, so the map never implies precision it does not have.</dd>
+
+        <dt>Generation</dt>
+        <dd>24 Sep 2023 – 23 Sep 2026, one row per plant per day, from EPİAŞ <em>realtime-generation</em> — metered output, not the day-ahead schedule. Backfill in progress; the three-year history is what classified 45 plants a 30-day window could not.</dd>
+
+        <dt>Refresh</dt>
+        <dd>Scheduled daily at 06:00 for the previous day.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <footer>
+    RWE dashboard &middot; hydro generation map &middot; figures as of 24 September 2026
+  </footer>
+
+</div>

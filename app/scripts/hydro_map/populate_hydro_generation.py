@@ -131,27 +131,52 @@ def fetch_plant_range(app, session, headers, epias_id, start_date, end_date, bud
     return daily
 
 
-def upsert_rows(rows):
+DB_RETRIES = 5
+DB_RETRY_WAIT = 10        # seconds, doubled each attempt
+
+
+def upsert_rows(rows, app=None):
     """Bulk insert/update. One statement per batch, because the ORM's row-by-row
-    path costs a database round trip per row — punishing over a long link."""
+    path costs a database round trip per row — punishing over a long link.
+
+    Retries on connection failures: a run spans hours, and a momentary DNS or
+    network blip against the hosted database should not throw away the work
+    already fetched.
+    """
     if not rows:
         return 0
     from psycopg2.extras import execute_values
-    raw = db.session.connection().connection
-    with raw.cursor() as cur:
-        execute_values(cur, """
-            INSERT INTO hydro_daily_generation
-                (date, epias_id, plant_name, river_mwh, dammed_mwh, total_mwh, updated_at)
-            VALUES %s
-            ON CONFLICT (date, epias_id) DO UPDATE SET
-                plant_name = EXCLUDED.plant_name,
-                river_mwh  = EXCLUDED.river_mwh,
-                dammed_mwh = EXCLUDED.dammed_mwh,
-                total_mwh  = EXCLUDED.total_mwh,
-                updated_at = EXCLUDED.updated_at
-        """, rows, page_size=1000)
-    db.session.commit()
-    return len(rows)
+    from sqlalchemy.exc import DBAPIError, OperationalError
+
+    wait = DB_RETRY_WAIT
+    for attempt in range(1, DB_RETRIES + 1):
+        try:
+            raw = db.session.connection().connection
+            with raw.cursor() as cur:
+                execute_values(cur, """
+                    INSERT INTO hydro_daily_generation
+                        (date, epias_id, plant_name, river_mwh, dammed_mwh, total_mwh, updated_at)
+                    VALUES %s
+                    ON CONFLICT (date, epias_id) DO UPDATE SET
+                        plant_name = EXCLUDED.plant_name,
+                        river_mwh  = EXCLUDED.river_mwh,
+                        dammed_mwh = EXCLUDED.dammed_mwh,
+                        total_mwh  = EXCLUDED.total_mwh,
+                        updated_at = EXCLUDED.updated_at
+                """, rows, page_size=1000)
+            db.session.commit()
+            return len(rows)
+        except (OperationalError, DBAPIError) as e:
+            db.session.rollback()
+            if attempt == DB_RETRIES:
+                raise
+            if app:
+                app.logger.warning(f"hydro map: database write failed "
+                                   f"({type(e).__name__}), retry {attempt}/{DB_RETRIES - 1} "
+                                   f"in {wait}s")
+            time.sleep(wait)
+            wait *= 2
+    return 0
 
 
 def populate_hydro_generation(app, start_date, end_date=None, refresh=False,
@@ -225,14 +250,14 @@ def populate_hydro_generation(app, start_date, end_date=None, refresh=False,
                                          river, dammed, total, now))
 
             if i % FLUSH_EVERY_PLANTS == 0:
-                stored += upsert_rows(pending_rows)
+                stored += upsert_rows(pending_rows, app)
                 pending_rows = []
                 rate = i / max(time.monotonic() - started, 1) * 60
                 left = (len(plants) - i) / max(rate, 0.01)
                 app.logger.info(f"hydro map: {i}/{len(plants)} plants, {stored:,} rows, "
                                 f"{rate:.1f} plants/min, ~{left:.0f} min left")
 
-    stored += upsert_rows(pending_rows)
+    stored += upsert_rows(pending_rows, app)
     app.logger.info(f"hydro map: {start_date}..{end_date} finished — "
                     f"{stored:,} rows stored, {failed} plants failed")
     return stored, failed

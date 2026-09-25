@@ -1,0 +1,101 @@
+{
+  "_comment": "Hand-curated licence-name -> EPIAS powerplant id mappings. Automatic name matching cannot find these because EPIAS files the plant under a different name. Each entry was verified by checking that the EPIAS record's peak hourly output is consistent with the licensed capacity — a candidate whose peak is a small fraction of the licence is a different, smaller plant. Adding an entry and re-running seed_hydro_plants.py pulls the plant in; an entry may also move an id that automatic matching assigned to the wrong licence.",
+  "aliases": [
+    {
+      "licence_name": "YEDİGÖZE HES",
+      "epias_id": 1185,
+      "epias_name": "SANİBEY HES",
+      "note": "EPIAS files the Yedigöze dam on the Seyhan under its Sanibey name."
+    },
+    {
+      "licence_name": "ULUABAT KUVVET TÜNELİ VE HES",
+      "epias_id": 652,
+      "epias_name": "ULUABAT HES",
+      "note": "Peak 98.0 MW against 102.1 MW licensed."
+    },
+    {
+      "licence_name": "KÖROĞLU BARAJI VE KOTANLI HES",
+      "epias_id": 2022,
+      "epias_name": "KOTANLI 1-2 HES",
+      "note": "Peak 125.4 MW against 129.9 MW licensed."
+    },
+    {
+      "licence_name": "AKINCI (KAYABEYİ) HES",
+      "epias_id": 1881,
+      "epias_name": "ARDAHAN AKINCI HES",
+      "note": "Peak 79.1 MW against 86.7 MW licensed; province matches."
+    },
+    {
+      "licence_name": "ARAKLI KARADERE PRJ ERİKLİ-AKOCAK RG VE AKOCAK HES",
+      "epias_id": 1067,
+      "epias_name": "AKOCAK",
+      "note": "Peak 83.1 MW against 84.2 MW licensed."
+    },
+    {
+      "licence_name": "ÇİNE ADNAN MENDERES HES",
+      "epias_id": 1749,
+      "epias_name": "ÇİNE HES",
+      "note": "Peak 39.3 MW against 45.5 MW licensed."
+    },
+    {
+      "licence_name": "AKSU (YANKOL) HES",
+      "epias_id": 1658,
+      "epias_name": "ERZURUM AKSU HES",
+      "note": "Peak 27.5 MW against 27.9 MW licensed; province matches."
+    },
+    {
+      "licence_name": "MURATLI HES",
+      "epias_id": 1344,
+      "epias_name": "MURATLI HES",
+      "note": "Corrects a mis-assignment: automatic matching gave this id to MURATLI REGÜLATÖRÜ VE HES (Giresun, 39.8 MW), but the record peaks near 111 MW, which only the 117.6 MW EÜAŞ dam in Artvin can produce."
+    },
+    {
+      "licence_name": "MURATLI REGÜLATÖRÜ VE HES",
+      "epias_id": 1274,
+      "epias_name": "ARMA MURATLI HES",
+      "note": "The Giresun plant displaced by the correction above. Peak 36.0 MW against 39.8 MW licensed."
+    },
+    {
+      "licence_name": "KARGI BARAJI VE HES",
+      "epias_id": 2181,
+      "epias_name": "KARGI HES",
+      "note": "Swap: the id was on KARGI REGÜLATÖRÜ VE HES (Antalya, 6.4 MW) but the record peaks at 62.6 MW, which only this 99.8 MW Ankara dam can produce."
+    },
+    {
+      "licence_name": "KARGI REGÜLATÖRÜ VE HES",
+      "epias_id": 2139,
+      "epias_name": "KARGI REGÜLATÖRÜ VE HES",
+      "note": "The Antalya plant displaced above. Peak 6.0 MW against 6.4 MW licensed."
+    },
+    {
+      "licence_name": "ULUDERE BARAJI VE HES",
+      "epias_id": 2869,
+      "epias_name": "ULUDERE BARAJI VE HES",
+      "note": "Swap: the id was on ULUDERE HES (0.7 MW) but the record peaks at 3.4 MW, matching this 3.5 MW plant."
+    },
+    {
+      "licence_name": "ULUDERE HES",
+      "epias_id": 1043,
+      "epias_name": "ULUDERE HES",
+      "note": "The plant displaced above. Peak 0.6 MW against 0.7 MW licensed."
+    },
+    {
+      "licence_name": "DOĞANÇAY REG. VE HES",
+      "epias_id": 2168,
+      "epias_name": "DOĞANÇAY HES",
+      "note": "Swap: the id was on DOĞANÇAY HES (Sakarya, 31.6 MW) but the record peaks at 61.9 MW, matching this 63.9 MW Adana plant."
+    },
+    {
+      "licence_name": "DOĞANÇAY HES",
+      "epias_id": 1783,
+      "epias_name": "DOĞANÇAY HES PAMUKOVA",
+      "note": "The Sakarya plant displaced above. Peak 28.7 MW against 31.6 MW licensed; Pamukova is in Sakarya."
+    },
+    {
+      "licence_name": "AKINCI HES",
+      "epias_id": 2341,
+      "epias_name": "TOKAT AKINCI HES",
+      "note": "Was matched to AKINCI HES KAYSERİ, which peaks at 3.8 MW against 100.7 MW licensed and sits in the wrong province. Peak 97.4 MW here."
+    }
+  ]
+}
