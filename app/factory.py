@@ -10,6 +10,26 @@ from .database.config import init_db, db
 from .routes.realtime_generation import realtime_generation_bp
 from .routes.forecasting import forecasting_bp
 
+def _normalise_db_url(url):
+    """Pin the connection URL to the driver this project actually installs.
+
+    The same database gets written three ways depending on where the URL comes
+    from: Render hands out `postgresql+psycopg://` (psycopg 3), older tooling
+    still emits the legacy `postgres://`, and local .env files use plain
+    `postgresql://`. Only psycopg2 is in requirements — and the bulk-insert path
+    in the hydro scripts imports psycopg2 directly — so anything else fails at
+    startup with ModuleNotFoundError rather than at first query. Rewriting the
+    scheme here keeps the app independent of how the variable happens to be
+    written in each environment.
+    """
+    if not url:
+        return url
+    for prefix in ('postgresql+psycopg://', 'postgres://', 'postgresql://'):
+        if url.startswith(prefix):
+            return 'postgresql+psycopg2://' + url[len(prefix):]
+    return url
+
+
 def create_app():
     # Load environment variables
     load_dotenv()
@@ -78,9 +98,10 @@ def create_app():
 
     # Configure database
     if os.getenv('USE_LOCAL_DB', 'false').lower() == 'true':
-        app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('LOCAL_DATABASE_URL')
+        _db_url = os.getenv('LOCAL_DATABASE_URL')
     else:
-        app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('PRODUCTION_DATABASE_URL')
+        _db_url = os.getenv('PRODUCTION_DATABASE_URL')
+    app.config['SQLALCHEMY_DATABASE_URI'] = _normalise_db_url(_db_url)
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'pool_pre_ping': True,
