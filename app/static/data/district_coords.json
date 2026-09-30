@@ -1,0 +1,2048 @@
+{
+ "ADANA|ALADAĞ": {
+  "lat": 37.5452473,
+  "lon": 35.3944418,
+  "kaynak": "nominatim",
+  "km": 60.7
+ },
+ "ADANA|CEYHAN": {
+  "lat": 37.0259117,
+  "lon": 35.8169997,
+  "kaynak": "nominatim",
+  "km": 43.4
+ },
+ "ADANA|FEKE": {
+  "lat": 37.8147609,
+  "lon": 35.9116526,
+  "kaynak": "nominatim",
+  "km": 104.0
+ },
+ "ADANA|KARAİSALI": {
+  "lat": 37.2571843,
+  "lon": 35.0586409,
+  "kaynak": "nominatim",
+  "km": 37.2
+ },
+ "ADANA|KOZAN": {
+  "lat": 37.4477857,
+  "lon": 35.8166308,
+  "kaynak": "nominatim",
+  "km": 65.8
+ },
+ "ADANA|MERKEZ": {
+  "lat": 37.001667,
+  "lon": 35.328889,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "ADANA|POZANTI": {
+  "lat": 37.4229083,
+  "lon": 34.8731665,
+  "kaynak": "nominatim",
+  "km": 61.8
+ },
+ "ADANA|SARIÇAM": {
+  "lat": 37.0197412,
+  "lon": 35.3989919,
+  "kaynak": "nominatim",
+  "km": 6.5
+ },
+ "ADANA|SAİMBEYLİ": {
+  "lat": 37.9845639,
+  "lon": 36.0888261,
+  "kaynak": "nominatim",
+  "km": 128.2
+ },
+ "ADANA|SEYHAN": {
+  "lat": 37.1024202,
+  "lon": 35.3061086,
+  "kaynak": "nominatim",
+  "km": 11.4
+ },
+ "ADANA|YÜREĞİR": {
+  "lat": 36.9894584,
+  "lon": 35.3408834,
+  "kaynak": "nominatim",
+  "km": 1.7
+ },
+ "ADANA|İMAMOĞLU": {
+  "lat": 37.2577128,
+  "lon": 35.6613373,
+  "kaynak": "nominatim",
+  "km": 41.0
+ },
+ "ADIYAMAN|-": {
+  "lat": 37.7602985,
+  "lon": 38.2772986,
+  "kaynak": "nominatim",
+  "km": 0.5
+ },
+ "ADIYAMAN|BESNİ": {
+  "lat": 37.6910896,
+  "lon": 37.8622739,
+  "kaynak": "nominatim",
+  "km": 37.5
+ },
+ "ADIYAMAN|GÖLBAŞI": {
+  "lat": 37.7885969,
+  "lon": 37.635349,
+  "kaynak": "nominatim",
+  "km": 56.6
+ },
+ "ADIYAMAN|KAHTA": {
+  "lat": 37.7860716,
+  "lon": 38.6217178,
+  "kaynak": "nominatim",
+  "km": 30.2
+ },
+ "ADIYAMAN|MERKEZ": {
+  "lat": 37.764722,
+  "lon": 38.278611,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "ADIYAMAN|SİNCİK": {
+  "lat": 38.0291332,
+  "lon": 38.6194328,
+  "kaynak": "nominatim",
+  "km": 41.9
+ },
+ "ADIYAMAN|TUT": {
+  "lat": 37.7944486,
+  "lon": 37.9149485,
+  "kaynak": "nominatim",
+  "km": 32.1
+ },
+ "ADIYAMAN|ÇELİKHAN": {
+  "lat": 38.0333091,
+  "lon": 38.2423891,
+  "kaynak": "nominatim",
+  "km": 30.0
+ },
+ "AFYONKARAHİSAR|DİNAR": {
+  "lat": 38.0656331,
+  "lon": 30.1562047,
+  "kaynak": "nominatim",
+  "km": 83.7
+ },
+ "AMASYA|GÖYNÜCEK": {
+  "lat": 40.3971472,
+  "lon": 35.5236928,
+  "kaynak": "nominatim",
+  "km": 38.5
+ },
+ "AMASYA|MERKEZ": {
+  "lat": 40.649722,
+  "lon": 35.835278,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "AMASYA|TAŞOVA": {
+  "lat": 40.7603491,
+  "lon": 36.321973,
+  "kaynak": "nominatim",
+  "km": 42.8
+ },
+ "ANKARA|-": {
+  "lat": 39.9207759,
+  "lon": 32.8540497,
+  "kaynak": "nominatim",
+  "km": 0.0
+ },
+ "ANKARA|BALA": {
+  "lat": 39.553364,
+  "lon": 33.1237528,
+  "kaynak": "nominatim",
+  "km": 46.9
+ },
+ "ANKARA|BEYPAZARI": {
+  "lat": 40.1656491,
+  "lon": 31.9204553,
+  "kaynak": "nominatim",
+  "km": 84.0
+ },
+ "ANKARA|KALECİK": {
+  "lat": 40.0763983,
+  "lon": 33.4450431,
+  "kaynak": "nominatim",
+  "km": 53.2
+ },
+ "ANKARA|NALLIHAN": {
+  "lat": 40.188822,
+  "lon": 31.3503453,
+  "kaynak": "nominatim",
+  "km": 131.4
+ },
+ "ANTALYA|AKSEKİ": {
+  "lat": 37.0456391,
+  "lon": 31.789676,
+  "kaynak": "nominatim",
+  "km": 98.0
+ },
+ "ANTALYA|AKSU": {
+  "lat": 36.9475051,
+  "lon": 30.847705,
+  "kaynak": "nominatim",
+  "km": 14.5
+ },
+ "ANTALYA|ALANYA": {
+  "lat": 36.8865728,
+  "lon": 30.7030242,
+  "kaynak": "nominatim",
+  "km": 0.4
+ },
+ "ANTALYA|FİNİKE": {
+  "lat": 36.3046148,
+  "lon": 30.1445334,
+  "kaynak": "nominatim",
+  "km": 81.6
+ },
+ "ANTALYA|GAZİPAŞA": {
+  "lat": 36.2682712,
+  "lon": 32.3175066,
+  "kaynak": "nominatim",
+  "km": 159.4
+ },
+ "ANTALYA|KEPEZ": {
+  "lat": 36.9176296,
+  "lon": 30.7149914,
+  "kaynak": "nominatim",
+  "km": 3.8
+ },
+ "ANTALYA|KONYAALTI": {
+  "lat": 36.8726128,
+  "lon": 30.6503649,
+  "kaynak": "nominatim",
+  "km": 5.1
+ },
+ "ANTALYA|KUMLUCA": {
+  "lat": 36.3669046,
+  "lon": 30.2858418,
+  "kaynak": "nominatim",
+  "km": 68.6
+ },
+ "ANTALYA|MANAVGAT": {
+  "lat": 36.7870124,
+  "lon": 31.4406667,
+  "kaynak": "nominatim",
+  "km": 66.3
+ },
+ "ANTALYA|SERİK": {
+  "lat": 36.9168682,
+  "lon": 31.1047478,
+  "kaynak": "nominatim",
+  "km": 35.7
+ },
+ "ARDAHAN|HANAK": {
+  "lat": 41.2367701,
+  "lon": 42.8449034,
+  "kaynak": "nominatim",
+  "km": 18.7
+ },
+ "ARDAHAN|POSOF": {
+  "lat": 41.5083775,
+  "lon": 42.7279524,
+  "kaynak": "nominatim",
+  "km": 44.5
+ },
+ "ARDAHAN|ÇILDIR": {
+  "lat": 41.1268695,
+  "lon": 43.1349987,
+  "kaynak": "nominatim",
+  "km": 36.5
+ },
+ "ARTVİN|ARDANUÇ": {
+  "lat": 41.0914401,
+  "lon": 42.1548577,
+  "kaynak": "nominatim",
+  "km": 29.9
+ },
+ "ARTVİN|ARHAVİ": {
+  "lat": 41.3520702,
+  "lon": 41.3093534,
+  "kaynak": "nominatim",
+  "km": 46.6
+ },
+ "ARTVİN|BORÇKA": {
+  "lat": 41.3602455,
+  "lon": 41.6746739,
+  "kaynak": "nominatim",
+  "km": 23.2
+ },
+ "ARTVİN|MERKEZ": {
+  "lat": 41.18222,
+  "lon": 41.81889,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "ARTVİN|MURGUL": {
+  "lat": 41.2796807,
+  "lon": 41.564126,
+  "kaynak": "nominatim",
+  "km": 23.9
+ },
+ "ARTVİN|YUSUFELİ": {
+  "lat": 40.8108286,
+  "lon": 41.5270854,
+  "kaynak": "nominatim",
+  "km": 48.0
+ },
+ "ARTVİN|ŞAVŞAT": {
+  "lat": 41.2524882,
+  "lon": 42.3568859,
+  "kaynak": "nominatim",
+  "km": 45.7
+ },
+ "AYDIN|BOZDOĞAN": {
+  "lat": 37.6739133,
+  "lon": 28.3132041,
+  "kaynak": "nominatim",
+  "km": 45.3
+ },
+ "AYDIN|BUHARKENT": {
+  "lat": 37.9526579,
+  "lon": 28.7385258,
+  "kaynak": "nominatim",
+  "km": 79.3
+ },
+ "AYDIN|KUYUCAK": {
+  "lat": 37.9097685,
+  "lon": 28.4596723,
+  "kaynak": "nominatim",
+  "km": 54.4
+ },
+ "AYDIN|MERKEZ": {
+  "lat": 37.84444,
+  "lon": 27.84556,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "AYDIN|NAZİLLİ": {
+  "lat": 37.9140609,
+  "lon": 28.3270857,
+  "kaynak": "nominatim",
+  "km": 43.0
+ },
+ "AYDIN|ÇİNE": {
+  "lat": 37.6124716,
+  "lon": 28.0623096,
+  "kaynak": "nominatim",
+  "km": 32.1
+ },
+ "AĞRI|TAŞLIÇAY": {
+  "lat": 39.6333304,
+  "lon": 43.3776762,
+  "kaynak": "nominatim",
+  "km": 29.6
+ },
+ "BALIKESİR|MANYAS": {
+  "lat": 40.0476916,
+  "lon": 27.9679904,
+  "kaynak": "nominatim",
+  "km": 45.0
+ },
+ "BALIKESİR|SINDIRGI": {
+  "lat": 39.2387054,
+  "lon": 28.1749129,
+  "kaynak": "nominatim",
+  "km": 52.0
+ },
+ "BARTIN|AMASRA": {
+  "lat": 41.7489175,
+  "lon": 32.3866959,
+  "kaynak": "nominatim",
+  "km": 13.6
+ },
+ "BARTIN|KURUCAŞİLE": {
+  "lat": 41.8438903,
+  "lon": 32.7207891,
+  "kaynak": "nominatim",
+  "km": 39.8
+ },
+ "BARTIN|MERKEZ": {
+  "lat": 41.63333,
+  "lon": 32.33333,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "BATMAN|KOZLUK": {
+  "lat": 38.192585,
+  "lon": 41.4882901,
+  "kaynak": "nominatim",
+  "km": 46.4
+ },
+ "BAYBURT|MERKEZ": {
+  "lat": 40.25,
+  "lon": 40.21667,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "BOLU|GEREDE": {
+  "lat": 40.7987548,
+  "lon": 32.2009075,
+  "kaynak": "nominatim",
+  "km": 50.6
+ },
+ "BOLU|MENGEN": {
+  "lat": 40.9396618,
+  "lon": 32.0748327,
+  "kaynak": "nominatim",
+  "km": 45.5
+ },
+ "BOLU|MUDURNU": {
+  "lat": 40.4656959,
+  "lon": 31.2112312,
+  "kaynak": "nominatim",
+  "km": 44.9
+ },
+ "BOLU|SEBEN": {
+  "lat": 40.4085088,
+  "lon": 31.5713451,
+  "kaynak": "nominatim",
+  "km": 36.5
+ },
+ "BURDUR|BUCAK": {
+  "lat": 37.4567447,
+  "lon": 30.5855392,
+  "kaynak": "nominatim",
+  "km": 39.2
+ },
+ "BURDUR|ÇAVDIR": {
+  "lat": 37.154989,
+  "lon": 29.6900028,
+  "kaynak": "nominatim",
+  "km": 82.3
+ },
+ "BURSA|KESTEL": {
+  "lat": 40.2007544,
+  "lon": 29.2128704,
+  "kaynak": "nominatim",
+  "km": 13.1
+ },
+ "BURSA|MUSTAFAKEMALPAŞA": {
+  "lat": 40.0350481,
+  "lon": 28.4132707,
+  "kaynak": "nominatim",
+  "km": 57.5
+ },
+ "BURSA|NİLÜFER": {
+  "lat": 40.2169975,
+  "lon": 28.9847907,
+  "kaynak": "nominatim",
+  "km": 7.5
+ },
+ "BURSA|ORHANGAZİ": {
+  "lat": 40.4955352,
+  "lon": 29.3108324,
+  "kaynak": "nominatim",
+  "km": 40.8
+ },
+ "BURSA|İNEGÖL": {
+  "lat": 40.0800359,
+  "lon": 29.5096528,
+  "kaynak": "nominatim",
+  "km": 39.8
+ },
+ "BURSA|İZNİK": {
+  "lat": 40.4303445,
+  "lon": 29.7223732,
+  "kaynak": "nominatim",
+  "km": 62.5
+ },
+ "BİLECİK|-": {
+  "lat": 40.1543234,
+  "lon": 30.1479907,
+  "kaynak": "nominatim",
+  "km": 14.4
+ },
+ "BİLECİK|BOZÜYÜK": {
+  "lat": 39.9042599,
+  "lon": 30.0372781,
+  "kaynak": "nominatim",
+  "km": 27.3
+ },
+ "BİLECİK|GÖLPAZARI": {
+  "lat": 40.2839365,
+  "lon": 30.3165356,
+  "kaynak": "nominatim",
+  "km": 32.5
+ },
+ "BİLECİK|OSMANELİ": {
+  "lat": 40.36431,
+  "lon": 30.0274362,
+  "kaynak": "nominatim",
+  "km": 24.7
+ },
+ "BİNGÖL|GENÇ": {
+  "lat": 38.7937942,
+  "lon": 41.0459694,
+  "kaynak": "nominatim",
+  "km": 48.5
+ },
+ "BİNGÖL|KARLIOVA": {
+  "lat": 39.2945998,
+  "lon": 41.0102383,
+  "kaynak": "nominatim",
+  "km": 63.4
+ },
+ "BİNGÖL|KİĞI": {
+  "lat": 39.3103665,
+  "lon": 40.3496279,
+  "kaynak": "nominatim",
+  "km": 49.0
+ },
+ "BİNGÖL|SOLHAN": {
+  "lat": 38.9659351,
+  "lon": 41.0518147,
+  "kaynak": "nominatim",
+  "km": 48.7
+ },
+ "BİTLİS|ADİLCEVAZ": {
+  "lat": 38.8043058,
+  "lon": 42.7346369,
+  "kaynak": "nominatim",
+  "km": 69.9
+ },
+ "BİTLİS|HİZAN": {
+  "lat": 38.2250087,
+  "lon": 42.4263243,
+  "kaynak": "nominatim",
+  "km": 32.5
+ },
+ "BİTLİS|TATVAN": {
+  "lat": 38.508744,
+  "lon": 42.2758544,
+  "kaynak": "nominatim",
+  "km": 18.3
+ },
+ "DENİZLİ|ACIPAYAM": {
+  "lat": 37.4273777,
+  "lon": 29.3505097,
+  "kaynak": "nominatim",
+  "km": 45.3
+ },
+ "DENİZLİ|GÜNEY": {
+  "lat": 38.1539329,
+  "lon": 29.0652247,
+  "kaynak": "nominatim",
+  "km": 42.0
+ },
+ "DENİZLİ|HONAZ": {
+  "lat": 37.752386,
+  "lon": 29.2696961,
+  "kaynak": "nominatim",
+  "km": 16.4
+ },
+ "DENİZLİ|KALE": {
+  "lat": 37.4437871,
+  "lon": 28.8463079,
+  "kaynak": "nominatim",
+  "km": 42.6
+ },
+ "DENİZLİ|MERKEZ": {
+  "lat": 37.77639,
+  "lon": 29.08611,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "DENİZLİ|ÇAL": {
+  "lat": 38.0813509,
+  "lon": 29.397294,
+  "kaynak": "nominatim",
+  "km": 43.5
+ },
+ "DÜZCE|GÖLYAKA": {
+  "lat": 40.7767185,
+  "lon": 30.9964407,
+  "kaynak": "nominatim",
+  "km": 15.6
+ },
+ "DÜZCE|KAYNAŞLI": {
+  "lat": 40.7720977,
+  "lon": 31.3192011,
+  "kaynak": "nominatim",
+  "km": 14.5
+ },
+ "DÜZCE|MERKEZ": {
+  "lat": 40.83333,
+  "lon": 31.16667,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "DÜZCE|YIĞILCA": {
+  "lat": 40.9599953,
+  "lon": 31.4446682,
+  "kaynak": "nominatim",
+  "km": 27.3
+ },
+ "DİYARBAKIR|DİCLE": {
+  "lat": 38.3728128,
+  "lon": 40.0718167,
+  "kaynak": "nominatim",
+  "km": 52.9
+ },
+ "DİYARBAKIR|EĞİL": {
+  "lat": 38.2575529,
+  "lon": 40.0845198,
+  "kaynak": "nominatim",
+  "km": 40.3
+ },
+ "DİYARBAKIR|KULP": {
+  "lat": 38.5004269,
+  "lon": 41.0119973,
+  "kaynak": "nominatim",
+  "km": 94.4
+ },
+ "DİYARBAKIR|SİLVAN": {
+  "lat": 38.1411514,
+  "lon": 41.0056103,
+  "kaynak": "nominatim",
+  "km": 72.4
+ },
+ "DİYARBAKIR|ÇÜNGÜŞ": {
+  "lat": 38.2117433,
+  "lon": 39.2881697,
+  "kaynak": "nominatim",
+  "km": 88.9
+ },
+ "ELAZIĞ|KARAKOÇAN": {
+  "lat": 38.9564458,
+  "lon": 40.0380269,
+  "kaynak": "nominatim",
+  "km": 76.7
+ },
+ "ELAZIĞ|KEBAN": {
+  "lat": 38.7943119,
+  "lon": 38.7444419,
+  "kaynak": "nominatim",
+  "km": 43.7
+ },
+ "ELAZIĞ|KOVANCILAR": {
+  "lat": 38.7189254,
+  "lon": 39.8659125,
+  "kaynak": "nominatim",
+  "km": 55.7
+ },
+ "ELAZIĞ|PALU": {
+  "lat": 38.6934846,
+  "lon": 39.9288811,
+  "kaynak": "nominatim",
+  "km": 61.0
+ },
+ "ELAZIĞ|SİVRİCE": {
+  "lat": 38.4486928,
+  "lon": 39.3068557,
+  "kaynak": "nominatim",
+  "km": 26.7
+ },
+ "ERZURUM|AZİZİYE": {
+  "lat": 39.9454672,
+  "lon": 41.1060051,
+  "kaynak": "nominatim",
+  "km": 15.1
+ },
+ "ERZURUM|AŞKALE": {
+  "lat": 39.9218496,
+  "lon": 40.6826834,
+  "kaynak": "nominatim",
+  "km": 50.7
+ },
+ "ERZURUM|MERKEZ": {
+  "lat": 39.90861,
+  "lon": 41.27694,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "ERZURUM|OLTU": {
+  "lat": 40.5459405,
+  "lon": 41.9959769,
+  "kaynak": "nominatim",
+  "km": 93.5
+ },
+ "ERZURUM|OLUR": {
+  "lat": 40.8268183,
+  "lon": 42.1332425,
+  "kaynak": "nominatim",
+  "km": 125.2
+ },
+ "ERZURUM|PASİNLER": {
+  "lat": 39.9773129,
+  "lon": 41.674491,
+  "kaynak": "nominatim",
+  "km": 34.7
+ },
+ "ERZURUM|TORTUM": {
+  "lat": 40.2970821,
+  "lon": 41.5508252,
+  "kaynak": "nominatim",
+  "km": 49.1
+ },
+ "ERZURUM|UZUNDERE": {
+  "lat": 40.5326825,
+  "lon": 41.5483336,
+  "kaynak": "nominatim",
+  "km": 73.1
+ },
+ "ERZURUM|YAKUTİYE": {
+  "lat": 39.9183266,
+  "lon": 41.2793868,
+  "kaynak": "nominatim",
+  "km": 1.1
+ },
+ "ERZURUM|İSPİR": {
+  "lat": 40.4833781,
+  "lon": 40.9999611,
+  "kaynak": "nominatim",
+  "km": 68.1
+ },
+ "ERZİNCAN|KEMAH": {
+  "lat": 39.6036254,
+  "lon": 39.0336886,
+  "kaynak": "nominatim",
+  "km": 43.1
+ },
+ "ERZİNCAN|KEMALİYE": {
+  "lat": 39.2620966,
+  "lon": 38.4965266,
+  "kaynak": "nominatim",
+  "km": 101.8
+ },
+ "ERZİNCAN|MERKEZ": {
+  "lat": 39.75,
+  "lon": 39.5,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "ERZİNCAN|TERCAN": {
+  "lat": 39.7764866,
+  "lon": 40.383,
+  "kaynak": "nominatim",
+  "km": 75.5
+ },
+ "ERZİNCAN|ÇAYIRLI": {
+  "lat": 39.8040818,
+  "lon": 40.0371836,
+  "kaynak": "nominatim",
+  "km": 46.3
+ },
+ "ERZİNCAN|ÜZÜMLÜ": {
+  "lat": 39.7101148,
+  "lon": 39.7010311,
+  "kaynak": "nominatim",
+  "km": 17.8
+ },
+ "ERZİNCAN|İLİÇ": {
+  "lat": 39.4721719,
+  "lon": 38.5565288,
+  "kaynak": "nominatim",
+  "km": 86.5
+ },
+ "ESKİŞEHİR|ALPU": {
+  "lat": 39.7680249,
+  "lon": 30.9541081,
+  "kaynak": "nominatim",
+  "km": 37.1
+ },
+ "ESKİŞEHİR|SARICAKAYA": {
+  "lat": 40.0389485,
+  "lon": 30.6189477,
+  "kaynak": "nominatim",
+  "km": 30.4
+ },
+ "GAZİANTEP|KARKAMIŞ": {
+  "lat": 36.8310808,
+  "lon": 37.9999562,
+  "kaynak": "nominatim",
+  "km": 60.7
+ },
+ "GAZİANTEP|ŞAHİNBEY": {
+  "lat": 37.0575903,
+  "lon": 37.3794008,
+  "kaynak": "nominatim",
+  "km": 1.1
+ },
+ "GAZİANTEP|ŞEHİTKAMİL": {
+  "lat": 37.0727587,
+  "lon": 37.3949769,
+  "kaynak": "nominatim",
+  "km": 1.2
+ },
+ "GÜMÜŞHANE|KÜRTÜN": {
+  "lat": 40.7018638,
+  "lon": 39.0857106,
+  "kaynak": "nominatim",
+  "km": 43.7
+ },
+ "GÜMÜŞHANE|MERKEZ": {
+  "lat": 40.45,
+  "lon": 39.48333,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "GÜMÜŞHANE|TORUL": {
+  "lat": 40.557658,
+  "lon": 39.2926361,
+  "kaynak": "nominatim",
+  "km": 20.1
+ },
+ "GÜMÜŞHANE|ŞİRAN": {
+  "lat": 40.1898258,
+  "lon": 39.1252323,
+  "kaynak": "nominatim",
+  "km": 41.9
+ },
+ "GİRESUN|ALUCRA": {
+  "lat": 40.319666,
+  "lon": 38.7651849,
+  "kaynak": "nominatim",
+  "km": 73.2
+ },
+ "GİRESUN|BULANCAK": {
+  "lat": 40.9389231,
+  "lon": 38.2318776,
+  "kaynak": "nominatim",
+  "km": 14.3
+ },
+ "GİRESUN|DERELİ": {
+  "lat": 40.7390401,
+  "lon": 38.4491316,
+  "kaynak": "nominatim",
+  "km": 20.2
+ },
+ "GİRESUN|DOĞANKENT": {
+  "lat": 40.8099176,
+  "lon": 38.9147292,
+  "kaynak": "nominatim",
+  "km": 44.9
+ },
+ "GİRESUN|ESPİYE": {
+  "lat": 40.9483226,
+  "lon": 38.7117215,
+  "kaynak": "nominatim",
+  "km": 26.4
+ },
+ "GİRESUN|GÜCE": {
+  "lat": 40.8940305,
+  "lon": 38.8080266,
+  "kaynak": "nominatim",
+  "km": 34.4
+ },
+ "GİRESUN|KEŞAP": {
+  "lat": 40.9151484,
+  "lon": 38.5138559,
+  "kaynak": "nominatim",
+  "km": 9.6
+ },
+ "GİRESUN|MERKEZ": {
+  "lat": 40.91667,
+  "lon": 38.4,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "GİRESUN|PİRAZİZ": {
+  "lat": 40.9525735,
+  "lon": 38.124757,
+  "kaynak": "nominatim",
+  "km": 23.5
+ },
+ "GİRESUN|YAĞLIDERE": {
+  "lat": 40.8605351,
+  "lon": 38.6251583,
+  "kaynak": "nominatim",
+  "km": 19.9
+ },
+ "GİRESUN|ÇAMOLUK": {
+  "lat": 40.1351681,
+  "lon": 38.7339764,
+  "kaynak": "nominatim",
+  "km": 91.4
+ },
+ "GİRESUN|ÇANAKÇI": {
+  "lat": 40.9169922,
+  "lon": 39.0093156,
+  "kaynak": "nominatim",
+  "km": 51.2
+ },
+ "GİRESUN|ŞEBİNKARAHİSAR": {
+  "lat": 40.2886007,
+  "lon": 38.4236116,
+  "kaynak": "nominatim",
+  "km": 69.9
+ },
+ "HAKKARİ|MERKEZ": {
+  "lat": 37.58333,
+  "lon": 43.73333,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "HAKKARİ|YÜKSEKOVA": {
+  "lat": 37.5717687,
+  "lon": 44.2821698,
+  "kaynak": "nominatim",
+  "km": 48.4
+ },
+ "HAKKARİ|ŞEMDİNLİ": {
+  "lat": 37.3067629,
+  "lon": 44.5725083,
+  "kaynak": "nominatim",
+  "km": 80.2
+ },
+ "HATAY|ARSUZ": {
+  "lat": 36.4196254,
+  "lon": 35.9905236,
+  "kaynak": "nominatim",
+  "km": 29.1
+ },
+ "HATAY|DÖRTYOL": {
+  "lat": 36.835312,
+  "lon": 36.227408,
+  "kaynak": "nominatim",
+  "km": 70.9
+ },
+ "HATAY|HASSA": {
+  "lat": 36.8001098,
+  "lon": 36.5172243,
+  "kaynak": "nominatim",
+  "km": 73.7
+ },
+ "HATAY|PAYAS": {
+  "lat": 36.7669311,
+  "lon": 36.2093457,
+  "kaynak": "nominatim",
+  "km": 63.2
+ },
+ "HATAY|SAMANDAĞ": {
+  "lat": 36.0851597,
+  "lon": 35.9799375,
+  "kaynak": "nominatim",
+  "km": 21.1
+ },
+ "ISPARTA|EĞİRDİR": {
+  "lat": 37.8744344,
+  "lon": 30.8500433,
+  "kaynak": "nominatim",
+  "km": 29.0
+ },
+ "ISPARTA|MERKEZ": {
+  "lat": 37.76667,
+  "lon": 30.55,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "ISPARTA|SÜTÇÜLER": {
+  "lat": 37.4949942,
+  "lon": 30.9805605,
+  "kaynak": "nominatim",
+  "km": 48.5
+ },
+ "IĞDIR|MERKEZ": {
+  "lat": 39.91667,
+  "lon": 44.03333,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "IĞDIR|TUZLUCA": {
+  "lat": 40.0402158,
+  "lon": 43.6637878,
+  "kaynak": "nominatim",
+  "km": 34.4
+ },
+ "KAHRAMANMARAŞ|ANDIRIN": {
+  "lat": 37.5750172,
+  "lon": 36.355248,
+  "kaynak": "nominatim",
+  "km": 51.0
+ },
+ "KAHRAMANMARAŞ|EKİNÖZÜ": {
+  "lat": 38.0606689,
+  "lon": 37.1894147,
+  "kaynak": "nominatim",
+  "km": 57.6
+ },
+ "KAHRAMANMARAŞ|GÖKSUN": {
+  "lat": 38.0213126,
+  "lon": 36.4945631,
+  "kaynak": "nominatim",
+  "km": 62.1
+ },
+ "KAHRAMANMARAŞ|MERKEZ": {
+  "lat": 37.58333,
+  "lon": 36.93333,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "KAHRAMANMARAŞ|NURHAK": {
+  "lat": 37.9661475,
+  "lon": 37.4421885,
+  "kaynak": "nominatim",
+  "km": 61.7
+ },
+ "KAHRAMANMARAŞ|ONİKİŞUBAT": {
+  "lat": 37.5777575,
+  "lon": 36.923735,
+  "kaynak": "nominatim",
+  "km": 1.0
+ },
+ "KAHRAMANMARAŞ|PAZARCIK": {
+  "lat": 37.4908476,
+  "lon": 37.2899692,
+  "kaynak": "nominatim",
+  "km": 33.1
+ },
+ "KARABÜK|MERKEZ": {
+  "lat": 41.2,
+  "lon": 32.63333,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "KARABÜK|YENİCE": {
+  "lat": 41.2054905,
+  "lon": 32.3188801,
+  "kaynak": "nominatim",
+  "km": 26.3
+ },
+ "KARAMAN|-": {
+  "lat": 37.1796848,
+  "lon": 33.3383665,
+  "kaynak": "nominatim",
+  "km": 10.8
+ },
+ "KARAMAN|ERMENEK": {
+  "lat": 36.6389037,
+  "lon": 32.8888721,
+  "kaynak": "nominatim",
+  "km": 67.2
+ },
+ "KARAMAN|KAZIMKARABEKİR": {
+  "lat": 37.2265254,
+  "lon": 32.9582567,
+  "kaynak": "nominatim",
+  "km": 23.4
+ },
+ "KARAMAN|MERKEZ": {
+  "lat": 37.18333,
+  "lon": 33.21667,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "KARAMAN|SARIVELİLER": {
+  "lat": 36.6985256,
+  "lon": 32.618221,
+  "kaynak": "nominatim",
+  "km": 75.7
+ },
+ "KARS|ARPAÇAY": {
+  "lat": 40.603701,
+  "lon": 43.6923111,
+  "kaynak": "nominatim",
+  "km": 51.4
+ },
+ "KARS|KAĞIZMAN": {
+  "lat": 40.140677,
+  "lon": 43.1204632,
+  "kaynak": "nominatim",
+  "km": 52.1
+ },
+ "KARS|MERKEZ": {
+  "lat": 40.60833,
+  "lon": 43.08333,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "KARS|SARIKAMIŞ": {
+  "lat": 40.33589,
+  "lon": 42.5769437,
+  "kaynak": "nominatim",
+  "km": 52.5
+ },
+ "KASTAMONU|ARAÇ": {
+  "lat": 41.2412014,
+  "lon": 33.324933,
+  "kaynak": "nominatim",
+  "km": 41.6
+ },
+ "KASTAMONU|BOZKURT": {
+  "lat": 41.958798,
+  "lon": 34.0126284,
+  "kaynak": "nominatim",
+  "km": 66.2
+ },
+ "KASTAMONU|CİDE": {
+  "lat": 41.8915711,
+  "lon": 33.003712,
+  "kaynak": "nominatim",
+  "km": 85.5
+ },
+ "KASTAMONU|DEVREKANİ": {
+  "lat": 41.6025639,
+  "lon": 33.8370923,
+  "kaynak": "nominatim",
+  "km": 24.2
+ },
+ "KASTAMONU|HANÖNÜ": {
+  "lat": 41.6255724,
+  "lon": 34.4680011,
+  "kaynak": "nominatim",
+  "km": 62.9
+ },
+ "KASTAMONU|KÜRE": {
+  "lat": 41.8058822,
+  "lon": 33.710262,
+  "kaynak": "nominatim",
+  "km": 46.8
+ },
+ "KASTAMONU|MERKEZ": {
+  "lat": 41.38889,
+  "lon": 33.78222,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "KASTAMONU|TAŞKÖPRÜ": {
+  "lat": 41.5074775,
+  "lon": 34.2128338,
+  "kaynak": "nominatim",
+  "km": 38.2
+ },
+ "KASTAMONU|ÇATALZEYTİN": {
+  "lat": 41.9531105,
+  "lon": 34.2226751,
+  "kaynak": "nominatim",
+  "km": 72.6
+ },
+ "KASTAMONU|İHSANGAZİ": {
+  "lat": 41.2040122,
+  "lon": 33.5559175,
+  "kaynak": "nominatim",
+  "km": 27.9
+ },
+ "KAYSERİ|DEVELİ": {
+  "lat": 38.3879285,
+  "lon": 35.4900997,
+  "kaynak": "nominatim",
+  "km": 38.2
+ },
+ "KAYSERİ|KOCASİNAN": {
+  "lat": 38.7362583,
+  "lon": 35.4949806,
+  "kaynak": "nominatim",
+  "km": 1.5
+ },
+ "KAYSERİ|MELİKGAZİ": {
+  "lat": 38.7199062,
+  "lon": 35.5056623,
+  "kaynak": "nominatim",
+  "km": 2.6
+ },
+ "KAYSERİ|PINARBAŞI": {
+  "lat": 38.7214464,
+  "lon": 36.3941324,
+  "kaynak": "nominatim",
+  "km": 79.4
+ },
+ "KAYSERİ|YAHYALI": {
+  "lat": 38.1003432,
+  "lon": 35.3541006,
+  "kaynak": "nominatim",
+  "km": 71.0
+ },
+ "KIRIKKALE|MERKEZ": {
+  "lat": 39.85,
+  "lon": 33.51667,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "KIRIKKALE|SULAKYURT": {
+  "lat": 40.1576767,
+  "lon": 33.7156669,
+  "kaynak": "nominatim",
+  "km": 38.2
+ },
+ "KIRIKKALE|ÇELEBİ": {
+  "lat": 39.4636988,
+  "lon": 33.5244142,
+  "kaynak": "nominatim",
+  "km": 43.0
+ },
+ "KIRŞEHİR|KAMAN": {
+  "lat": 39.3588984,
+  "lon": 33.7243959,
+  "kaynak": "nominatim",
+  "km": 45.3
+ },
+ "KOCAELİ|BAŞİSKELE": {
+  "lat": 40.7129276,
+  "lon": 29.9286975,
+  "kaynak": "nominatim",
+  "km": 6.1
+ },
+ "KOCAELİ|MERKEZ": {
+  "lat": 40.76667,
+  "lon": 29.91667,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "KONYA|AKŞEHİR": {
+  "lat": 38.3588503,
+  "lon": 31.4201959,
+  "kaynak": "nominatim",
+  "km": 107.9
+ },
+ "KONYA|BEYŞEHİR": {
+  "lat": 37.6802288,
+  "lon": 31.7228355,
+  "kaynak": "nominatim",
+  "km": 70.0
+ },
+ "KONYA|BOZKIR": {
+  "lat": 37.1898741,
+  "lon": 32.2472016,
+  "kaynak": "nominatim",
+  "km": 78.1
+ },
+ "KONYA|EREĞLİ": {
+  "lat": 37.5140718,
+  "lon": 34.0473423,
+  "kaynak": "nominatim",
+  "km": 143.1
+ },
+ "KONYA|GÜNEYSINIR": {
+  "lat": 37.2980654,
+  "lon": 32.7211413,
+  "kaynak": "nominatim",
+  "km": 66.6
+ },
+ "KONYA|HALKAPINAR": {
+  "lat": 37.4334972,
+  "lon": 34.1866052,
+  "kaynak": "nominatim",
+  "km": 157.5
+ },
+ "KONYA|MERAM": {
+  "lat": 37.8679527,
+  "lon": 32.4946514,
+  "kaynak": "nominatim",
+  "km": 1.0
+ },
+ "KONYA|TAŞKENT": {
+  "lat": 36.9239246,
+  "lon": 32.4926174,
+  "kaynak": "nominatim",
+  "km": 104.8
+ },
+ "KÜTAHYA|DOMANİÇ": {
+  "lat": 39.8014005,
+  "lon": 29.6118544,
+  "kaynak": "nominatim",
+  "km": 53.3
+ },
+ "KÜTAHYA|GEDİZ": {
+  "lat": 38.9898441,
+  "lon": 29.3939571,
+  "kaynak": "nominatim",
+  "km": 69.5
+ },
+ "KÜTAHYA|TAVŞANLI": {
+  "lat": 39.5402183,
+  "lon": 29.4863407,
+  "kaynak": "nominatim",
+  "km": 44.8
+ },
+ "MALATYA|-": {
+  "lat": 38.3486769,
+  "lon": 38.3191313,
+  "kaynak": "nominatim",
+  "km": 1.4
+ },
+ "MALATYA|AKÇADAĞ": {
+  "lat": 38.2908984,
+  "lon": 38.0444287,
+  "kaynak": "nominatim",
+  "km": 23.8
+ },
+ "MALATYA|DARENDE": {
+  "lat": 38.5573096,
+  "lon": 37.4926521,
+  "kaynak": "nominatim",
+  "km": 74.2
+ },
+ "MALATYA|DOĞANŞEHİR": {
+  "lat": 38.089293,
+  "lon": 37.874647,
+  "kaynak": "nominatim",
+  "km": 47.8
+ },
+ "MALATYA|KULUNCAK": {
+  "lat": 38.8848581,
+  "lon": 37.6707415,
+  "kaynak": "nominatim",
+  "km": 80.7
+ },
+ "MALATYA|PÜTÜRGE": {
+  "lat": 38.1973443,
+  "lon": 38.8702321,
+  "kaynak": "nominatim",
+  "km": 52.4
+ },
+ "MALATYA|YAZIHAN": {
+  "lat": 38.5957628,
+  "lon": 38.1816948,
+  "kaynak": "nominatim",
+  "km": 28.8
+ },
+ "MALATYA|YEŞİLYURT": {
+  "lat": 38.2954882,
+  "lon": 38.2474518,
+  "kaynak": "nominatim",
+  "km": 8.3
+ },
+ "MANİSA|AKHİSAR": {
+  "lat": 38.9240528,
+  "lon": 27.8401895,
+  "kaynak": "nominatim",
+  "km": 49.8
+ },
+ "MANİSA|SALİHLİ": {
+  "lat": 38.4829405,
+  "lon": 28.1309046,
+  "kaynak": "nominatim",
+  "km": 62.9
+ },
+ "MARDİN|DARGEÇİT": {
+  "lat": 37.5459484,
+  "lon": 41.7206012,
+  "kaynak": "nominatim",
+  "km": 90.1
+ },
+ "MARDİN|NUSAYBİN": {
+  "lat": 37.0667403,
+  "lon": 41.2166204,
+  "kaynak": "nominatim",
+  "km": 49.9
+ },
+ "MERSİN|ANAMUR": {
+  "lat": 36.080323,
+  "lon": 32.8312106,
+  "kaynak": "nominatim",
+  "km": 180.0
+ },
+ "MERSİN|ERDEMLİ": {
+  "lat": 36.6057089,
+  "lon": 34.3102872,
+  "kaynak": "nominatim",
+  "km": 36.0
+ },
+ "MERSİN|GÜLNAR": {
+  "lat": 36.3386638,
+  "lon": 33.3990129,
+  "kaynak": "nominatim",
+  "km": 121.6
+ },
+ "MERSİN|MUT": {
+  "lat": 36.6434207,
+  "lon": 33.437263,
+  "kaynak": "nominatim",
+  "km": 108.0
+ },
+ "MERSİN|SİLİFKE": {
+  "lat": 36.3778166,
+  "lon": 33.9260372,
+  "kaynak": "nominatim",
+  "km": 78.7
+ },
+ "MERSİN|TARSUS": {
+  "lat": 36.9164834,
+  "lon": 34.895149,
+  "kaynak": "nominatim",
+  "km": 26.7
+ },
+ "MERSİN|ÇAMLIYAYLA": {
+  "lat": 37.1665396,
+  "lon": 34.5934427,
+  "kaynak": "nominatim",
+  "km": 40.9
+ },
+ "MUĞLA|DALAMAN": {
+  "lat": 36.7672142,
+  "lon": 28.8002737,
+  "kaynak": "nominatim",
+  "km": 63.1
+ },
+ "MUĞLA|FETHİYE": {
+  "lat": 36.6221154,
+  "lon": 29.1153384,
+  "kaynak": "nominatim",
+  "km": 93.8
+ },
+ "MUĞLA|KÖYCEĞİZ": {
+  "lat": 36.958501,
+  "lon": 28.6889436,
+  "kaynak": "nominatim",
+  "km": 40.5
+ },
+ "MUĞLA|SEYDİKEMER": {
+  "lat": 36.6481603,
+  "lon": 29.3621795,
+  "kaynak": "nominatim",
+  "km": 108.7
+ },
+ "MUĞLA|ULA": {
+  "lat": 37.1029233,
+  "lon": 28.416366,
+  "kaynak": "nominatim",
+  "km": 13.4
+ },
+ "MUŞ|BULANIK": {
+  "lat": 39.092386,
+  "lon": 42.2708343,
+  "kaynak": "nominatim",
+  "km": 77.4
+ },
+ "MUŞ|MALAZGİRT": {
+  "lat": 39.1461406,
+  "lon": 42.5409459,
+  "kaynak": "nominatim",
+  "km": 100.8
+ },
+ "MUŞ|VARTO": {
+  "lat": 39.1720873,
+  "lon": 41.4546645,
+  "kaynak": "nominatim",
+  "km": 47.7
+ },
+ "NEVŞEHİR|AVANOS": {
+  "lat": 38.8709056,
+  "lon": 34.8536656,
+  "kaynak": "nominatim",
+  "km": 29.7
+ },
+ "NEVŞEHİR|GÜLŞEHİR": {
+  "lat": 38.7622326,
+  "lon": 34.5026572,
+  "kaynak": "nominatim",
+  "km": 24.5
+ },
+ "NEVŞEHİR|ÜRGÜP": {
+  "lat": 38.5928119,
+  "lon": 34.9594552,
+  "kaynak": "nominatim",
+  "km": 20.8
+ },
+ "NİĞDE|-": {
+  "lat": 38.0664691,
+  "lon": 34.7051438,
+  "kaynak": "nominatim",
+  "km": 11.3
+ },
+ "ORDU|AKKUŞ": {
+  "lat": 40.7924952,
+  "lon": 37.0177445,
+  "kaynak": "nominatim",
+  "km": 75.8
+ },
+ "ORDU|FATSA": {
+  "lat": 41.0308808,
+  "lon": 37.500221,
+  "kaynak": "nominatim",
+  "km": 32.6
+ },
+ "ORDU|KABADÜZ": {
+  "lat": 40.8598053,
+  "lon": 37.8908861,
+  "kaynak": "nominatim",
+  "km": 13.7
+ },
+ "ORDU|KABATAŞ": {
+  "lat": 40.7523911,
+  "lon": 37.4499322,
+  "kaynak": "nominatim",
+  "km": 44.6
+ },
+ "ORDU|KORGAN": {
+  "lat": 40.8295581,
+  "lon": 37.3441414,
+  "kaynak": "nominatim",
+  "km": 48.4
+ },
+ "ORDU|MESUDİYE": {
+  "lat": 40.4635622,
+  "lon": 37.7735687,
+  "kaynak": "nominatim",
+  "km": 58.5
+ },
+ "ORDU|ULUBEY": {
+  "lat": 40.8730342,
+  "lon": 37.7585422,
+  "kaynak": "nominatim",
+  "km": 16.1
+ },
+ "ORDU|ÇATALPINAR": {
+  "lat": 40.8789862,
+  "lon": 37.4531774,
+  "kaynak": "nominatim",
+  "km": 38.0
+ },
+ "OSMANİYE|BAHÇE": {
+  "lat": 37.1870677,
+  "lon": 36.5589133,
+  "kaynak": "nominatim",
+  "km": 30.5
+ },
+ "OSMANİYE|DÜZİÇİ": {
+  "lat": 37.2401223,
+  "lon": 36.4534072,
+  "kaynak": "nominatim",
+  "km": 26.4
+ },
+ "OSMANİYE|KADİRLİ": {
+  "lat": 37.4617702,
+  "lon": 36.1694093,
+  "kaynak": "nominatim",
+  "km": 44.5
+ },
+ "OSMANİYE|MERKEZ": {
+  "lat": 37.06667,
+  "lon": 36.25,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "OSMANİYE|SUMBAS": {
+  "lat": 37.4536229,
+  "lon": 36.0247595,
+  "kaynak": "nominatim",
+  "km": 47.4
+ },
+ "RİZE|GÜNEYSU": {
+  "lat": 40.977154,
+  "lon": 40.6135914,
+  "kaynak": "nominatim",
+  "km": 9.0
+ },
+ "RİZE|HEMŞİN": {
+  "lat": 41.0475214,
+  "lon": 40.8987978,
+  "kaynak": "nominatim",
+  "km": 31.6
+ },
+ "RİZE|KALKANDERE": {
+  "lat": 40.9279478,
+  "lon": 40.4425085,
+  "kaynak": "nominatim",
+  "km": 12.4
+ },
+ "RİZE|MERKEZ": {
+  "lat": 41.02083,
+  "lon": 40.52361,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "RİZE|ÇAYELİ": {
+  "lat": 41.0878328,
+  "lon": 40.7236973,
+  "kaynak": "nominatim",
+  "km": 18.4
+ },
+ "RİZE|İKİZDERE": {
+  "lat": 40.7779924,
+  "lon": 40.5595743,
+  "kaynak": "nominatim",
+  "km": 27.2
+ },
+ "RİZE|İYİDERE": {
+  "lat": 41.0119784,
+  "lon": 40.3609704,
+  "kaynak": "nominatim",
+  "km": 13.7
+ },
+ "SAKARYA|AKYAZI": {
+  "lat": 40.6814188,
+  "lon": 30.6246106,
+  "kaynak": "nominatim",
+  "km": 19.9
+ },
+ "SAKARYA|ERENLER": {
+  "lat": 40.7563625,
+  "lon": 30.4108937,
+  "kaynak": "nominatim",
+  "km": 1.2
+ },
+ "SAKARYA|GEYVE": {
+  "lat": 40.5090547,
+  "lon": 30.2902514,
+  "kaynak": "nominatim",
+  "km": 30.6
+ },
+ "SAKARYA|HENDEK": {
+  "lat": 40.7955034,
+  "lon": 30.7452727,
+  "kaynak": "nominatim",
+  "km": 27.9
+ },
+ "SAKARYA|PAMUKOVA": {
+  "lat": 40.5025789,
+  "lon": 30.1722114,
+  "kaynak": "nominatim",
+  "km": 35.9
+ },
+ "SAKARYA|SAPANCA": {
+  "lat": 40.6930585,
+  "lon": 30.273417,
+  "kaynak": "nominatim",
+  "km": 14.6
+ },
+ "SAKARYA|SERDİVAN": {
+  "lat": 40.7604062,
+  "lon": 30.3629614,
+  "kaynak": "nominatim",
+  "km": 4.6
+ },
+ "SAKARYA|TARAKLI": {
+  "lat": 40.3965784,
+  "lon": 30.4921608,
+  "kaynak": "nominatim",
+  "km": 41.6
+ },
+ "SAMSUN|-": {
+  "lat": 41.2303557,
+  "lon": 35.9683338,
+  "kaynak": "nominatim",
+  "km": 31.0
+ },
+ "SAMSUN|AYVACIK": {
+  "lat": 40.9890631,
+  "lon": 36.6304882,
+  "kaynak": "nominatim",
+  "km": 41.5
+ },
+ "SAMSUN|BAFRA": {
+  "lat": 41.5665954,
+  "lon": 35.9024777,
+  "kaynak": "nominatim",
+  "km": 47.4
+ },
+ "SAMSUN|LADİK": {
+  "lat": 40.9082173,
+  "lon": 35.8945652,
+  "kaynak": "nominatim",
+  "km": 55.8
+ },
+ "SAMSUN|SALIPAZARI": {
+  "lat": 41.0812906,
+  "lon": 36.8257409,
+  "kaynak": "nominatim",
+  "km": 47.2
+ },
+ "SAMSUN|VEZİRKÖPRÜ": {
+  "lat": 41.1433899,
+  "lon": 35.4604721,
+  "kaynak": "nominatim",
+  "km": 74.6
+ },
+ "SAMSUN|ÇARŞAMBA": {
+  "lat": 41.1982911,
+  "lon": 36.7270196,
+  "kaynak": "nominatim",
+  "km": 34.5
+ },
+ "SİNOP|AYANCIK": {
+  "lat": 41.9460725,
+  "lon": 34.588309,
+  "kaynak": "nominatim",
+  "km": 47.5
+ },
+ "SİNOP|BOYABAT": {
+  "lat": 41.4689736,
+  "lon": 34.7672274,
+  "kaynak": "nominatim",
+  "km": 69.5
+ },
+ "SİNOP|DİKMEN": {
+  "lat": 41.6516239,
+  "lon": 35.2650575,
+  "kaynak": "nominatim",
+  "km": 42.4
+ },
+ "SİNOP|ERFELEK": {
+  "lat": 41.8793624,
+  "lon": 34.9080508,
+  "kaynak": "nominatim",
+  "km": 25.8
+ },
+ "SİVAS|-": {
+  "lat": 39.4191717,
+  "lon": 37.1012388,
+  "kaynak": "nominatim",
+  "km": 37.2
+ },
+ "SİVAS|DOĞANŞAR": {
+  "lat": 40.2142318,
+  "lon": 37.5365096,
+  "kaynak": "nominatim",
+  "km": 68.2
+ },
+ "SİVAS|DİVRİĞİ": {
+  "lat": 39.37697,
+  "lon": 38.0653005,
+  "kaynak": "nominatim",
+  "km": 98.8
+ },
+ "SİVAS|GEMEREK": {
+  "lat": 39.1831222,
+  "lon": 36.0711044,
+  "kaynak": "nominatim",
+  "km": 102.6
+ },
+ "SİVAS|GÖLOVA": {
+  "lat": 40.0612887,
+  "lon": 38.6084307,
+  "kaynak": "nominatim",
+  "km": 140.1
+ },
+ "SİVAS|KOYULHİSAR": {
+  "lat": 40.301321,
+  "lon": 37.8322757,
+  "kaynak": "nominatim",
+  "km": 92.8
+ },
+ "SİVAS|MERKEZ": {
+  "lat": 39.74722,
+  "lon": 37.0175,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "SİVAS|SUŞEHRİ": {
+  "lat": 40.1627343,
+  "lon": 38.0855664,
+  "kaynak": "nominatim",
+  "km": 102.1
+ },
+ "SİVAS|İMRANLI": {
+  "lat": 39.8760006,
+  "lon": 38.1129304,
+  "kaynak": "nominatim",
+  "km": 94.7
+ },
+ "SİVAS|ŞARKIŞLA": {
+  "lat": 39.3640928,
+  "lon": 36.4031578,
+  "kaynak": "nominatim",
+  "km": 67.7
+ },
+ "SİİRT|BAYKAN": {
+  "lat": 38.162873,
+  "lon": 41.7856854,
+  "kaynak": "nominatim",
+  "km": 27.5
+ },
+ "SİİRT|ERUH": {
+  "lat": 37.750599,
+  "lon": 42.1808359,
+  "kaynak": "nominatim",
+  "km": 30.6
+ },
+ "SİİRT|KURTALAN": {
+  "lat": 37.9284229,
+  "lon": 41.6973637,
+  "kaynak": "nominatim",
+  "km": 20.8
+ },
+ "SİİRT|PERVARİ": {
+  "lat": 37.9325036,
+  "lon": 42.5479907,
+  "kaynak": "nominatim",
+  "km": 53.9
+ },
+ "SİİRT|TİLLO": {
+  "lat": 37.9500638,
+  "lon": 42.0125174,
+  "kaynak": "nominatim",
+  "km": 7.0
+ },
+ "SİİRT|ŞİRVAN": {
+  "lat": 38.0617933,
+  "lon": 42.0299309,
+  "kaynak": "nominatim",
+  "km": 15.6
+ },
+ "TOKAT|ALMUS": {
+  "lat": 40.3750133,
+  "lon": 36.9037319,
+  "kaynak": "nominatim",
+  "km": 30.7
+ },
+ "TOKAT|ERBAA": {
+  "lat": 40.6727976,
+  "lon": 36.5715055,
+  "kaynak": "nominatim",
+  "km": 39.6
+ },
+ "TOKAT|MERKEZ": {
+  "lat": 40.31667,
+  "lon": 36.55,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "TOKAT|NİKSAR": {
+  "lat": 40.5913282,
+  "lon": 36.9434927,
+  "kaynak": "nominatim",
+  "km": 45.2
+ },
+ "TOKAT|REŞADİYE": {
+  "lat": 40.3920693,
+  "lon": 37.3383223,
+  "kaynak": "nominatim",
+  "km": 67.3
+ },
+ "TOKAT|TURHAL": {
+  "lat": 40.3895887,
+  "lon": 36.078043,
+  "kaynak": "nominatim",
+  "km": 40.8
+ },
+ "TRABZON|AKÇAABAT": {
+  "lat": 41.0216276,
+  "lon": 39.5706735,
+  "kaynak": "nominatim",
+  "km": 13.9
+ },
+ "TRABZON|ARAKLI": {
+  "lat": 40.9358214,
+  "lon": 40.0580406,
+  "kaynak": "nominatim",
+  "km": 28.2
+ },
+ "TRABZON|ARSİN": {
+  "lat": 40.9537303,
+  "lon": 39.9325905,
+  "kaynak": "nominatim",
+  "km": 17.5
+ },
+ "TRABZON|DÜZKÖY": {
+  "lat": 40.8738307,
+  "lon": 39.4261086,
+  "kaynak": "nominatim",
+  "km": 29.4
+ },
+ "TRABZON|HAYRAT": {
+  "lat": 40.8891726,
+  "lon": 40.3680473,
+  "kaynak": "nominatim",
+  "km": 54.7
+ },
+ "TRABZON|KÖPRÜBAŞI": {
+  "lat": 40.8072142,
+  "lon": 40.124241,
+  "kaynak": "nominatim",
+  "km": 39.2
+ },
+ "TRABZON|MAÇKA": {
+  "lat": 40.8120424,
+  "lon": 39.6127153,
+  "kaynak": "nominatim",
+  "km": 23.2
+ },
+ "TRABZON|OF": {
+  "lat": 40.947642,
+  "lon": 40.2694068,
+  "kaynak": "nominatim",
+  "km": 45.4
+ },
+ "TRABZON|ORTAHİSAR": {
+  "lat": 41.0062151,
+  "lon": 39.7257588,
+  "kaynak": "nominatim",
+  "km": 0.9
+ },
+ "TRABZON|SÜRMENE": {
+  "lat": 40.9127715,
+  "lon": 40.1134808,
+  "kaynak": "nominatim",
+  "km": 33.4
+ },
+ "TRABZON|VAKFIKEBİR": {
+  "lat": 41.047236,
+  "lon": 39.2761909,
+  "kaynak": "nominatim",
+  "km": 38.7
+ },
+ "TRABZON|YOMRA": {
+  "lat": 40.9592464,
+  "lon": 39.8471246,
+  "kaynak": "nominatim",
+  "km": 10.6
+ },
+ "TRABZON|ÇAYKARA": {
+  "lat": 40.7478554,
+  "lon": 40.2420431,
+  "kaynak": "nominatim",
+  "km": 51.1
+ },
+ "TUNCELİ|MAZGİRT": {
+  "lat": 39.0195456,
+  "lon": 39.6059111,
+  "kaynak": "nominatim",
+  "km": 12.5
+ },
+ "TUNCELİ|MERKEZ": {
+  "lat": 39.11667,
+  "lon": 39.53333,
+  "kaynak": "il-merkezi",
+  "km": 0.0
+ },
+ "TUNCELİ|OVACIK": {
+  "lat": 39.3583833,
+  "lon": 39.2144472,
+  "kaynak": "nominatim",
+  "km": 38.4
+ },
+ "TUNCELİ|ÇEMİŞGEZEK": {
+  "lat": 39.0628601,
+  "lon": 38.9104258,
+  "kaynak": "nominatim",
+  "km": 54.1
+ },
+ "VAN|EDREMİT": {
+  "lat": 38.4258091,
+  "lon": 43.260234,
+  "kaynak": "nominatim",
+  "km": 14.7
+ },
+ "VAN|ERCİŞ": {
+  "lat": 39.0289887,
+  "lon": 43.3591059,
+  "kaynak": "nominatim",
+  "km": 58.9
+ },
+ "VAN|GÜRPINAR": {
+  "lat": 38.323265,
+  "lon": 43.4079006,
+  "kaynak": "nominatim",
+  "km": 19.7
+ },
+ "VAN|MURADİYE": {
+  "lat": 38.9902954,
+  "lon": 43.7611745,
+  "kaynak": "nominatim",
+  "km": 62.9
+ },
+ "VAN|ÇATAK": {
+  "lat": 38.0069067,
+  "lon": 43.0591978,
+  "kaynak": "nominatim",
+  "km": 62.4
+ },
+ "YOZGAT|AYDINCIK": {
+  "lat": 40.1302516,
+  "lon": 35.2851606,
+  "kaynak": "nominatim",
+  "km": 53.0
+ },
+ "YOZGAT|ÇEKEREK": {
+  "lat": 40.0649573,
+  "lon": 35.5072503,
+  "kaynak": "nominatim",
+  "km": 65.0
+ },
+ "ZONGULDAK|DEVREK": {
+  "lat": 41.2188823,
+  "lon": 31.9558348,
+  "kaynak": "nominatim",
+  "km": 28.8
+ },
+ "ZONGULDAK|EREĞLİ": {
+  "lat": 41.2795516,
+  "lon": 31.4229672,
+  "kaynak": "nominatim",
+  "km": 36.7
+ },
+ "ÇANAKKALE|BAYRAMİÇ": {
+  "lat": 39.8086241,
+  "lon": 26.6130041,
+  "kaynak": "nominatim",
+  "km": 42.1
+ },
+ "ÇANAKKALE|YENİCE": {
+  "lat": 39.9297524,
+  "lon": 27.2555358,
+  "kaynak": "nominatim",
+  "km": 75.9
+ },
+ "ÇANKIRI|KIZILIRMAK": {
+  "lat": 40.3459757,
+  "lon": 33.987241,
+  "kaynak": "nominatim",
+  "km": 42.2
+ },
+ "ÇANKIRI|ORTA": {
+  "lat": 40.6270258,
+  "lon": 33.1077491,
+  "kaynak": "nominatim",
+  "km": 43.1
+ },
+ "ÇORUM|BAYAT": {
+  "lat": 40.5789741,
+  "lon": 34.926489,
+  "kaynak": "nominatim",
+  "km": 4.0
+ },
+ "ÇORUM|DODURGA": {
+  "lat": 40.8553068,
+  "lon": 34.8103307,
+  "kaynak": "nominatim",
+  "km": 36.0
+ },
+ "ÇORUM|ORTAKÖY": {
+  "lat": 40.3517153,
+  "lon": 34.4028776,
+  "kaynak": "nominatim",
+  "km": 51.7
+ },
+ "ÇORUM|OSMANCIK": {
+  "lat": 40.9714839,
+  "lon": 34.8010408,
+  "kaynak": "nominatim",
+  "km": 48.6
+ },
+ "ŞANLIURFA|BOZOVA": {
+  "lat": 37.3619576,
+  "lon": 38.5253584,
+  "kaynak": "nominatim",
+  "km": 33.9
+ },
+ "ŞANLIURFA|BİRECİK": {
+  "lat": 37.0315322,
+  "lon": 37.9800265,
+  "kaynak": "nominatim",
+  "km": 73.9
+ },
+ "ŞANLIURFA|HALİLİYE": {
+  "lat": 37.1674869,
+  "lon": 38.7955597,
+  "kaynak": "nominatim",
+  "km": 2.0
+ },
+ "ŞIRNAK|BEYTÜŞŞEBAP": {
+  "lat": 37.5709495,
+  "lon": 43.1702194,
+  "kaynak": "nominatim",
+  "km": 62.3
+ },
+ "ŞIRNAK|CİZRE": {
+  "lat": 37.3324374,
+  "lon": 42.1854699,
+  "kaynak": "nominatim",
+  "km": 32.2
+ },
+ "ŞIRNAK|SİLOPİ": {
+  "lat": 37.2491577,
+  "lon": 42.4707504,
+  "kaynak": "nominatim",
+  "km": 29.7
+ },
+ "ŞIRNAK|ULUDERE": {
+  "lat": 37.4174393,
+  "lon": 42.9335778,
+  "kaynak": "nominatim",
+  "km": 42.7
+ }
+}

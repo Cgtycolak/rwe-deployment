@@ -130,15 +130,36 @@ def apply_aliases(app, licence_rows):
         by_licence[name] = new_row
         added += 1
 
-    # aliased plants inherit coordinates from another plant in the same district
-    coords = {(r['il'], r['ilce']): (r['lat'], r['lon'], r['konum_kaynak'])
-              for r in licence_rows if r.get('lat') is not None}
+    # Aliased plants carry no coordinates of their own. Prefer the geocoded
+    # district file; fall back to another plant already sitting in that district.
+    # Without this a plant that is the only one in its district gets no location
+    # and silently disappears from the map, capacity and all.
+    district_coords = load_district_coords(app)
+    same_district = {(r['il'], r['ilce']): (r['lat'], r['lon'], r['konum_kaynak'])
+                     for r in licence_rows if r.get('lat') is not None}
     for r in licence_rows:
-        if r.get('lat') is None:
-            hit = coords.get((r['il'], r['ilce']))
-            if hit:
-                r['lat'], r['lon'], r['konum_kaynak'] = hit
+        if r.get('lat') is not None:
+            continue
+        hit = district_coords.get(f"{r['il']}|{r['ilce']}")
+        if hit:
+            r['lat'], r['lon'], r['konum_kaynak'] = hit['lat'], hit['lon'], hit.get('kaynak')
+            continue
+        fallback = same_district.get((r['il'], r['ilce']))
+        if fallback:
+            r['lat'], r['lon'], r['konum_kaynak'] = fallback
+        else:
+            app.logger.warning(f"no coordinates for {r['tesis']} "
+                               f"({r['il']}/{r['ilce']}) — it will not appear on the map")
     return licence_rows, added
+
+
+def load_district_coords(app):
+    """District centroids produced by the offline geocoding pass."""
+    path = os.path.join(app.static_folder, 'data', 'district_coords.json')
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding='utf-8') as f:
+        return json.load(f)
 
 
 def seed_hydro_plants(app):
