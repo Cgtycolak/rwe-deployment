@@ -4644,6 +4644,11 @@ def get_merit_order_similar_days():
         # The prediction date is excluded from its own candidates: it would always
         # rank first and picking it as the reference makes every delta collapse to
         # zero, which tells you nothing about the merit order.
+        # A day also needs its full PTF and supply/demand curves. The forecast for
+        # tomorrow lands well before the day-ahead auction results, and a day
+        # suggested without curves leaves MCP MERIT empty. This is a data check,
+        # not a time cutoff, so tomorrow becomes a candidate as soon as its curves
+        # are loaded.
         ref_query = text("""
         SELECT
             DATE(hf.date) AS day,
@@ -4656,6 +4661,16 @@ def get_merit_order_similar_days():
               SELECT DATE(date) FROM meteologica.historical_forecast
               WHERE DATE(date) >= :start_date AND DATE(date) < :pred_date
               GROUP BY DATE(date) HAVING COUNT(*) = 24
+          )
+          AND DATE(hf.date) IN (
+              SELECT DATE(date) FROM epias.ptf
+              WHERE DATE(date) >= :start_date AND DATE(date) < :pred_date
+              GROUP BY DATE(date) HAVING COUNT(*) = 24
+          )
+          AND DATE(hf.date) IN (
+              SELECT DATE(date) FROM epias.supply_demand
+              WHERE DATE(date) >= :start_date AND DATE(date) < :pred_date
+              GROUP BY DATE(date) HAVING COUNT(DISTINCT date) = 24
           )
         ORDER BY day, hour
         """)
