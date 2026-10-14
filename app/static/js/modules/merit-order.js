@@ -4,9 +4,10 @@ export const meritOrder = {
     originalAicValues: null,  // Original AIC values from API
     supplyDemandCurves: null, // Supply/demand curves for client-side MCP calc
     baseCapacityDeltas: null, // Base capacity deltas before AIC adjustments
-    splitPoints: { s1: 7, s2: 15 },
+    // Hours (0–24) where sections 2 and 3 start. Sections left empty are dropped,
+    // so both boundaries at the edges leaves one full-day section.
+    splitPoints: { b1: 8, b2: 16 },
     lastTableData: null,
-    slidersInited: false,
 
     setup(helpers) {
         this.helpers = helpers;
@@ -15,6 +16,7 @@ export const meritOrder = {
     init() {
         this.setupEventListeners();
         this.setupDateDefaults();
+        this.initSliders();
 
         // init() runs for every module at page load, so the suggestions for the
         // default date wait until the tab is actually opened rather than firing a
@@ -32,10 +34,9 @@ export const meritOrder = {
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
 
-        const genDateInput = document.getElementById('merit_gen_date');
-        if (genDateInput) {
-            genDateInput.value = yesterday.toISOString().split('T')[0];
-        }
+        this.getGenDateInputs().forEach(input => {
+            input.value = yesterday.toISOString().split('T')[0];
+        });
 
         const predDateInput = document.getElementById('merit_pred_date');
         if (predDateInput) {
@@ -76,6 +77,149 @@ export const meritOrder = {
                 this.loadSimilarDays();
             });
         }
+
+        this.getGenDateInputs().forEach(input => {
+            input.addEventListener('change', () => {
+                this.highlightSelectedSuggestions();
+                this.scheduleRefresh();
+            });
+        });
+    },
+
+    getGenDateInputs() {
+        return [1, 2, 3].map(i => document.getElementById(`merit_gen_date_${i}`)).filter(Boolean);
+    },
+
+    // Inputs for the sections currently in use; the rest are hidden
+    getActiveGenDateInputs() {
+        return this.getGenDateInputs().slice(0, this.getSections().length);
+    },
+
+    // Inclusive [from, to] hour pairs, mirroring _parse_merit_order_splits
+    getSections() {
+        const { b1, b2 } = this.splitPoints;
+        const edges = [0, b1, b2, 24];
+        const sections = [];
+        for (let i = 0; i < 3; i++) {
+            if (edges[i + 1] > edges[i]) sections.push([edges[i], edges[i + 1] - 1]);
+        }
+        return sections;
+    },
+
+    updateSectionControls() {
+        const { b1, b2 } = this.splitPoints;
+        const ph = h => 'h' + String(h).padStart(2, '0');
+        const sections = this.getSections();
+        const single = sections.length === 1;
+
+        const s1Lbl = document.getElementById('merit_split1_label');
+        const s2Lbl = document.getElementById('merit_split2_label');
+        if (s1Lbl) s1Lbl.textContent = ph(b1);
+        if (s2Lbl) s2Lbl.textContent = ph(b2);
+
+        const summary = document.getElementById('merit_sections_summary');
+        if (summary) {
+            summary.textContent = single
+                ? 'Full day: h00–h23'
+                : `${sections.length} sections: ${sections.map(sec => this.sectionLabel(sec)).join(' · ')}`;
+        }
+
+        this.getGenDateInputs().forEach((input, idx) => {
+            const col = input.closest('.col-md-3') || input.parentElement;
+            const section = sections[idx];
+            col.classList.toggle('d-none', !section);
+            const lbl = document.getElementById(`merit_gen_date_${idx + 1}_label`);
+            if (lbl && section) {
+                lbl.textContent = single ? 'Reference Date (full day)' : `Reference Date ${this.sectionLabel(section)}`;
+            }
+        });
+    },
+
+    sectionLabel([from, to]) {
+        const ph = h => 'h' + String(h).padStart(2, '0');
+        return `${ph(from)}–${ph(to)}`;
+    },
+
+    getInputs() {
+        return {
+            genDates: this.getActiveGenDateInputs().map(input => input.value),
+            predDate: document.getElementById('merit_pred_date')?.value,
+            splitPoints: { ...this.splitPoints },
+        };
+    },
+
+    // Debounced, so a burst of changes (the suggestions filling three dates at
+    // once) costs a single request.
+    scheduleRefresh() {
+        clearTimeout(this._refreshTimer);
+        this._refreshTimer = setTimeout(() => this.refreshResults(), 250);
+    },
+
+    // Rebuilds the results table from the current inputs. Only /merit-order-data
+    // depends on the dates and sections — AIC and outages are fetched for today
+    // — so this stays fast enough to run on every change.
+    async refreshResults() {
+        const resultsContainer = document.getElementById('merit_order_results');
+        const spinner = document.getElementById('merit_results_updating');
+        const downloadBtn = document.getElementById('download_merit_order_excel');
+        const { genDates, predDate, splitPoints } = this.getInputs();
+
+        if (!resultsContainer || !genDates.length || genDates.some(d => !d) || !predDate) return;
+
+        // A slow request must not overwrite a newer one's results
+        const requestId = (this._resultsRequestId || 0) + 1;
+        this._resultsRequestId = requestId;
+
+        spinner?.classList.remove('d-none');
+        if (this.lastTableData) {
+            // Keep the old table visible but dimmed rather than flashing a spinner
+            resultsContainer.style.opacity = '0.5';
+        } else {
+            resultsContainer.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading merit order data...</p></div>';
+        }
+
+        try {
+            const params = new URLSearchParams({
+                gen_dates: genDates.join(','), pred_date: predDate,
+                b1: splitPoints.b1, b2: splitPoints.b2
+            });
+            const response = await fetch(`/merit-order-data?${params}`);
+            const resultsData = await response.json();
+
+            if (this._resultsRequestId !== requestId) return;
+
+            if (resultsData.code === 200 && resultsData.data) {
+                this.supplyDemandCurves = resultsData.data.supply_demand_curves || {};
+                this.baseCapacityDeltas = resultsData.data.base_capacity_deltas || {};
+                this.currentData = { ...this.currentData, results: resultsData, genDates, predDate, splitPoints };
+                this.renderResultsTable(resultsData.data, resultsContainer);
+
+                // AIC edits are independent of the reference dates, so carry them
+                // over onto the new baseline
+                const hasAicEdits = [...document.querySelectorAll('.aic-editable-input')]
+                    .some(input => (parseFloat(input.value) || 0) !== 0);
+                if (hasAicEdits) this.recalculateFromAic();
+
+                if (downloadBtn) downloadBtn.disabled = false;
+            } else {
+                this.lastTableData = null;
+                this.currentData = { ...this.currentData, results: null };
+                if (downloadBtn) downloadBtn.disabled = true;
+                resultsContainer.innerHTML = `<div class="alert alert-warning m-3"><i class="fas fa-exclamation-triangle"></i> ${resultsData.error || resultsData.message || 'No results data available'}</div>`;
+            }
+        } catch (error) {
+            if (this._resultsRequestId !== requestId) return;
+            console.error('Error loading merit order results:', error);
+            this.lastTableData = null;
+            this.currentData = { ...this.currentData, results: null };
+            if (downloadBtn) downloadBtn.disabled = true;
+            resultsContainer.innerHTML = `<div class="alert alert-danger m-3"><i class="fas fa-exclamation-triangle"></i> Failed to load data: ${error.message}</div>`;
+        } finally {
+            if (this._resultsRequestId === requestId) {
+                spinner?.classList.add('d-none');
+                resultsContainer.style.opacity = '';
+            }
+        }
     },
 
     async loadSimilarDays() {
@@ -98,7 +242,8 @@ export const meritOrder = {
         container.innerHTML = '<div class="text-muted small"><span class="spinner-border spinner-border-sm"></span> Finding comparable reference dates...</div>';
 
         try {
-            const params = new URLSearchParams({ pred_date: predDate });
+            const { b1, b2 } = this.splitPoints;
+            const params = new URLSearchParams({ pred_date: predDate, b1, b2 });
             const response = await fetch(`/merit-order-similar-days?${params}`);
             const data = await response.json();
 
@@ -114,65 +259,87 @@ export const meritOrder = {
             console.error('Error loading similar days:', error);
             container.innerHTML = `<div class="text-muted small"><i class="fas fa-exclamation-triangle"></i> Could not load suggestions: ${error.message}</div>`;
         }
+
+        // Without suggestions the table still follows whatever dates are entered
+        this.scheduleRefresh();
     },
 
     renderSimilarDays(data, container) {
-        const { days, pred_capacity_mean, window_days, days_considered } = data;
+        const { sections, day_type, window_days, days_considered } = data;
 
-        if (!days || days.length === 0) {
+        if (!sections || sections.every(sec => !sec.days.length)) {
             container.innerHTML = '<div class="text-muted small"><i class="fas fa-info-circle"></i> No comparable reference dates found.</div>';
             return;
         }
 
         const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+        const single = sections.length === 1;
 
-        const buttons = days.map(d => `
-            <button type="button" class="btn btn-sm btn-outline-primary me-2 mb-2 merit-similar-day" data-day="${d.day}"
-                    title="Mean capacity ${fmt(d.ref_capacity)} MW — average difference of ${fmt(d.mean_diff)} MW against the prediction date">
-                ${d.day}
-                <span class="badge bg-light text-dark ms-1">${fmt(d.mean_diff)} MW</span>
-            </button>
-        `).join('');
+        const rows = sections.map((sec, idx) => {
+            const label = this.sectionLabel([sec.from_hour, sec.to_hour]);
+            const buttons = sec.days.length
+                ? sec.days.map(d => `
+                    <button type="button" class="btn btn-sm btn-outline-primary me-2 mb-2 merit-similar-day"
+                            data-section="${idx}" data-day="${d.day}"
+                            title="Mean capacity ${fmt(d.ref_capacity)} MW over ${label}, average difference of ${fmt(d.mean_diff)} MW against the prediction date">
+                        ${d.day}
+                        <span class="badge bg-light text-dark ms-1">${fmt(d.mean_diff)} MW</span>
+                    </button>`).join('')
+                : '<span class="text-muted small">No complete reference day for this section</span>';
+            return `
+                <div class="d-flex flex-wrap align-items-start">
+                    <div class="small fw-bold text-nowrap me-3 pt-1" style="min-width:150px">
+                        ${single ? 'Full day' : `Section ${idx + 1}`} ${label}
+                        <div class="text-muted fw-normal">pred mean ${fmt(sec.pred_capacity_mean)} MW</div>
+                    </div>
+                    <div class="flex-grow-1">${buttons}</div>
+                </div>`;
+        }).join('');
 
         container.innerHTML = `
             <div class="text-muted small mb-2">
-                Prediction date mean capacity <strong>${fmt(pred_capacity_mean)} MW</strong>.
-                Ranked by the average difference in MW across all 24 hours, so the shape of
-                the day is matched and not just its average. Closest of ${days_considered}
-                complete days in the last ${window_days}. Click to use as Reference Date.
+                ${single
+                    ? 'Ranked by the average difference in MW across all 24 hours, so the shape of the day is matched and not just its average.'
+                    : 'Each section is ranked on its own, by the average difference in MW across its hours, so every part of the day gets the closest match for its shape.'}
+                Candidates are the ${days_considered} complete ${day_type} days of the last
+                ${window_days}. The closest day is filled in automatically; click another
+                to use it${single ? '' : ' for that section'}.
             </div>
-            <div>${buttons}</div>
+            ${rows}
         `;
 
         container.querySelectorAll('.merit-similar-day').forEach(btn => {
             btn.addEventListener('click', () => {
-                const genDateInput = document.getElementById('merit_gen_date');
-                if (genDateInput) {
-                    genDateInput.value = btn.dataset.day;
-                }
-                container.querySelectorAll('.merit-similar-day').forEach(b => {
-                    b.classList.remove('btn-primary');
-                    b.classList.add('btn-outline-primary');
-                });
-                btn.classList.remove('btn-outline-primary');
-                btn.classList.add('btn-primary');
+                const input = this.getActiveGenDateInputs()[Number(btn.dataset.section)];
+                if (input) input.value = btn.dataset.day;
+                this.highlightSelectedSuggestions();
+                this.scheduleRefresh();
             });
+        });
+
+        // The new approach defaults every section to its closest day
+        const inputs = this.getActiveGenDateInputs();
+        sections.forEach((sec, idx) => {
+            if (sec.days.length && inputs[idx]) inputs[idx].value = sec.days[0].day;
+        });
+        this.highlightSelectedSuggestions();
+    },
+
+    highlightSelectedSuggestions() {
+        const inputs = this.getGenDateInputs();
+        document.querySelectorAll('#merit_similar_days .merit-similar-day').forEach(btn => {
+            const selected = inputs[Number(btn.dataset.section)]?.value === btn.dataset.day;
+            btn.classList.toggle('btn-primary', selected);
+            btn.classList.toggle('btn-outline-primary', !selected);
         });
     },
 
+    // AIC and outages come from EPIAS for today and do not depend on the dates or
+    // sections, so they load once on demand; the results table refreshes itself.
     async loadMeritOrderData() {
         const loadButton = document.getElementById('load_merit_order');
-        const resultsContainer = document.getElementById('merit_order_results');
         const aicContainer = document.getElementById('merit_order_aic');
         const failureContainer = document.getElementById('merit_order_failure');
-
-        const genDate = document.getElementById('merit_gen_date')?.value;
-        const predDate = document.getElementById('merit_pred_date')?.value;
-
-        if (!genDate || !predDate) {
-            this.helpers.displayMessage('Please select both Reference Date and Prediction Date', 'warning');
-            return;
-        }
 
         // Capture any existing AIC edits before wiping the table
         const savedAicEdits = this._captureAicEdits();
@@ -182,27 +349,17 @@ export const meritOrder = {
                 this.helpers.toggleButtonLoading(loadButton, true);
             }
 
-            if (resultsContainer) resultsContainer.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading merit order data...</p></div>';
             if (aicContainer) aicContainer.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading AIC data...</p></div>';
             if (failureContainer) failureContainer.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading failure data...</p></div>';
 
-            const params = new URLSearchParams({ gen_date: genDate, pred_date: predDate });
-
-            const [resultsResponse, aicResponse, failureResponse] = await Promise.all([
-                fetch(`/merit-order-data?${params}`),
-                fetch(`/merit-order-aic-data?${params}`),
-                fetch(`/merit-order-failure-data`)
+            const [aicResponse, failureResponse] = await Promise.all([
+                fetch('/merit-order-aic-data'),
+                fetch('/merit-order-failure-data'),
+                this.refreshResults()
             ]);
 
-            const resultsData = await resultsResponse.json();
             const aicData = await aicResponse.json();
             const failureData = await failureResponse.json();
-
-            // Store supply/demand curves and base deltas for client-side recalculation
-            if (resultsData.code === 200 && resultsData.data) {
-                this.supplyDemandCurves = resultsData.data.supply_demand_curves || {};
-                this.baseCapacityDeltas = resultsData.data.base_capacity_deltas || {};
-            }
 
             // Store original AIC values (including base_date for column headers)
             if (aicData.code === 200 && aicData.data) {
@@ -214,19 +371,7 @@ export const meritOrder = {
                 };
             }
 
-            this.currentData = {
-                results: resultsData,
-                aic: aicData,
-                failure: failureData,
-                genDate: genDate,
-                predDate: predDate
-            };
-
-            if (resultsData.code === 200) {
-                this.renderResultsTable(resultsData.data, resultsContainer);
-            } else {
-                resultsContainer.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${resultsData.error || resultsData.message || 'No results data available'}</div>`;
-            }
+            this.currentData = { ...this.currentData, aic: aicData, failure: failureData };
 
             if (aicData.code === 200) {
                 this.renderEditableAICTable(aicData.data, aicContainer);
@@ -244,20 +389,16 @@ export const meritOrder = {
                 failureContainer.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${failureData.error || failureData.message || 'No failure data available'}</div>`;
             }
 
-            // Enable buttons
-            const downloadBtn = document.getElementById('download_merit_order_excel');
-            if (downloadBtn) downloadBtn.disabled = false;
             const resetBtn = document.getElementById('reset_aic_values');
             if (resetBtn) resetBtn.disabled = false;
 
-            this.helpers.displayMessage('Merit order data loaded successfully!', 'success');
+            this.helpers.displayMessage('AIC and outage data loaded successfully!', 'success');
 
         } catch (error) {
-            console.error('Error loading merit order data:', error);
+            console.error('Error loading AIC/outage data:', error);
             this.helpers.displayMessage(`Error: ${error.message}`, 'danger');
 
-            if (resultsContainer) resultsContainer.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Failed to load data: ${error.message}</div>`;
-            if (aicContainer) aicContainer.innerHTML = '';
+            if (aicContainer) aicContainer.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Failed to load data: ${error.message}</div>`;
             if (failureContainer) failureContainer.innerHTML = '';
         } finally {
             if (loadButton) {
@@ -749,7 +890,9 @@ export const meritOrder = {
         const avg = col => subset.reduce((s, r) => s + (r[col] ?? 0), 0) / n;
         return {
             mcp_ref: avg('mcp_ref'), mcp_merit: avg('mcp_merit'), mcp_pred: avg('mcp_pred'),
-            capacity_delta: avg('capacity_delta'),
+            // Mean of |Δ|, so hours above and below the reference cannot cancel out —
+            // the same measure the reference date suggestions are ranked by
+            capacity_delta: subset.reduce((s, r) => s + Math.abs(r.capacity_delta ?? 0), 0) / n,
             demand_ref: avg('demand_ref'), demand_pred: avg('demand_pred'), demand_delta: avg('demand_delta'),
             river_ref: avg('river_ref'), river_pred: avg('river_pred'), river_delta: avg('river_delta'),
             wind_ref: avg('wind_ref'), wind_pred: avg('wind_pred'), wind_delta: avg('wind_delta'),
@@ -767,7 +910,7 @@ export const meritOrder = {
             <td class="text-center">${mcp(avgData.mcp_ref)}</td>
             <td class="text-center">${mcp(avgData.mcp_merit)}</td>
             <td class="text-center">${mcp(avgData.mcp_pred)}</td>
-            <td class="text-center ${dc(avgData.capacity_delta)}">${fmt(avgData.capacity_delta)}</td>
+            <td class="text-center" title="Average absolute capacity difference">${fmt(avgData.capacity_delta)}</td>
             <td class="text-center">${fmt(avgData.demand_ref)}</td>
             <td class="text-center">${fmt(avgData.demand_pred)}</td>
             <td class="text-center ${dc(avgData.demand_delta)}">${fmt(avgData.demand_delta)}</td>
@@ -783,29 +926,38 @@ export const meritOrder = {
         </tr>`;
     },
 
-    initSliders(container) {
-        const ctrlDiv = document.getElementById('merit_order_slider_controls');
-        if (ctrlDiv) ctrlDiv.classList.remove('d-none');
-        if (this.slidersInited) return;
-        this.slidersInited = true;
+    initSliders() {
+        const s1El = document.getElementById('merit_split1');
+        const s2El = document.getElementById('merit_split2');
+        if (!s1El || !s2El) return;
 
-        const s1El  = document.getElementById('merit_split1');
-        const s2El  = document.getElementById('merit_split2');
-        const s1Lbl = document.getElementById('merit_split1_label');
-        const s2Lbl = document.getElementById('merit_split2_label');
-
-        const update = () => {
+        // Boundaries may meet or sit on the edges (that merges sections), but never
+        // cross: the one being dragged pushes the other along.
+        const update = (moved) => {
             let v1 = parseInt(s1El.value, 10);
             let v2 = parseInt(s2El.value, 10);
-            if (v1 >= v2) { v2 = v1 + 1; s2El.value = v2; }
-            this.splitPoints = { s1: v1, s2: v2 };
-            s1Lbl.textContent = 'h' + String(v1).padStart(2, '0');
-            s2Lbl.textContent = 'h' + String(v2).padStart(2, '0');
-            this.renderResultsTable(this.lastTableData, container);
+            if (v1 > v2) {
+                if (moved === s1El) { v2 = v1; s2El.value = v2; }
+                else { v1 = v2; s1El.value = v1; }
+            }
+            this.splitPoints = { b1: v1, b2: v2 };
+            this.updateSectionControls();
+            const resultsContainer = document.getElementById('merit_order_results');
+            if (this.lastTableData && resultsContainer) {
+                this.renderResultsTable(this.lastTableData, resultsContainer);
+            }
         };
 
-        s1El.addEventListener('input', update);
-        s2El.addEventListener('input', update);
+        // Labels and averages follow the drag; the ranking only reruns on release,
+        // since every new boundary means a fresh Supabase query.
+        s1El.addEventListener('input', () => update(s1El));
+        s2El.addEventListener('input', () => update(s2El));
+
+        // Releasing a slider re-ranks the sections, which re-fills the dates and
+        // then rebuilds the table
+        [s1El, s2El].forEach(el => el.addEventListener('change', () => this.loadSimilarDays()));
+
+        this.updateSectionControls();
     },
 
     renderResultsTable(data, container) {
@@ -887,16 +1039,17 @@ export const meritOrder = {
             </tr>`;
         });
 
-        const { s1, s2 } = this.splitPoints;
-        const ph = h => 'h' + String(h).padStart(2, '0');
-        html += this.buildAvgRow(`AVG ${ph(0)}–${ph(s1)}`,    this.computeAvgRow(rows, 0, s1),    'table-info');
-        html += this.buildAvgRow(`AVG ${ph(s1+1)}–${ph(s2)}`, this.computeAvgRow(rows, s1+1, s2), 'table-info');
-        html += this.buildAvgRow(`AVG ${ph(s2+1)}–${ph(23)}`, this.computeAvgRow(rows, s2+1, 23), 'table-info');
-        html += this.buildAvgRow('AVG ALL',                          this.computeAvgRow(rows, 0, 23),   'table-warning');
+        // One average per section; a full-day section would only repeat AVG ALL
+        const sections = this.getSections();
+        if (sections.length > 1) {
+            sections.forEach(([from, to]) => {
+                html += this.buildAvgRow(`AVG ${this.sectionLabel([from, to])}`, this.computeAvgRow(rows, from, to), 'table-info');
+            });
+        }
+        html += this.buildAvgRow('AVG ALL', this.computeAvgRow(rows, 0, 23), 'table-warning');
 
         html += `</tbody></table></div>`;
         container.innerHTML = html;
-        this.initSliders(container);
     },
 
     renderFailureTable(data, container) {
@@ -1004,8 +1157,8 @@ export const meritOrder = {
     },
 
     async downloadExcel() {
-        if (!this.currentData) {
-            this.helpers.displayMessage('Please load data first before downloading', 'warning');
+        if (!this.currentData?.results) {
+            this.helpers.displayMessage('The results table has not loaded yet', 'warning');
             return;
         }
 
@@ -1017,7 +1170,7 @@ export const meritOrder = {
                 downloadBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Preparing...';
             }
 
-            const { genDate, predDate } = this.currentData;
+            const { genDates, predDate, splitPoints } = this.currentData;
 
             // Collect current capacity deltas from edited AIC state
             const capacityDeltas = this._getCurrentCapacityDeltas();
@@ -1028,7 +1181,9 @@ export const meritOrder = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    gen_date: genDate,
+                    gen_dates: genDates,
+                    b1: splitPoints.b1,
+                    b2: splitPoints.b2,
                     pred_date: predDate,
                     capacity_deltas: capacityDeltas
                 })
@@ -1043,7 +1198,7 @@ export const meritOrder = {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `merit_order_${genDate}_vs_${predDate}.xlsx`;
+            a.download = `merit_order_${[...new Set(genDates)].sort().join('_')}_vs_${predDate}.xlsx`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);

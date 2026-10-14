@@ -2481,7 +2481,7 @@
                         <div class="col-md-6 text-end">
                             <button id="load_merit_order" class="btn btn-primary">
                                 <span class="button-content">
-                                    <i class="fas fa-sync-alt"></i> Load Data
+                                    <i class="fas fa-sync-alt"></i> Load AIC &amp; Outages
                                 </span>
                                 <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                             </button>
@@ -2494,11 +2494,6 @@
                 <div class="card-body">
                     <div class="row">
                         <div class="col-md-3">
-                            <label class="form-label fw-bold">Reference Date</label>
-                            <input type="date" id="merit_gen_date" class="form-control">
-                            <small class="text-muted">Historical forecast reference date</small>
-                        </div>
-                        <div class="col-md-3">
                             <label class="form-label fw-bold">Prediction Date</label>
                             <input type="date" id="merit_pred_date" class="form-control">
                             <small class="text-muted">Current forecast prediction date</small>
@@ -2509,7 +2504,37 @@
                             </button>
                         </div>
                     </div>
-                    <!-- Reference dates whose mean capacity is closest to the prediction date -->
+                    <!-- Day sections: each one is compared against its own reference date.
+                         Boundaries run 0–24; both at the edges leaves a single full-day section. -->
+                    <div class="row align-items-center g-2 mt-3">
+                        <div class="col-auto"><small class="fw-bold text-muted">Section boundaries</small></div>
+                        <div class="col" style="max-width:200px">
+                            <input type="range" class="form-range" id="merit_split1" min="0" max="24" value="8">
+                        </div>
+                        <div class="col-auto"><strong id="merit_split1_label">h08</strong></div>
+                        <div class="col" style="max-width:200px">
+                            <input type="range" class="form-range" id="merit_split2" min="0" max="24" value="16">
+                        </div>
+                        <div class="col-auto"><strong id="merit_split2_label">h16</strong></div>
+                        <div class="col-auto">
+                            <small class="text-muted" id="merit_sections_summary">3 sections: h00–h07 · h08–h15 · h16–h23</small>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold" id="merit_gen_date_1_label">Reference Date h00–h07</label>
+                            <input type="date" id="merit_gen_date_1" class="form-control merit-gen-date" data-section="0">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold" id="merit_gen_date_2_label">Reference Date h08–h15</label>
+                            <input type="date" id="merit_gen_date_2" class="form-control merit-gen-date" data-section="1">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold" id="merit_gen_date_3_label">Reference Date h16–h23</label>
+                            <input type="date" id="merit_gen_date_3" class="form-control merit-gen-date" data-section="2">
+                        </div>
+                    </div>
+                    <!-- Per section, the reference dates whose capacity is closest to the prediction date -->
                     <div class="row mt-3 d-none" id="merit_similar_days_row">
                         <div class="col-12">
                             <label class="form-label fw-bold mb-1">
@@ -2524,36 +2549,15 @@
             <!-- Results Table -->
             <div class="card mb-4">
                 <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-table"></i> Generation vs Prediction Comparison</h5>
-                </div>
-                <!-- Band-average sliders — shown after first data load -->
-                <div id="merit_order_slider_controls" class="card-body border-bottom d-none py-2">
-                    <div class="row align-items-center g-2">
-                        <div class="col-auto"><small class="fw-bold text-muted">Band splits</small></div>
-                        <div class="col-auto">
-                            <small class="text-muted">Band 1: h00 –</small>
-                            <strong id="merit_split1_label">h07</strong>
-                        </div>
-                        <div class="col" style="max-width:180px">
-                            <input type="range" class="form-range" id="merit_split1" min="0" max="22" value="7">
-                        </div>
-                        <div class="col-auto">
-                            <small class="text-muted">| Band 2: –</small>
-                            <strong id="merit_split2_label">h15</strong>
-                        </div>
-                        <div class="col" style="max-width:180px">
-                            <input type="range" class="form-range" id="merit_split2" min="1" max="23" value="15">
-                        </div>
-                        <div class="col-auto">
-                            <small class="text-muted">| Band 3: – h23</small>
-                        </div>
-                    </div>
+                    <h5 class="mb-0"><i class="fas fa-table"></i> Generation vs Prediction Comparison
+                        <span id="merit_results_updating" class="spinner-border spinner-border-sm text-primary ms-2 d-none" role="status"></span>
+                    </h5>
                 </div>
                 <div class="card-body p-0">
                     <div id="merit_order_results">
                         <div class="text-center p-4 text-muted">
                             <i class="fas fa-chart-bar fa-3x mb-3"></i>
-                            <p>Select dates and click "Load Data" to see the comparison table.</p>
+                            <p>Pick a prediction date; the table builds itself from the suggested reference dates.</p>
                         </div>
                     </div>
                 </div>

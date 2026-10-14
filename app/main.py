@@ -17,7 +17,7 @@ import requests
 import json
 from .models.production import ProductionData
 import plotly.graph_objects as go
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
 import os
 from app.models.demand import DemandData
 from sqlalchemy import extract
@@ -4071,6 +4071,63 @@ def download_forecast_performance_excel():
         return _err("download_forecast_performance_excel", e)
 
 
+# Default section boundaries: h00–h07, h08–h15 and h16–h23.
+MERIT_ORDER_DEFAULT_BOUNDARIES = (8, 16)
+
+
+def _parse_merit_order_splits(args):
+    """Turn the b1/b2 boundaries from request args or a JSON body into sections.
+
+    b1 and b2 are hours in [0, 24] where a new section starts, so the day splits
+    into [0, b1), [b1, b2) and [b2, 24). Sections left empty are dropped: moving
+    a boundary onto an edge or onto the other boundary merges sections, and
+    with both at the edges the whole day is a single section. Returns
+    inclusive (from_hour, to_hour) pairs; raises ValueError on bad boundaries.
+    """
+    b1 = int(args.get('b1', MERIT_ORDER_DEFAULT_BOUNDARIES[0]))
+    b2 = int(args.get('b2', MERIT_ORDER_DEFAULT_BOUNDARIES[1]))
+    if not (0 <= b1 <= b2 <= 24):
+        raise ValueError('Section boundaries must satisfy 0 <= b1 <= b2 <= 24')
+    edges = [0, b1, b2, 24]
+    return [(start, end - 1) for start, end in zip(edges, edges[1:]) if end > start]
+
+
+def _parse_merit_order_ref_dates(args, sections):
+    """Map each hour label ('HH:MM') to the reference date of its section.
+
+    gen_dates carries one date per section (comma-separated, or a list in a JSON
+    body). A single gen_date is still accepted and applied to the whole day.
+    Returns (dates per section, {hour label: date}).
+    """
+    raw = args.get('gen_dates')
+    if raw:
+        dates = raw if isinstance(raw, list) else raw.split(',')
+    elif args.get('gen_date'):
+        dates = [args.get('gen_date')] * len(sections)
+    else:
+        raise ValueError('gen_dates is required')
+
+    if len(dates) != len(sections):
+        raise ValueError(f'gen_dates needs one date per section ({len(sections)})')
+
+    parsed = [datetime.strptime(str(d).strip(), '%Y-%m-%d').date() for d in dates]
+    ref_by_hour = {}
+    for (from_hour, to_hour), ref_date in zip(sections, parsed):
+        for h in range(from_hour, to_hour + 1):
+            ref_by_hour[f'{h:02d}:00'] = ref_date
+    return parsed, ref_by_hour
+
+
+def _rows_for_ref_dates(df, ref_by_hour, day_col):
+    """Keep, for every hour, only the rows that come from that hour's reference date.
+
+    The reference queries load all the section dates at once; this stitches the
+    day back together so each section is compared against its own date.
+    """
+    row_dates = pd.to_datetime(df[day_col]).dt.date
+    return df[row_dates.values == df['hour'].map(ref_by_hour).values]
+
+
 def _calculate_merit_order_price(supply_demand_df, capacity_deltas):
     """Calculate merit order prices by shifting supply/demand intersection by capacity deltas.
     
@@ -4105,7 +4162,7 @@ def _calculate_merit_order_price(supply_demand_df, capacity_deltas):
             forecast_data.append(new_price_point)
         except (IndexError, KeyError):
             # If no matching price point found, use the closest one
-            forecast_data.append(hourly_data.iloc[hourly_data['capacity(Δ)'].sub(trade_capacity - required_capacity).abs().idxmin()])
+            forecast_data.append(hourly_data.loc[hourly_data['capacity(Δ)'].sub(trade_capacity - required_capacity).abs().idxmin()])
     
     return forecast_data
 
@@ -4113,19 +4170,24 @@ def _calculate_merit_order_price(supply_demand_df, capacity_deltas):
 @main.route('/merit-order-data')
 @login_required
 def get_merit_order_data():
-    """Get merit order comparison data between a reference date and a prediction date"""
+    """Get merit order comparison data for a prediction date.
+
+    The day is split into up to three sections (b1/b2 boundaries) and each section
+    is compared against its own reference date (gen_dates), so the result table is
+    stitched together from up to three different historical days.
+    """
     try:
-        gen_date = request.args.get('gen_date')
         pred_date = request.args.get('pred_date')
 
-        if not gen_date or not pred_date:
-            return jsonify({'code': 400, 'message': 'Both gen_date and pred_date are required'}), 400
+        if not pred_date:
+            return jsonify({'code': 400, 'message': 'pred_date is required'}), 400
 
         try:
-            gen_date_parsed = datetime.strptime(gen_date, '%Y-%m-%d').date()
             pred_date_parsed = datetime.strptime(pred_date, '%Y-%m-%d').date()
-        except ValueError:
-            return jsonify({'code': 400, 'message': 'Dates must be in YYYY-MM-DD format'}), 400
+            sections = _parse_merit_order_splits(request.args)
+            ref_dates, ref_by_hour = _parse_merit_order_ref_dates(request.args, sections)
+        except ValueError as e:
+            return jsonify({'code': 400, 'message': str(e)}), 400
 
         engine = _get_supabase_engine()
 
@@ -4142,9 +4204,9 @@ def get_merit_order_data():
             hf.runofriver_forecast AS river
         FROM meteologica.historical_forecast hf
         JOIN epias.ptf ptf ON ptf.date = hf.date
-        WHERE DATE(hf.date) = :gen_date
+        WHERE DATE(hf.date) IN :gen_dates
         ORDER BY hf.date
-        """)
+        """).bindparams(bindparam('gen_dates', expanding=True))
 
         # Prediction query — current forecast data
         pred_query = text("""
@@ -4171,26 +4233,36 @@ def get_merit_order_data():
         supply_demand_query = text("""
         SELECT date, TO_CHAR(date, 'HH24:MI') AS hour, price, supply, demand
         FROM epias.supply_demand
-        WHERE DATE(date) = :gen_date
+        WHERE DATE(date) IN :gen_dates
         ORDER BY date, price
-        """)
+        """).bindparams(bindparam('gen_dates', expanding=True))
 
         with engine.connect() as conn:
-            ref_df = pd.read_sql(ref_query, con=conn, params={"gen_date": gen_date_parsed})
+            unique_ref_dates = sorted(set(ref_dates))
+            ref_df = pd.read_sql(ref_query, con=conn, params={"gen_dates": unique_ref_dates})
             pred_df = pd.read_sql(pred_query, con=conn, params={"pred_date": pred_date_parsed})
             pred_df['day'] = pd.to_datetime(pred_df['day'])
             pred_df['mcp_pred'] = pred_df['mcp_pred'].round(2)
-            supply_demand_df = pd.read_sql(supply_demand_query, con=conn, params={"gen_date": gen_date_parsed})
+            supply_demand_df = pd.read_sql(supply_demand_query, con=conn, params={"gen_dates": unique_ref_dates})
 
-        if ref_df.empty:
-            return jsonify({'code': 404, 'message': f'No reference data found for {gen_date}'}), 404
+        ref_df = _rows_for_ref_dates(ref_df, ref_by_hour, 'day')
+        # The query orders by date, which interleaves sections once they come from
+        # different days; the price calculation walks the curves in hour order.
+        supply_demand_df = (_rows_for_ref_dates(supply_demand_df, ref_by_hour, 'date')
+                            .sort_values(['hour', 'price']).reset_index(drop=True))
+
+        missing = sorted({d.isoformat() for d in ref_dates} - {d.isoformat() for d in pd.to_datetime(ref_df['day']).dt.date})
+        if missing:
+            return jsonify({'code': 404, 'message': f'No reference data found for {", ".join(missing)}'}), 404
 
         if pred_df.empty:
             return jsonify({'code': 404, 'message': f'No prediction data found for {pred_date}'}), 404
 
-        # Merge on hour
+        # Merge on hour. Sorted so row order lines up with the hour order that
+        # _calculate_merit_order_price walks the supply/demand curves in.
         cols = ['demand', 'river', 'wind', 'solar']
         df_diff = pd.merge(ref_df, pred_df, on='hour', suffixes=('_ref', '_pred'))
+        df_diff = df_diff.sort_values('hour').reset_index(drop=True)
         
         # Calculate deltas
         for col in cols:
@@ -4264,7 +4336,8 @@ def get_merit_order_data():
         return jsonify({
             'code': 200,
             'data': {
-                'gen_date': gen_date,
+                'gen_dates': [d.isoformat() for d in ref_dates],
+                'sections': [{'from_hour': lo, 'to_hour': hi} for lo, hi in sections],
                 'pred_date': pred_date,
                 'columns': numeric_cols,
                 'rows': result_rows,
@@ -4516,8 +4589,8 @@ MERIT_ORDER_SIMILAR_LIMIT = 5
 @main.route('/merit-order-similar-days')
 @login_required
 def get_merit_order_similar_days():
-    """Suggest reference dates whose hourly capacity profile is closest to the
-    prediction date's.
+    """Suggest, for each section of the day, the reference dates whose hourly
+    capacity profile is closest to the prediction date's over that section.
 
     Capacity is demand minus the must-run renewables (wind, solar, run-of-river) —
     the load the dispatchable fleet has to cover, i.e. the same expression behind
@@ -4527,6 +4600,11 @@ def get_merit_order_similar_days():
     daily averages: two days can average the same while one peaks in the morning
     and the other in the evening, and those produce quite different merit order
     curves. Comparing hour by hour matches the shape of the day, not just its level.
+
+    The ranking is done separately per section (b1/b2 boundaries), because the
+    day that matches the night best is often not the one that matches the solar
+    hours or the evening peak. Candidates are limited to the same day type as the
+    prediction date (weekday vs weekend), whose load profiles differ structurally.
     """
     try:
         pred_date = request.args.get('pred_date')
@@ -4535,8 +4613,9 @@ def get_merit_order_similar_days():
 
         try:
             pred_date_parsed = datetime.strptime(pred_date, '%Y-%m-%d').date()
-        except ValueError:
-            return jsonify({'code': 400, 'message': 'Dates must be in YYYY-MM-DD format'}), 400
+            sections = _parse_merit_order_splits(request.args)
+        except ValueError as e:
+            return jsonify({'code': 400, 'message': str(e)}), 400
 
         start_date = pred_date_parsed - timedelta(days=MERIT_ORDER_SIMILAR_WINDOW_DAYS)
 
@@ -4597,34 +4676,44 @@ def get_merit_order_similar_days():
                 'message': f'No complete reference days between {start_date} and {pred_date}'
             }), 404
 
+        is_weekend = pred_date_parsed.weekday() >= 5
+        ref_df = ref_df[(pd.to_datetime(ref_df['day']).dt.weekday >= 5) == is_weekend]
+
+        if ref_df.empty:
+            return jsonify({
+                'code': 404,
+                'message': f'No complete {"weekend" if is_weekend else "weekday"} reference days '
+                           f'between {start_date} and {pred_date}'
+            }), 404
+
         # Align on the hour label rather than row order, so a missing or reordered
         # hour cannot silently shift the comparison by one slot.
         merged = ref_df.merge(pred_df, on='hour', how='inner')
         merged['abs_diff'] = (merged['pred_capacity'] - merged['ref_capacity']).abs()
+        merged['hour_num'] = merged['hour'].str[:2].astype(int)
+        pred_df['hour_num'] = pred_df['hour'].str[:2].astype(int)
 
-        per_day = merged.groupby('day').agg(
-            mean_diff=('abs_diff', 'mean'),
-            ref_capacity=('ref_capacity', 'mean'),
-            hours=('abs_diff', 'size'),
-        ).reset_index()
-        per_day = per_day[per_day['hours'] == 24]
+        section_results = []
+        days_considered = 0
+        for from_hour, to_hour in sections:
+            n_hours = to_hour - from_hour + 1
+            in_section = merged[merged['hour_num'].between(from_hour, to_hour)]
 
-        if per_day.empty:
-            return jsonify({
-                'code': 404,
-                'message': f'No reference day overlaps all 24 hours of {pred_date}'
-            }), 404
+            per_day = in_section.groupby('day').agg(
+                mean_diff=('abs_diff', 'mean'),
+                ref_capacity=('ref_capacity', 'mean'),
+                hours=('abs_diff', 'size'),
+            ).reset_index()
+            per_day = per_day[per_day['hours'] == n_hours]
+            days_considered = max(days_considered, len(per_day))
 
-        closest = per_day.nsmallest(MERIT_ORDER_SIMILAR_LIMIT, 'mean_diff')
+            closest = per_day.nsmallest(MERIT_ORDER_SIMILAR_LIMIT, 'mean_diff')
+            pred_section = pred_df[pred_df['hour_num'].between(from_hour, to_hour)]
 
-        return jsonify({
-            'code': 200,
-            'data': {
-                'pred_date': pred_date,
-                'pred_capacity_mean': float(pred_df['pred_capacity'].mean()),
-                'window_start': start_date.isoformat(),
-                'window_days': MERIT_ORDER_SIMILAR_WINDOW_DAYS,
-                'days_considered': int(len(per_day)),
+            section_results.append({
+                'from_hour': from_hour,
+                'to_hour': to_hour,
+                'pred_capacity_mean': float(pred_section['pred_capacity'].mean()),
                 'days': [
                     {
                         'day': row['day'].isoformat(),
@@ -4632,7 +4721,25 @@ def get_merit_order_similar_days():
                         'mean_diff': float(row['mean_diff']),
                     }
                     for _, row in closest.iterrows()
-                ]
+                ],
+            })
+
+        if not any(sec['days'] for sec in section_results):
+            return jsonify({
+                'code': 404,
+                'message': f'No reference day overlaps the hours of {pred_date}'
+            }), 404
+
+        return jsonify({
+            'code': 200,
+            'data': {
+                'pred_date': pred_date,
+                'pred_capacity_mean': float(pred_df['pred_capacity'].mean()),
+                'day_type': 'weekend' if is_weekend else 'weekday',
+                'window_start': start_date.isoformat(),
+                'window_days': MERIT_ORDER_SIMILAR_WINDOW_DAYS,
+                'days_considered': int(days_considered),
+                'sections': section_results,
             }
         })
 
@@ -4816,29 +4923,31 @@ def get_merit_order_failure_data():
 @login_required
 def download_merit_order_excel():
     """Download merit order data as a multi-sheet Excel file.
-    Accepts GET (no custom deltas) or POST with JSON body {gen_date, pred_date, capacity_deltas}.
+    Accepts GET (no custom deltas) or POST with JSON body
+    {gen_dates, b1, b2, pred_date, capacity_deltas}; see get_merit_order_data for
+    how the sections and their reference dates combine.
     """
     try:
         from io import BytesIO
 
         if request.method == 'POST':
-            body = request.get_json(force=True) or {}
-            gen_date = body.get('gen_date')
-            pred_date = body.get('pred_date')
-            custom_capacity_deltas = body.get('capacity_deltas') or {}
+            args = request.get_json(force=True) or {}
+            custom_capacity_deltas = args.get('capacity_deltas') or {}
         else:
-            gen_date = request.args.get('gen_date')
-            pred_date = request.args.get('pred_date')
+            args = request.args
             custom_capacity_deltas = {}
+        pred_date = args.get('pred_date')
 
-        if not gen_date or not pred_date:
-            return jsonify({'error': 'Both gen_date and pred_date are required'}), 400
+        if not pred_date:
+            return jsonify({'error': 'pred_date is required'}), 400
 
         try:
-            gen_date_parsed = datetime.strptime(gen_date, '%Y-%m-%d').date()
             pred_date_parsed = datetime.strptime(pred_date, '%Y-%m-%d').date()
-        except ValueError:
-            return jsonify({'error': 'Dates must be in YYYY-MM-DD format'}), 400
+            sections = _parse_merit_order_splits(args)
+            ref_dates, ref_by_hour = _parse_merit_order_ref_dates(args, sections)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        unique_ref_dates = sorted(set(ref_dates))
 
         engine = _get_supabase_engine()
 
@@ -4855,9 +4964,9 @@ def download_merit_order_excel():
             hf.runofriver_forecast AS river
         FROM meteologica.historical_forecast hf
         JOIN meteologica.price p ON TO_TIMESTAMP(p."From-yyyy-mm-dd-hh-mm", 'YYYY-MM-DD HH24:MI:SI') = hf.date
-        WHERE DATE(hf.date) = :gen_date
+        WHERE DATE(hf.date) IN :gen_dates
         ORDER BY hf.date
-        """)
+        """).bindparams(bindparam('gen_dates', expanding=True))
 
         pred_query = text("""
         SELECT
@@ -4882,19 +4991,24 @@ def download_merit_order_excel():
         supply_demand_query = text("""
         SELECT date, TO_CHAR(date, 'HH24:MI') AS hour, price, supply, demand
         FROM epias.supply_demand
-        WHERE DATE(date) = :gen_date
+        WHERE DATE(date) IN :gen_dates
         ORDER BY date, price
-        """)
+        """).bindparams(bindparam('gen_dates', expanding=True))
 
         with engine.connect() as conn:
-            ref_df = pd.read_sql(ref_query, con=conn, params={"gen_date": gen_date_parsed})
+            ref_df = pd.read_sql(ref_query, con=conn, params={"gen_dates": unique_ref_dates})
             pred_df = pd.read_sql(pred_query, con=conn, params={"pred_date": pred_date_parsed})
             pred_df['mcp_pred'] = pred_df['mcp_pred'].round(2)
-            supply_demand_df = pd.read_sql(supply_demand_query, con=conn, params={"gen_date": gen_date_parsed})
+            supply_demand_df = pd.read_sql(supply_demand_query, con=conn, params={"gen_dates": unique_ref_dates})
+
+        ref_df = _rows_for_ref_dates(ref_df, ref_by_hour, 'day')
+        supply_demand_df = (_rows_for_ref_dates(supply_demand_df, ref_by_hour, 'date')
+                            .sort_values(['hour', 'price']).reset_index(drop=True))
 
         # Merge and calculate deltas
         cols = ['demand', 'river', 'wind', 'solar']
         df_diff = pd.merge(ref_df, pred_df, on='hour', suffixes=('_ref', '_pred'))
+        df_diff = df_diff.sort_values('hour').reset_index(drop=True)
         
         for col in cols:
             df_diff[f'{col}(Δ)'] = df_diff[f'{col}_pred'] - df_diff[f'{col}_ref']
@@ -5077,7 +5191,7 @@ def download_merit_order_excel():
         writer.close()
         output.seek(0)
         
-        filename = f"merit_order_{gen_date}_vs_{pred_date}.xlsx"
+        filename = f"merit_order_{'_'.join(d.isoformat() for d in unique_ref_dates)}_vs_{pred_date}.xlsx"
         
         return send_file(
             output,
