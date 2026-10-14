@@ -60,3 +60,39 @@ class LigniteHeatmapData(db.Model):
     __table_args__ = (
         db.UniqueConstraint('date', 'hour', 'plant_name', 'version', name='lignite_heatmap_data_date_hour_plant_name_version_key'),
     )
+
+class SourceHeatmapData(db.Model):
+    """System-wide DPP (KGÜP) per source — the EPIAS dpp endpoints called without
+    a plant filter. `source` is the EPIAS field name (dogalgaz, ruzgar, gunes, ...)."""
+    __tablename__ = 'source_heatmap_data'
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False)
+    hour = db.Column(db.Integer, nullable=False)
+    source = db.Column(db.String(30), nullable=False)
+    value = db.Column(db.Float, nullable=False)
+    version = db.Column(db.String(10), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('date', 'hour', 'source', 'version', name='source_heatmap_data_date_hour_source_version_key'),
+    )
+
+
+class UnlicensedGenerationData(db.Model):
+    """Metered unlicensed generation from EPIAS (unlicensed-generation-amount).
+
+    Published monthly with a lag of a month or more, so recent hours are absent
+    and the source heatmap falls back to Meteologica's forecast for them."""
+    __tablename__ = 'unlicensed_generation_data'
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False)
+    hour = db.Column(db.Integer, nullable=False)
+    source = db.Column(db.String(30), nullable=False)
+    value = db.Column(db.Float, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('date', 'hour', 'source', name='unlicensed_generation_data_date_hour_source_key'),
+    )

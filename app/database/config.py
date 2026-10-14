@@ -17,7 +17,7 @@ def init_db(app):
     migrate.init_app(app, db)
     
     # Import all models here so they're registered with SQLAlchemy
-    from ..models.heatmap import HydroHeatmapData, NaturalGasHeatmapData, ImportedCoalHeatmapData
+    from ..models.heatmap import HydroHeatmapData, NaturalGasHeatmapData, ImportedCoalHeatmapData, SourceHeatmapData, UnlicensedGenerationData
     from ..models.realtime import HydroRealtimeData, NaturalGasRealtimeData
     from ..models.production import ProductionData
     from ..models.demand import DemandData

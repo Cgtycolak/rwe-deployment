@@ -3236,6 +3236,67 @@ def lignite_realtime_heatmap_data():
         current_app.logger.error(f"Error in lignite_realtime_heatmap_data: {str(e)}")
         return jsonify({'code': 500, 'message': 'Internal server error'}), 500
 
+@main.route('/source_heatmap_data', methods=['POST'])
+@login_required
+def source_heatmap_data():
+    """System-wide DPP by source for one date and version ('first' or 'current')."""
+    from app.services.source_heatmap import plan_matrix, LABELS, HOURS
+    try:
+        data = request.get_json() or {}
+        date_str = data.get('date')
+        version = data.get('version', 'current')
+        if not date_str:
+            return jsonify({'code': 400, 'message': 'Date is required'}), 400
+        if version not in ('first', 'current'):
+            return jsonify({'code': 400, 'message': "version must be 'first' or 'current'"}), 400
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+        values = plan_matrix(date_obj, version)
+        if values is None:
+            return jsonify({'code': 404, 'message': f'No {version} DPP published for {date_str} yet'})
+
+        return jsonify({'code': 200, 'data': {'hours': HOURS, 'plants': LABELS, 'values': values}})
+
+    except ValueError as ve:
+        return jsonify({'code': 400, 'message': f'Invalid date format: {ve}'}), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error in source_heatmap_data: {str(e)}")
+        return jsonify({'code': 500, 'message': 'Internal server error'}), 500
+
+
+@main.route('/source_realtime_heatmap_data', methods=['POST'])
+@login_required
+def source_realtime_heatmap_data():
+    """Realtime generation by source for one date, aligned with /source_heatmap_data.
+
+    Hours not yet available are null. solar_estimated flags the hours whose
+    unlicensed solar is Meteologica's forecast instead of EPIAS metered data.
+    """
+    from app.services.source_heatmap import realtime_matrix, LABELS, HOURS
+    try:
+        data = request.get_json() or {}
+        date_str = data.get('date')
+        if not date_str:
+            return jsonify({'code': 400, 'message': 'Date is required'}), 400
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+        values, solar_estimated = realtime_matrix(date_obj)
+        if all(v is None for row in values for v in row):
+            return jsonify({'code': 404, 'message': f'No realtime generation stored for {date_str} yet'})
+
+        return jsonify({'code': 200, 'data': {
+            'hours': HOURS, 'plants': LABELS, 'values': values,
+            'solar_estimated': solar_estimated,
+        }})
+
+    except ValueError as ve:
+        return jsonify({'code': 400, 'message': f'Invalid date format: {ve}'}), 400
+    except Exception as e:
+        current_app.logger.error(f"Error in source_realtime_heatmap_data: {str(e)}")
+        return jsonify({'code': 500, 'message': 'Internal server error'}), 500
+
+
 @main.route('/update-unlicensed-solar-data')
 @login_required
 def update_unlicensed_solar_data():

@@ -55,6 +55,15 @@ def update_daily_data(app):
                 app.logger.warning(f"Could not fetch data for {tomorrow}: {str(e)}")
                 app.logger.info("This is expected if tomorrow's data is not yet available")
                 # Don't raise here, it's okay if tomorrow's data isn't available yet
+
+            # System-wide DPP by source (Generation by Source heatmap). Kept apart
+            # so a failure here cannot affect the per-plant heatmaps above.
+            try:
+                from ..services.source_heatmap import populate_source_plan
+                rows = populate_source_plan(tomorrow, tomorrow, versions=('first', 'current'))
+                app.logger.info(f"Stored {rows} source DPP rows for {tomorrow}")
+            except Exception as e:
+                app.logger.warning(f"Could not fetch source DPP for {tomorrow}: {str(e)}")
             
             app.logger.info("Daily update job completed successfully")
             
@@ -83,6 +92,12 @@ def update_hourly_data(app):
             except Exception as e:
                 app.logger.error(f"Error fetching current data for {today}: {str(e)}")
                 raise
+
+            try:
+                from ..services.source_heatmap import populate_source_plan
+                populate_source_plan(today, today, versions=('current',))
+            except Exception as e:
+                app.logger.error(f"Error fetching current source DPP for {today}: {str(e)}")
             
             app.logger.info("Hourly update job completed successfully")
             
@@ -111,6 +126,27 @@ def update_realtime_data(app):
                 except Exception as e:
                     app.logger.error(f"Error updating realtime data for {plant_type}: {str(e)}")
             
+            # production_data (EPIAS realtime generation by fuel) used to be filled
+            # only from the Update Database button. Re-check a week back so a
+            # missed run or an EPIAS outage is caught up on the next one.
+            try:
+                from ..services.source_heatmap import fill_production_data
+                for days_back in range(7, 0, -1):
+                    fill_production_data((current_time - timedelta(days=days_back)).date())
+                app.logger.info("production_data checked for the last 7 days")
+            except Exception as e:
+                app.logger.error(f"Error filling production_data: {str(e)}")
+
+            # EPIAS publishes metered unlicensed generation monthly with a lag and
+            # no fixed date, so re-check the last three months: three cheap calls,
+            # and the solar column swaps estimates for metered data as it lands.
+            try:
+                from ..services.source_heatmap import populate_unlicensed_generation
+                rows = populate_unlicensed_generation(yesterday.replace(day=1) - timedelta(days=62), yesterday)
+                app.logger.info(f"Stored {rows} metered unlicensed generation rows")
+            except Exception as e:
+                app.logger.error(f"Error updating unlicensed generation: {str(e)}")
+
             app.logger.info(f"Realtime update completed for {yesterday}")
             
     except Exception as e:
