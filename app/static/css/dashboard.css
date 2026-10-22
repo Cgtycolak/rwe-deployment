@@ -560,11 +560,6 @@ select option {
   }
 }
 
-.content-section[data-section="rolling-averages"] h2 {
-  font-weight: normal;
-  color: var(--ink);
-}
-
 /* Force Plotly to use our font */
 .content-section[data-section="rolling-averages"] .js-plotly-plot .plotly .main-svg text {
   font-family: 'RWE Sans Web', -apple-system, 'Segoe UI', sans-serif !important;
