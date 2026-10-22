@@ -1,0 +1,122 @@
+{% include 'partials/page_head.html' %}
+
+<div class="container-fluid">
+    <section class="forecast-upload" aria-labelledby="forecast-upload-title">
+        <div class="forecast-upload-steps">
+            <h3 id="forecast-upload-title">Start with today's daily report</h3>
+            <ol class="steps">
+                <li>Open <a href="https://tpys.teias.gov.tr/tpys/app/report.htm" target="_blank" rel="noopener noreferrer">the TEİAŞ report page</a> and download <strong>Günlük Rapor</strong>, with the <strong>tarih aralığı</strong> set from yesterday to today.</li>
+                <li>Drop the file here, or click the box to choose it. Then load the recent direction or run a forecast below.</li>
+            </ol>
+            <p class="forecast-caveat">Each forecast hour after the first builds on the hours forecast before it, so errors compound further out.</p>
+        </div>
+        <div class="forecast-upload-drop">
+            <!-- A <label> opens the file picker natively on the first click; the input stays focusable for keyboards -->
+            <label class="upload-area" id="forecast_upload_area" for="forecast_file_input">
+                <i class="fas fa-file-excel" aria-hidden="true"></i>
+                <span class="upload-title">Choose the daily report</span>
+                <span class="upload-hint">or drop it here. XLS or XLSX, up to 1 MB.</span>
+            </label>
+            <input type="file" id="forecast_file_input" class="visually-hidden" accept=".xls,.xlsx">
+            <div id="forecast_file_info" class="upload-file d-none">
+                <i class="fas fa-file-excel" aria-hidden="true"></i>
+                <span id="forecast_filename">No file selected</span>
+                <button type="button" id="forecast_remove_file" class="btn btn-sm btn-outline-secondary">Change file</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tabs for different forecasting operations -->
+    <ul class="nav nav-tabs mb-4" id="forecastingTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="recent-data-tab" data-bs-toggle="tab" data-bs-target="#recent-data" type="button" role="tab" aria-controls="recent-data" aria-selected="true">
+                <i class="fas fa-history"></i> Recent Data
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="prediction-tab" data-bs-toggle="tab" data-bs-target="#prediction" type="button" role="tab" aria-controls="prediction" aria-selected="false">
+                <i class="fas fa-chart-line"></i> Prediction
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab content -->
+    <div class="tab-content" id="forecastingTabsContent">
+        <!-- Recent Data Tab -->
+        <div class="tab-pane fade show active" id="recent-data" role="tabpanel" aria-labelledby="recent-data-tab">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Recent System Direction Data</h5>
+                    <div>
+                        <div class="input-group">
+                            <span class="input-group-text">Hours</span>
+                            <input type="number" id="recent_hours" class="form-control" value="48" min="1" max="168">
+                            <button id="load_recent_data" class="btn btn-primary">
+                                <span class="button-content">Load recent direction</span>
+                                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="placeholder-note chart-empty"><p>Upload today's daily report above, then load the recent system direction.</p></div>
+                    <div id="recent_data_chart" class="chart-slot"></div>
+                    <div id="recent_data_table_container"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Evaluation Tab -->
+        <!-- Prediction Tab -->
+        <div class="tab-pane fade" id="prediction" role="tabpanel" aria-labelledby="prediction-tab">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Forecast</h5>
+                    <div>
+                        <div class="input-group">
+                            <label class="input-group-text" for="forecast_model">Model</label>
+                            <select class="form-select" id="forecast_model">
+                                <option value="Model 1">Long term, without recent direction</option>
+                                <option value="Model 2">Short term, with recent direction</option>
+                            </select>
+                            <!-- Lagged hour selector: only relevant for Short Term (Model 2) -->
+                            <span class="input-group-text d-none" id="lagged_hour_label" title="Hours of recent system direction used as input for Short Term model">Lag</span>
+                            <select class="form-select d-none" id="lagged_hour_selection" style="max-width:70px" title="Lagged hours of recent system direction (1 = most recent)">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                            </select>
+                            <button id="run_forecast" class="btn btn-primary">
+                                <span class="button-content">Run forecast</span>
+                                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="placeholder-note chart-empty"><p>Upload today's daily report above, pick a model, then run the forecast.</p></div>
+                    <dl class="stat-row" id="forecast_stats" hidden></dl>
+                    <div id="forecast_chart" class="chart-slot"></div>
+                    <!-- SHAP Explainer Plot -->
+                    <div id="shap_plot_container" class="mt-4 d-none">
+                        <h6 class="text-center mb-3"><i class="fas fa-chart-bar"></i> SHAP Feature Importance</h6>
+                        <div class="text-center">
+                            <img id="shap_plot_image" src="" alt="SHAP Summary Plot" class="border rounded" style="max-width: 100%; height: auto;">
+                        </div>
+                    </div>
+                    <!-- YAL-YAT Confusion Matrix (Forecast Tab) -->
+                    <div id="forecast_confusion_matrix_container" class="mt-4 d-none">
+                        <h3 class="chart-subtitle">What actually happened when the model predicted each direction</h3>
+                        <p class="text-muted small">Each column is one predicted direction and adds up to 100%. Outlined cells are correct predictions.</p>
+                        <div id="forecast_confusion_matrix_chart" class="confusion-chart"></div>
+                    </div>
+                    <div class="mt-4">
+                        <button id="download_forecast" class="btn btn-outline-secondary btn-sm" disabled>Download forecast as Excel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

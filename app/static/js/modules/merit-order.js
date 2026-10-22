@@ -272,7 +272,7 @@ export const meritOrder = {
             return;
         }
 
-        const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+        const fmt = (n) => Number(n).toLocaleString('en-GB', { maximumFractionDigits: 0 });
         const single = sections.length === 1;
 
         const rows = sections.map((sec, idx) => {
@@ -904,7 +904,7 @@ export const meritOrder = {
         if (!avgData) return '';
         const fmt  = v => this.formatNumber(v);
         const dc   = v => this.getDeltaClass(v);
-        const mcp  = v => (v !== null && v !== undefined) ? Number(v).toFixed(2) : '-';
+        const mcp  = v => (v !== null && v !== undefined) ? Number(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
         return `<tr class="${rowClass} fw-bold">
             <td class="text-center" colspan="2" style="font-style:italic">${label}</td>
             <td class="text-center">${mcp(avgData.mcp_ref)}</td>
@@ -1020,9 +1020,9 @@ export const meritOrder = {
             html += `<tr>
                 <td class="text-center fw-bold" style="white-space:nowrap;">${refDatetime}</td>
                 <td class="text-center fw-bold" style="white-space:nowrap;">${predDatetime}</td>
-                <td class="text-center" style="background:${refBg};">${row.mcp_ref !== null && row.mcp_ref !== undefined ? Number(row.mcp_ref).toFixed(2) : '-'}</td>
-                <td class="text-center" style="background:${mertBg};">${row.mcp_merit !== null && row.mcp_merit !== undefined ? Number(row.mcp_merit).toFixed(2) : '-'}</td>
-                <td class="text-center" style="background:${predBg};">${row.mcp_pred !== null && row.mcp_pred !== undefined ? Number(row.mcp_pred).toFixed(2) : '-'}</td>
+                <td class="text-center" style="background:${refBg};">${row.mcp_ref !== null && row.mcp_ref !== undefined ? Number(row.mcp_ref).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}</td>
+                <td class="text-center" style="background:${mertBg};">${row.mcp_merit !== null && row.mcp_merit !== undefined ? Number(row.mcp_merit).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}</td>
+                <td class="text-center" style="background:${predBg};">${row.mcp_pred !== null && row.mcp_pred !== undefined ? Number(row.mcp_pred).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}</td>
                 <td class="text-center ${this.getDeltaClass(row['capacity_delta'])}" style="font-weight: 600;">${this.formatNumber(row['capacity_delta'])}</td>
                 <td class="text-center">${this.formatNumber(row.demand_ref)}</td>
                 <td class="text-center">${this.formatNumber(row.demand_pred)}</td>
@@ -1133,7 +1133,8 @@ export const meritOrder = {
 
     formatNumber(value) {
         if (value === null || value === undefined) return '-';
-        return Math.round(value).toLocaleString('tr-TR');
+        // en-GB like the rest of the app: comma thousands, point decimals (tr-TR made 30.714 read as a decimal)
+        return Math.round(value).toLocaleString('en-GB');
     },
 
     formatDate(dateStr) {

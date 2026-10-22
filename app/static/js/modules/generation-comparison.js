@@ -1,887 +1,367 @@
+// Generation comparison tab: planned (DPP) vs realtime generation by fuel, and the gap.
+// Always fetches hourly rows from /api/generation-comparison (in chunks, EPIAS caps a request
+// at about 90 days) and averages by week, month or year here, so a period that spans two
+// chunks is averaged once over all of its hours.
+import { loadXLSX } from '../utils/helpers.js';
+import { SERIES, baseLayout, PLOT_CONFIG, lineTrace, mw, signed } from '../utils/plot-theme.js';
+
+// [key, label, DPP field, realtime field, compared in the gap]
+const FUELS = [
+    ['total', 'Total', 'toplam', 'total', true],
+    ['naturalGas', 'Natural gas', 'dogalgaz', 'naturalGas', true],
+    ['wind', 'Wind', 'ruzgar', 'wind', true],
+    ['solar', 'Solar', 'gunes', 'sun', false],
+    ['lignite', 'Lignite', 'linyit', 'lignite', true],
+    ['importCoal', 'Import coal', 'ithalKomur', 'importCoal', true],
+    ['hardCoal', 'Hard coal', 'tasKomur', 'blackCoal', false],
+    ['dammedHydro', 'Dammed hydro', 'barajli', 'dammedHydro', true],
+    ['river', 'Run-of-river', 'akarsu', 'river', true],
+    ['geothermal', 'Geothermal', 'jeotermal', 'geothermal', true],
+    ['biomass', 'Biomass', 'biokutle', 'biomass', true],
+    ['fueloil', 'Fuel oil', 'fuelOil', 'fueloil', true],
+    ['naphta', 'Naphtha', 'nafta', 'naphta', true],
+];
+// Fuels compared one to one; the reported totals also hold solar and hard coal, which the
+// two sources count differently, so gaps use the sum of these instead
+const COMPARED = FUELS.filter((f) => f[4] && f[0] !== 'total');
+const GAP_FUELS = [['compared', 'Compared total'], ...COMPARED];
+const ALL_KEYS = [...FUELS.map(([f]) => f), 'compared'];
+const CHUNK_DAYS = 89;
+const DAY = 86400000;
+
+const RESOLUTIONS = {
+    hourly: { label: 'Hour', key: (k) => k },
+    weekly: { label: 'Week starting', key: (k) => mondayOf(k.slice(0, 10)) },
+    monthly: { label: 'Month', key: (k) => k.slice(0, 7) },
+    yearly: { label: 'Year', key: (k) => k.slice(0, 4) },
+};
+
+const isoDay = (d) => d.toISOString().slice(0, 10);
+
+function mondayOf(day) {
+    const d = new Date(`${day}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    return isoDay(d);
+}
+
+// "2026-10-14T00:00:00+03:00" + "05:00" -> "2026-10-14 05:00"
+const hourKey = (item) => `${item.date.slice(0, 10)} ${item.hour || item.time || '00:00'}`;
+
+const fmt = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
+
 export const generationComparison = {
-    currentRange: 'daily',
-    chart: null,
-    plotlyColorScale: "RdBu",
-    plotlyConfig: { responsive: true },
+    resolution: 'hourly',
+    view: 'chart',
+    hourly: null,      // joined hourly rows from the last load
+    rows: null,        // aggregated rows: { key, plan: {fuel: v}, actual: {...}, gap: {...} }
+    rendered: {},      // which views are drawn for the current rows
+    loaded: false,
+    bound: false,
+    requestId: 0,
 
     setup(helpers) {
         this.helpers = helpers;
     },
 
+    // Runs every time the tab opens
     init() {
-        console.log('Initializing generation comparison module');
-        this.cleanup(); // Clean up before initializing
-        try {
-            this.setupEventListeners();
-            this.setupDefaultDates();
-            
-            // Ensure correct initial view is shown
-            const activeButton = document.querySelector('[data-group="comparison_view"].active');
-            if (activeButton) {
-                const targetView = activeButton.dataset.switch;
-                // Hide all views
-                document.querySelectorAll('.switch_arg[data-group="comparison_view"]').forEach(view => {
-                    view.style.display = 'none';
-                });
-                // Show active view
-                const activeView = document.querySelector(`.switch_arg[data-switch="${targetView}"]`);
-                if (activeView) {
-                    activeView.style.display = 'block';
-                }
-            }
-        } catch (error) {
-            console.error('Error during initialization:', error);
+        if (!this.bound) {
+            this.bind();
+            this.bound = true;
+        }
+        if (!this.loaded) {
+            this.loaded = true;
+            const end = new Date();
+            const start = new Date(end.getTime() - 7 * DAY);
+            this.el('comparison_start_date').value = isoDay(start);
+            this.el('comparison_end_date').value = isoDay(end);
+            this.load();
+        } else if (this.view === 'chart' && this.rows) {
+            Plotly.Plots.resize(this.el('generation_comparison_chart'));
         }
     },
 
-    setupDefaultDates() {
-        console.log('Setting up default dates');
-        const startInput = document.getElementById('comparison_start_date');
-        const endInput = document.getElementById('comparison_end_date');
-        
-        if (!startInput || !endInput) {
-            console.error('Date inputs not found. Skipping default date setup.');
-            return;
-        }
-
-        // Set default date range (last 7 days)
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 7);
-
-        // Format dates for input fields
-        const formatDate = (date) => {
-            return date.toISOString().split('T')[0];
-        };
-
-        startInput.value = formatDate(startDate);
-        endInput.value = formatDate(endDate);
-
-        // Load initial data only if table exists
-        if (document.getElementById('comparison_fuel_types_table')) {
-            this.loadData(formatDate(startDate), formatDate(endDate));
-        }
+    el(id) {
+        return document.getElementById(id);
     },
 
-    setupEventListeners() {
-        console.log('Setting up event listeners');
-        try {
-            // Range button clicks
-            const rangeButtons = document.querySelectorAll('.comparison-range-btn');
-            console.log('Found range buttons:', rangeButtons.length);
-            
-            // Date inputs
-            const startDateInput = document.getElementById('comparison_start_date');
-            const endDateInput = document.getElementById('comparison_end_date');
-            
-            // Add date validation
-            if (startDateInput && endDateInput) {
-                startDateInput.addEventListener('change', () => this.validateDates());
-                endDateInput.addEventListener('change', () => this.validateDates());
-            }
-            
-            rangeButtons.forEach(button => {
-                button.addEventListener('click', (e) => {
-                    console.log('Range button clicked:', e.target.dataset.range);
-                    // Update buttons
-                    document.querySelectorAll('.comparison-range-btn').forEach(btn => {
-                        btn.classList.remove('active');
-                    });
-                    e.target.classList.add('active');
-                    
-                    // Update current range and validate dates
-                    this.currentRange = e.target.dataset.range;
-                    this.validateDates();
-                    
-                    // Reload data if dates are valid
-                    const startDate = startDateInput.value;
-                    const endDate = endDateInput.value;
-                    if (startDate && endDate && this.validateDates()) {
-                        this.loadData(startDate, endDate);
-                    }
-                });
+    bind() {
+        document.querySelectorAll('.comparison-range-btn').forEach((button) => {
+            button.addEventListener('click', () => {
+                this.resolution = button.dataset.range;
+                this.pressed('.comparison-range-btn', (b) => b === button);
+                if (this.hourly) this.aggregateAndRender();
             });
+        });
+        this.el('load_comparison_data').addEventListener('click', () => this.load());
+        this.el('download_comparison_excel').addEventListener('click', () => this.downloadExcel());
+        document.querySelectorAll('#comparison_views [data-view]').forEach((button) => {
+            button.addEventListener('click', () => this.showView(button.dataset.view));
+        });
+    },
 
-            // Load data button
-            const loadButton = document.getElementById('load_comparison_data');
-            if (loadButton) {
-                console.log('Found load data button');
-                loadButton.addEventListener('click', () => {
-                    if (!this.validateDates()) {
-                        return;
-                    }
-                    
-                    const startDate = startDateInput.value;
-                    const endDate = endDateInput.value;
-                    
-                    // Show loading state
-                    const loadingIndicator = document.getElementById('comparison_loading');
-                    if (loadingIndicator) loadingIndicator.style.display = 'block';
-                    
-                    this.loadData(startDate, endDate);
-                });
-            }
+    pressed(selector, isOn) {
+        document.querySelectorAll(selector).forEach((b) => b.setAttribute('aria-pressed', String(isOn(b))));
+    },
 
-            // View switcher events
-            document.querySelectorAll('[data-group="comparison_view"]').forEach(button => {
-                button.addEventListener('click', (e) => {
-                    const targetView = e.target.closest('button').dataset.switch;
-                    
-                    // Update active button
-                    document.querySelectorAll('[data-group="comparison_view"]').forEach(btn => {
-                        btn.classList.remove('active');
-                    });
-                    e.target.closest('button').classList.add('active');
-
-                    // Show/hide views
-                    document.querySelectorAll('.switch_arg[data-group="comparison_view"]').forEach(view => {
-                        view.style.display = 'none';
-                    });
-                    const targetElement = document.querySelector(`.switch_arg[data-switch="${targetView}"]`);
-                    if (targetElement) {
-                        targetElement.style.display = 'block';
-                    }
-
-                    // Update view with existing data if available
-                    if (this.lastData) {
-                        switch (targetView) {
-                            case 'comparison_chart':
-                                this.updateChart(this.lastData);
-                                break;
-                            case 'comparison_fuel_types':
-                                this.updateDPPTable(this.lastData.dpp.items);
-                                this.updateRealtimeTable(this.lastData.realtime.items);
-                                break;
-                            case 'comparison_differences':
-                                this.updateDifferencesTable(this.lastData.differences.items);
-                                break;
-                        }
-                    }
-                });
-            });
-
-            // Show initial view
-            const initialView = document.querySelector('.switch_arg[data-group="comparison_view"]');
-            if (initialView) {
-                initialView.style.display = 'block';
-            }
-
-            // Add export button listener
-            const exportButton = document.getElementById('download_comparison_excel');
-            if (exportButton) {
-                exportButton.addEventListener('click', () => this.downloadExcel());
-            }
-
-        } catch (error) {
-            console.error('Error setting up event listeners:', error);
+    setStatus(text, isError = false) {
+        const status = this.el('comparison_status');
+        status.hidden = !text;
+        status.classList.toggle('is-error', isError);
+        status.innerHTML = text ? `<p>${text}</p>` : '';
+        if (text) {
+            document.querySelectorAll('[data-view-panel]').forEach((p) => { p.hidden = true; });
+            this.el('comparison_stats').hidden = true;
+            this.el('comparison_views').hidden = true;
         }
     },
 
-    async loadData(startDate, endDate) {
-        const loadingIndicator = document.getElementById('comparison_loading');
-        const loadButton = document.getElementById('load_comparison_data');
-        const normalState = loadButton?.querySelector('.normal-state');
-        const loadingState = loadButton?.querySelector('.loading-state');
-        
+    validRange() {
+        const start = this.el('comparison_start_date').value;
+        const end = this.el('comparison_end_date').value;
+        if (!start || !end) return { error: 'Pick both a start and an end date.' };
+        if (start > end) return { error: 'The start date is after the end date. Swap them and try again.' };
+        if (end > isoDay(new Date())) return { error: 'The end date is in the future. Realtime data only exists up to today.' };
+        return { start, end };
+    },
+
+    async load() {
+        const range = this.validRange();
+        if (range.error) {
+            this.setStatus(range.error, true);
+            return;
+        }
+        const id = ++this.requestId;
+        const button = this.el('load_comparison_data');
+        button.disabled = true;
+        this.el('download_comparison_excel').disabled = true;
+
         try {
-            // Show loading states
-            if (loadingIndicator) loadingIndicator.style.display = 'block';
-            if (loadButton) {
-                loadButton.disabled = true;
-                normalState.style.display = 'none';
-                loadingState.style.display = 'inline-block';
+            const chunks = this.chunks(range.start, range.end);
+            const plan = [];
+            const actual = [];
+            for (let i = 0; i < chunks.length; i++) {
+                this.setStatus(chunks.length > 1
+                    ? `Loading part ${i + 1} of ${chunks.length} (${chunks[i][0]} to ${chunks[i][1]}).`
+                    : `Loading ${range.start} to ${range.end}.`);
+                const data = await this.fetchChunk(chunks[i][0], chunks[i][1]);
+                if (id !== this.requestId) return;
+                plan.push(...(data.dpp?.items || []));
+                actual.push(...(data.realtime?.items || []));
             }
-            
-            if (!this.validateDates()) {
-                throw new Error('Invalid date range');
-            }
-
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            const diffInMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-
-            // // For yearly view, proceed normally
-            // if (this.currentRange === 'yearly') {
-            //     const data = await this.fetchAndProcessData(startDate, endDate);
-            //     this.updateViews(data);
-            //     return;
-            // }
-
-            // For other ranges, check if date range exceeds 3 months
-            if (diffInMonths > 3) {
-                let currentStart = new Date(start);
-                let allData = {
-                    dpp: { items: [] },
-                    realtime: { items: [] },
-                    differences: { items: [] }
-                };
-
-                while (currentStart < end) {
-                    // Calculate chunk end date (3 months from current start or final end date)
-                    let chunkEnd = new Date(currentStart);
-                    chunkEnd.setMonth(chunkEnd.getMonth() + 3);
-                    if (chunkEnd > end) {
-                        chunkEnd = end;
-                    } else {
-                        // Subtract one day to avoid overlap
-                        chunkEnd.setDate(chunkEnd.getDate() - 1);
-                    }
-
-                    // Format dates for API
-                    const chunkStartStr = currentStart.toISOString().split('T')[0];
-                    const chunkEndStr = chunkEnd.toISOString().split('T')[0];
-
-                    // Fetch data for this chunk
-                    const chunkData = await this.fetchAndProcessData(chunkStartStr, chunkEndStr);
-                    
-                    // Combine the data
-                    if (chunkData) {
-                        allData.dpp.items = [...allData.dpp.items, ...chunkData.dpp.items];
-                        allData.realtime.items = [...allData.realtime.items, ...chunkData.realtime.items];
-                        allData.differences.items = [...allData.differences.items, ...chunkData.differences.items];
-                    }
-
-                    // Move to next chunk (start from the next day)
-                    currentStart = new Date(chunkEnd);
-                    currentStart.setDate(currentStart.getDate() + 1);
-                }
-
-                // Deduplicate data
-                ['dpp', 'realtime', 'differences'].forEach(key => {
-                    allData[key].items = this.deduplicateItems(allData[key].items);
-                    
-                    // Sort by date and hour
-                    allData[key].items.sort((a, b) => {
-                        const dateCompare = new Date(a.date) - new Date(b.date);
-                        if (dateCompare === 0) {
-                            return (a.hour || a.time).localeCompare(b.hour || b.time);
-                        }
-                        return dateCompare;
-                    });
-                });
-
-                this.updateViews(allData);
-            } else {
-                // For ranges within 3 months, proceed normally
-                const data = await this.fetchAndProcessData(startDate, endDate);
-                this.updateViews(data);
-            }
-
-        } catch (error) {
-            console.error('Error loading data:', error);
-            this.helpers.displayMessage(`Error loading data: ${error.message}`, 'danger');
-        } finally {
-            // Reset loading states
-            if (loadingIndicator) loadingIndicator.style.display = 'none';
-            if (loadButton) {
-                loadButton.disabled = false;
-                normalState.style.display = 'inline-block';
-                loadingState.style.display = 'none';
-            }
-        }
-    },
-
-    async fetchAndProcessData(startDate, endDate) {
-        console.log('Fetching data for:', { startDate, endDate, range: this.currentRange });
-        
-        try {
-            // Add request details logging
-            const requestBody = {
-                start: startDate,
-                end: endDate
-            };
-            console.log('Request body:', requestBody);
-
-            const response = await fetch(`/api/generation-comparison?range=${this.currentRange}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(requestBody)
-            });
-
-            // Log response status and headers
-            console.log('Response status:', response.status);
-            console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-
-            if (!response.ok) {
-                // Try to get error details from response
-                let errorDetails = '';
-                try {
-                    const errorData = await response.json();
-                    errorDetails = errorData.message || errorData.error || '';
-                } catch (e) {
-                    errorDetails = await response.text();
-                }
-                
-                throw new Error(`Failed to fetch data: ${response.status}. Details: ${errorDetails}`);
-            }
-
-            const data = await response.json();
-            console.log('Response data:', data);
-
-            if (data.code !== 200) {
-                throw new Error(data.message || 'Failed to load data');
-            }
-
-            return data.data;
-        } catch (error) {
-            console.error('Fetch error details:', {
-                message: error.message,
-                stack: error.stack,
-                range: this.currentRange,
-                startDate,
-                endDate
-            });
-            throw error;
-        }
-    },
-
-    updateChart(data) {
-        if (!data || !data.differences || !data.differences.items) {
-            console.error('Invalid data for chart');
-            return;
-        }
-
-        const items = data.differences.items;
-        
-        // Define fuel types to show (in order)
-        const fuelTypes = [
-            'naturalGas',
-            'wind',
-            'lignite',
-            'importCoal',
-            'fueloil',
-            'geothermal',
-            'dammedHydro',
-            'naphta',
-            'biomass',
-            'river'
-        ];
-
-        // Create traces for each fuel type
-        const traces = fuelTypes.map(fuelType => ({
-            type: 'scatter',
-            mode: 'lines+markers',
-            name: fuelType,
-            x: items.map(item => `${item.date} ${item.hour}`),
-            y: items.map(item => item[fuelType] || 0),
-            hovertemplate: `%{x}<br>${fuelType}: %{y:.2f}<extra></extra>`
-        }));
-
-        // Add total difference trace
-        traces.unshift({
-            type: 'scatter',
-            mode: 'lines+markers',
-            name: 'Total Difference',
-            x: items.map(item => `${item.date} ${item.hour}`),
-            y: items.map(item => item.total),
-            line: { color: 'black', width: 2 },
-            hovertemplate: 'Total: %{y:.2f}<extra></extra>'
-        });
-
-        const layout = {
-            title: 'Generation Comparison by Fuel Type',
-            height: 700,
-            xaxis: {
-                title: 'Date & Hour',
-                tickangle: -45
-            },
-            yaxis: {
-                title: 'Difference (MWh)'
-            },
-            showlegend: true,
-            legend: {
-                orientation: 'h',
-                y: -0.2
-            },
-            hovermode: 'closest'
-        };
-
-        Plotly.newPlot('generation_comparison_chart', traces, layout, this.plotlyConfig);
-    },
-
-    getMaxAndMin(values) {
-        const nonZeroValues = values.filter(val => val !== 0);
-        return {
-            min: nonZeroValues.length > 0 ? Math.min(...nonZeroValues) : 0,
-            max: nonZeroValues.length > 0 ? Math.max(...nonZeroValues) : 0
-        };
-    },
-
-    getTableNumColor(num, minAndMax) {
-        if (num !== 0 && num === minAndMax.min && num !== minAndMax.max) {
-            /* small - soft red */
-            return "rgba(255, 99, 132, 0.3)";  // Red with 30% opacity
-        } else if (num !== 0 && num === minAndMax.max && num !== minAndMax.min) {
-            /* large - stronger green */
-            return "rgba(40, 167, 69, 0.4)";   // Bootstrap success green with 40% opacity
-        } else if (num > 0 && num > minAndMax.min && num < minAndMax.max) {
-            /* between - soft blue */
-            return "rgba(54, 162, 235, 0.25)";  // Blue with 25% opacity
-        } else {
-            return "";
-        }
-    },
-
-    validateDates() {
-        const startDateInput = document.getElementById('comparison_start_date');
-        const endDateInput = document.getElementById('comparison_end_date');
-        const loadButton = document.getElementById('load_comparison_data');
-        
-        if (!startDateInput || !endDateInput) return false;
-
-        const start = new Date(startDateInput.value);
-        const end = new Date(endDateInput.value);
-        const today = new Date();
-        
-        // Clear previous validation styles
-        startDateInput.classList.remove('is-invalid');
-        endDateInput.classList.remove('is-invalid');
-        
-        let isValid = true;
-        let errorMessage = '';
-
-        // Basic validation
-        if (!startDateInput.value || !endDateInput.value) {
-            errorMessage = 'Please select both start and end dates';
-            isValid = false;
-        }
-        // End date should not be in the future
-        else if (end > today) {
-            endDateInput.classList.add('is-invalid');
-            errorMessage = 'End date cannot be in the future';
-            isValid = false;
-        }
-        // Start date should be before end date
-        else if (start > end) {
-            startDateInput.classList.add('is-invalid');
-            endDateInput.classList.add('is-invalid');
-            errorMessage = 'Start date must be before end date';
-            isValid = false;
-        }
-        // Range-specific validations
-        else {
-            const diffInMonths = (end.getFullYear() - start.getFullYear()) * 12 
-                + (end.getMonth() - start.getMonth());
-            
-            // switch (this.currentRange) {
-            //     case 'daily':
-            //     case 'weekly':
-            //     case 'monthly':
-            //         // if (diffInMonths > 3) {
-            //         //     // Don't set isValid to false as we'll handle this in loadData
-            //         // }
-            //         // break;
-            //     case 'yearly':
-            //         // if (diffInMonths < 12) {
-            //         //     errorMessage = 'Yearly view requires at least 12 months of data';
-            //         //     isValid = false;
-            //         // }
-            //         // break;
-            // }
-        }
-
-        // Update UI
-        if (errorMessage) {
-            this.helpers.displayMessage(errorMessage, isValid ? 'info' : 'warning');
-        }
-        
-        // Enable/disable load button
-        if (loadButton) {
-            loadButton.disabled = !isValid;
-        }
-
-        return isValid;
-    },
-
-    cleanup() {
-        // Clear chart if it exists
-        const chartElement = document.getElementById('generation_comparison_chart');
-        if (chartElement) {
-            Plotly.purge(chartElement);
-        }
-    },
-
-    updateDPPTable(items) {
-        const table = document.getElementById('dpp_data_table');
-        if (!table) {
-            console.error('DPP table element not found');
-            return;
-        }
-        
-        const tbody = table.querySelector('tbody');
-        if (!tbody) {
-            console.error('DPP table body not found');
-            return;
-        }
-
-        tbody.innerHTML = '';
-        
-        if (!Array.isArray(items)) {
-            console.error('Invalid DPP items data:', items);
-            return;
-        }
-
-        // Get min and max values for each column
-        const columns = ['toplam', 'dogalgaz', 'ruzgar', 'linyit', 'ithalKomur', 
-                        'fuelOil', 'jeotermal', 'barajli', 'nafta', 'biokutle', 'akarsu'];
-        const columnStats = {};
-        
-        columns.forEach(col => {
-            const values = items.map(item => parseFloat(item[col] || 0));
-            columnStats[col] = this.getMaxAndMin(values);
-        });
-
-        items.forEach(item => {
-            if (!item) return;
-            const formatted = this.formatDateTime(item.date, item.hour);
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${formatted.date}</td>
-                <td>${formatted.hour}</td>
-                <td style="background-color: ${this.getTableNumColor(item.toplam, columnStats.toplam)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.toplam || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.dogalgaz, columnStats.dogalgaz)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.dogalgaz || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.ruzgar, columnStats.ruzgar)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.ruzgar || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.linyit, columnStats.linyit)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.linyit || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.ithalKomur, columnStats.ithalKomur)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.ithalKomur || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.fuelOil, columnStats.fuelOil)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.fuelOil || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.jeotermal, columnStats.jeotermal)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.jeotermal || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.barajli, columnStats.barajli)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.barajli || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.nafta, columnStats.nafta)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.nafta || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.biokutle, columnStats.biokutle)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.biokutle || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.akarsu, columnStats.akarsu)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.akarsu || 0).toFixed(2)}</td>
-            `;
-            tbody.appendChild(row);
-        });
-    },
-
-    updateRealtimeTable(items) {
-        const table = document.getElementById('realtime_data_table');
-        if (!table) {
-            console.error('Realtime table element not found');
-            return;
-        }
-        
-        const tbody = table.querySelector('tbody');
-        if (!tbody) {
-            console.error('Realtime table body not found');
-            return;
-        }
-        
-        tbody.innerHTML = '';
-        
-        if (!Array.isArray(items)) {
-            console.error('Invalid realtime items data:', items);
-            return;
-        }
-
-        // Get min and max values for each column
-        const columns = ['total', 'naturalGas', 'wind', 'lignite', 'importCoal', 
-                        'fueloil', 'geothermal', 'dammedHydro', 'naphta', 'biomass', 'river'];
-        const columnStats = {};
-        
-        columns.forEach(col => {
-            const values = items.map(item => parseFloat(item[col] || 0));
-            columnStats[col] = this.getMaxAndMin(values);
-        });
-        
-        items.forEach(item => {
-            if (!item) return;
-            const formatted = this.formatDateTime(item.date, item.hour);
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${formatted.date}</td>
-                <td>${formatted.hour}</td>
-                <td style="background-color: ${this.getTableNumColor(item.total, columnStats.total)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.total || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.naturalGas, columnStats.naturalGas)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.naturalGas || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.wind, columnStats.wind)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.wind || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.lignite, columnStats.lignite)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.lignite || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.importCoal, columnStats.importCoal)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.importCoal || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.fueloil, columnStats.fueloil)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.fueloil || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.geothermal, columnStats.geothermal)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.geothermal || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.dammedHydro, columnStats.dammedHydro)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.dammedHydro || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.naphta, columnStats.naphta)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.naphta || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.biomass, columnStats.biomass)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.biomass || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.river, columnStats.river)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.river || 0).toFixed(2)}</td>
-            `;
-            tbody.appendChild(row);
-        });
-    },
-
-    updateDifferencesTable(items) {
-        const table = document.getElementById('comparison_differences_table');
-        if (!table) {
-            console.error('Differences table element not found');
-            return;
-        }
-        
-        const tbody = table.querySelector('tbody');
-        if (!tbody) {
-            console.error('Differences table body not found');
-            return;
-        }
-        
-        tbody.innerHTML = '';
-        
-        if (!Array.isArray(items)) {
-            console.error('Invalid differences items data:', items);
-            return;
-        }
-        
-        // Get min and max values for each column
-        const columns = ['total', 'naturalGas', 'wind', 'lignite', 'importCoal', 
-                        'fueloil', 'geothermal', 'dammedHydro', 'naphta', 'biomass', 'river'];
-        const columnStats = {};
-        
-        columns.forEach(col => {
-            const values = items.map(item => parseFloat(item[col] || 0));
-            columnStats[col] = this.getMaxAndMin(values);
-        });
-
-        items.forEach(item => {
-            if (!item) return;
-            
-            const formatted = this.formatDateTime(item.date, item.hour);
-            
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${formatted.date}</td>
-                <td>${formatted.hour}</td>
-                <td style="background-color: ${this.getTableNumColor(item.total, columnStats.total)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.total || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.naturalGas, columnStats.naturalGas)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.naturalGas || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.wind, columnStats.wind)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.wind || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.lignite, columnStats.lignite)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.lignite || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.importCoal, columnStats.importCoal)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.importCoal || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.fueloil, columnStats.fueloil)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.fueloil || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.geothermal, columnStats.geothermal)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.geothermal || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.dammedHydro, columnStats.dammedHydro)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.dammedHydro || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.naphta, columnStats.naphta)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.naphta || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.biomass, columnStats.biomass)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.biomass || 0).toFixed(2)}</td>
-                <td style="background-color: ${this.getTableNumColor(item.river, columnStats.river)}; 
-                           color: #000;
-                           font-weight: 500;">${(item.river || 0).toFixed(2)}</td>
-            `;
-            tbody.appendChild(row);
-        });
-    },
-
-    // Helper method to update all views
-    updateViews(data) {
-        if (!data) return;
-        
-        if (data.dpp?.items) this.updateDPPTable(data.dpp.items);
-        if (data.realtime?.items) this.updateRealtimeTable(data.realtime.items);
-        if (data.differences?.items) this.updateDifferencesTable(data.differences.items);
-        
-        if (document.querySelector('.switch_arg[data-switch="comparison_chart"]').style.display !== 'none') {
-            this.updateChart(data);
-        }
-        
-        this.lastData = data;
-    },
-
-    formatDateTime(date, hour) {
-        // Create a date object and adjust for timezone
-        let dateObj;
-        
-        if (date.includes('T')) {
-            // For ISO format with timezone (e.g., "2024-12-31T00:00:00+03:00")
-            dateObj = new Date(date);
-        } else {
-            // For simple date format (e.g., "2024-12-31")
-            dateObj = new Date(`${date}T00:00:00+03:00`);
-        }
-        
-        // Format the hour
-        let hourFormatted;
-        if (hour) {
-            // If hour is provided directly (e.g., "09:00" or "9")
-            hourFormatted = hour.length <= 2 ? hour.padStart(2, '0') + ':00' : hour;
-        } else if (date.includes('T')) {
-            // Extract hour from ISO timestamp
-            const timePart = date.split('T')[1];
-            hourFormatted = timePart.substring(0, 5); // Gets "HH:mm"
-        } else {
-            // Default to "00:00" if no hour information is available
-            hourFormatted = '00:00';
-        }
-
-        // Format the date (keeping the original date part)
-        const formattedDate = date.includes('T') ? 
-            date.split('T')[0] : 
-            date;
-
-        return {
-            date: formattedDate,
-            hour: hourFormatted
-        };
-    },
-
-    deduplicateItems(items) {
-        const seen = new Set();
-        return items.filter(item => {
-            const key = `${item.date}_${item.hour || item.time || '00:00'}`;
-            if (seen.has(key)) {
-                return false;
-            }
-            seen.add(key);
-            return true;
-        });
-    },
-
-    downloadExcel() {
-        try {
-            if (!this.lastData) {
-                this.helpers.displayMessage("No data available to download", "warning");
+            this.hourly = this.joinHours(plan, actual);
+            if (!this.hourly.length) {
+                this.setStatus(`There is no planned or realtime data between ${range.start} and ${range.end}.`);
                 return;
             }
-
-            // Create workbook
-            const wb = XLSX.utils.book_new();
-
-            // Add DPP Data sheet
-            if (this.lastData.dpp?.items) {
-                const dppWs = XLSX.utils.json_to_sheet(this.lastData.dpp.items.map(item => {
-                    const formatted = this.formatDateTime(item.date, item.hour);
-                    return {
-                        Date: formatted.date,
-                        Hour: formatted.hour,
-                        Total: item.toplam || 0,
-                        "Natural Gas": item.dogalgaz || 0,
-                        Wind: item.ruzgar || 0,
-                        Lignite: item.linyit || 0,
-                        "Import Coal": item.ithalKomur || 0,
-                        "Fuel Oil": item.fuelOil || 0,
-                        Geothermal: item.jeotermal || 0,
-                        "Dammed Hydro": item.barajli || 0,
-                        Naphtha: item.nafta || 0,
-                        Biomass: item.biokutle || 0,
-                        River: item.akarsu || 0
-                    };
-                }));
-                XLSX.utils.book_append_sheet(wb, dppWs, "DPP Data");
-            }
-
-            // Add Realtime Data sheet
-            if (this.lastData.realtime?.items) {
-                const realtimeWs = XLSX.utils.json_to_sheet(this.lastData.realtime.items.map(item => {
-                    const formatted = this.formatDateTime(item.date, item.hour);
-                    return {
-                        Date: formatted.date,
-                        Hour: formatted.hour,
-                        Total: item.total || 0,
-                        "Natural Gas": item.naturalGas || 0,
-                        Wind: item.wind || 0,
-                        Lignite: item.lignite || 0,
-                        "Import Coal": item.importCoal || 0,
-                        "Fuel Oil": item.fueloil || 0,
-                        Geothermal: item.geothermal || 0,
-                        "Dammed Hydro": item.dammedHydro || 0,
-                        Naphtha: item.naphta || 0,
-                        Biomass: item.biomass || 0,
-                        River: item.river || 0
-                    };
-                }));
-                XLSX.utils.book_append_sheet(wb, realtimeWs, "Realtime Data");
-            }
-
-            // Add Differences sheet
-            if (this.lastData.differences?.items) {
-                const differencesWs = XLSX.utils.json_to_sheet(this.lastData.differences.items.map(item => {
-                    const formatted = this.formatDateTime(item.date, item.hour);
-                    return {
-                        Date: formatted.date,
-                        Hour: formatted.hour,
-                        Total: item.total || 0,
-                        "Natural Gas": item.naturalGas || 0,
-                        Wind: item.wind || 0,
-                        Lignite: item.lignite || 0,
-                        "Import Coal": item.importCoal || 0,
-                        "Fuel Oil": item.fueloil || 0,
-                        Geothermal: item.geothermal || 0,
-                        "Dammed Hydro": item.dammedHydro || 0,
-                        Naphtha: item.naphta || 0,
-                        Biomass: item.biomass || 0,
-                        River: item.river || 0
-                    };
-                }));
-                XLSX.utils.book_append_sheet(wb, differencesWs, "Differences");
-            }
-
-            // Generate filename with current date and range
-            const date = new Date().toISOString().split('T')[0];
-            const filename = `generation_comparison_${this.currentRange}_${date}.xlsx`;
-
-            // Save file
-            XLSX.writeFile(wb, filename);
+            this.aggregateAndRender();
+            this.el('download_comparison_excel').disabled = false;
         } catch (error) {
-            console.error("Error downloading Excel:", error);
-            this.helpers.displayMessage("Error generating Excel file", "danger");
+            if (id !== this.requestId) return;
+            console.error('Generation comparison failed:', error);
+            this.setStatus(`The comparison did not load: ${error.message}. Try again, or pick a shorter date range.`, true);
+        } finally {
+            if (id === this.requestId) button.disabled = false;
         }
-    }
-}; 
+    },
+
+    chunks(start, end) {
+        const out = [];
+        let from = new Date(`${start}T00:00:00Z`);
+        const last = new Date(`${end}T00:00:00Z`);
+        while (from <= last) {
+            const to = new Date(Math.min(from.getTime() + (CHUNK_DAYS - 1) * DAY, last.getTime()));
+            out.push([isoDay(from), isoDay(to)]);
+            from = new Date(to.getTime() + DAY);
+        }
+        return out;
+    },
+
+    async fetchChunk(start, end) {
+        const response = await fetch('/api/generation-comparison?range=daily', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start, end }),
+        });
+        let body = null;
+        try { body = await response.json(); } catch (e) { /* non-JSON error page */ }
+        if (!response.ok || body?.code !== 200) {
+            throw new Error(body?.message || `the server answered ${response.status}`);
+        }
+        return body.data;
+    },
+
+    // One row per hour that has both a plan and a realtime value
+    joinHours(planItems, actualItems) {
+        const plan = new Map(planItems.map((d) => [hourKey(d), d]));
+        const actual = new Map(actualItems.map((d) => [hourKey(d), d]));
+        const keys = [...new Set([...plan.keys(), ...actual.keys()])].sort();
+        return keys.map((key) => {
+            const p = plan.get(key);
+            const a = actual.get(key);
+            const row = { key, plan: {}, actual: {}, gap: {} };
+            FUELS.forEach(([fuel, , dppField, rtField, compared]) => {
+                const pv = p ? Number(p[dppField] ?? 0) : null;
+                const av = a ? Number(a[rtField] ?? 0) : null;
+                row.plan[fuel] = pv;
+                row.actual[fuel] = av;
+                row.gap[fuel] = compared && fuel !== 'total' && pv != null && av != null ? av - pv : null;
+            });
+            // Like-for-like total: only the fuels both sources count the same way
+            const sum = (part) => COMPARED.reduce((t, [f]) => (row[part][f] == null ? null : t == null ? null : t + row[part][f]), 0);
+            row.plan.compared = p ? sum('plan') : null;
+            row.actual.compared = a ? sum('actual') : null;
+            row.gap.compared = row.plan.compared != null && row.actual.compared != null ? row.actual.compared - row.plan.compared : null;
+            return row;
+        });
+    },
+
+    aggregateAndRender() {
+        const res = RESOLUTIONS[this.resolution];
+        if (this.resolution === 'hourly') {
+            this.rows = this.hourly;
+        } else {
+            const groups = new Map();
+            this.hourly.forEach((row) => {
+                const k = res.key(row.key);
+                if (!groups.has(k)) groups.set(k, []);
+                groups.get(k).push(row);
+            });
+            this.rows = [...groups].map(([key, rows]) => {
+                const out = { key, plan: {}, actual: {}, gap: {} };
+                ['plan', 'actual', 'gap'].forEach((part) => {
+                    ALL_KEYS.forEach((fuel) => {
+                        const vals = rows.map((r) => r[part][fuel]).filter((v) => v != null);
+                        out[part][fuel] = vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+                    });
+                });
+                return out;
+            });
+        }
+        this.rendered = {};
+        this.setStatus('');
+        this.renderStats();
+        this.el('comparison_views').hidden = false;
+        this.showView(this.view);
+    },
+
+    showView(view) {
+        this.view = view;
+        this.pressed('#comparison_views [data-view]', (b) => b.dataset.view === view);
+        document.querySelectorAll('[data-view-panel]').forEach((p) => { p.hidden = p.dataset.viewPanel !== view; });
+        if (!this.rows || this.rendered[view]) {
+            if (view === 'chart' && this.rows) Plotly.Plots.resize(this.el('generation_comparison_chart'));
+            return;
+        }
+        if (view === 'chart') this.renderChart();
+        if (view === 'gap') this.renderGapTable();
+        if (view === 'tables') {
+            this.renderValueTable('dpp_data_table', 'plan');
+            this.renderValueTable('realtime_data_table', 'actual');
+        }
+        this.rendered[view] = true;
+    },
+
+    mean(part, fuel) {
+        const vals = this.hourly.map((r) => r[part][fuel]).filter((v) => v != null);
+        return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+    },
+
+    renderStats() {
+        const gap = this.mean('gap', 'compared');
+        const fuelGaps = COMPARED
+            .map(([f, label]) => [label, this.mean('gap', f)])
+            .filter(([, v]) => v != null)
+            .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+        const [bigLabel, bigValue] = fuelGaps[0] || ['No data', null];
+        const cls = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '');
+        const stats = this.el('comparison_stats');
+        stats.innerHTML = `
+            <div><dt>Average planned, compared fuels, MW</dt><dd>${mw.format(this.mean('plan', 'compared') ?? 0)}</dd></div>
+            <div><dt>Average realtime, compared fuels, MW</dt><dd>${mw.format(this.mean('actual', 'compared') ?? 0)}</dd></div>
+            <div><dt>Average gap, realtime minus plan</dt><dd class="${cls(gap)}">${gap != null ? `${signed(gap)} MW` : 'No data'}</dd></div>
+            <div><dt>Largest fuel gap: ${bigLabel}</dt><dd class="${cls(bigValue)}">${bigValue != null ? `${signed(bigValue)} MW` : 'No data'}</dd></div>`;
+        stats.hidden = false;
+    },
+
+    xValues() {
+        return this.rows.map((r) => (this.resolution === 'monthly' ? `${r.key}-01` : this.resolution === 'yearly' ? `${r.key}-01-01` : r.key));
+    },
+
+    renderChart() {
+        const x = this.xValues();
+        const plan = this.rows.map((r) => r.plan.compared);
+        const actual = this.rows.map((r) => r.actual.compared);
+        const gap = this.rows.map((r) => r.gap.compared);
+        const bar = this.resolution === 'hourly' ? {} : { mode: 'lines+markers' };
+        const traces = [
+            lineTrace('Planned (DPP)', x, plan, SERIES.plan, bar),
+            lineTrace('Realtime', x, actual, SERIES.actual, bar),
+            {
+                name: 'Gap', x, y: gap, type: 'bar', yaxis: 'y2',
+                marker: { color: gap.map((v) => (v >= 0 ? SERIES.gapUp : SERIES.gapDown)) },
+                hovertemplate: '%{y:+,.0f} MW',
+            },
+        ];
+        const base = baseLayout();
+        const layout = baseLayout({
+            height: 520,
+            yaxis: { ...base.yaxis, title: { text: 'Compared fuels, MW' }, domain: [0.38, 1] },
+            yaxis2: { ...base.yaxis, title: { text: 'Gap, MW' }, domain: [0, 0.28], zeroline: true },
+            xaxis: { ...base.xaxis, anchor: 'y2' },
+            bargap: 0.1,
+        });
+        Plotly.react('generation_comparison_chart', traces, layout, PLOT_CONFIG);
+    },
+
+    rowLabel(key) {
+        if (this.resolution === 'hourly') return key;
+        if (this.resolution === 'monthly') {
+            return new Date(`${key}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+        }
+        return key;
+    },
+
+    renderValueTable(id, part) {
+        const head = `<thead><tr><th scope="col">${RESOLUTIONS[this.resolution].label}</th>${FUELS.map(([, label]) => `<th scope="col" class="num">${label}</th>`).join('')}</tr></thead>`;
+        const body = this.rows.map((r) => `<tr><td>${this.rowLabel(r.key)}</td>${FUELS.map(([f]) => `<td class="num">${r[part][f] != null ? fmt.format(r[part][f]) : ''}</td>`).join('')}</tr>`).join('');
+        this.el(id).innerHTML = head + `<tbody>${body}</tbody>`;
+    },
+
+    renderGapTable() {
+        const maxAbs = {};
+        GAP_FUELS.forEach(([f]) => {
+            maxAbs[f] = Math.max(1, ...this.rows.map((r) => Math.abs(r.gap[f] ?? 0)));
+        });
+        const cell = (f, v) => {
+            if (v == null) return '<td class="num"></td>';
+            const a = (0.08 + 0.37 * Math.min(1, Math.abs(v) / maxAbs[f])).toFixed(2);
+            const cls = v > 0 ? 'gap-pos' : v < 0 ? 'gap-neg' : '';
+            return `<td class="num ${cls}" style="--a:${a}">${signed(v)}</td>`;
+        };
+        const head = `<thead><tr><th scope="col">${RESOLUTIONS[this.resolution].label}</th>${GAP_FUELS.map(([, label]) => `<th scope="col" class="num">${label}</th>`).join('')}</tr></thead>`;
+        const body = this.rows.map((r) => `<tr><td>${this.rowLabel(r.key)}</td>${GAP_FUELS.map(([f]) => cell(f, r.gap[f])).join('')}</tr>`).join('');
+        this.el('comparison_differences_table').innerHTML = head + `<tbody>${body}</tbody>`;
+    },
+
+    async downloadExcel() {
+        if (!this.rows) return;
+        try {
+            const XLSX = await loadXLSX();
+            const sheet = (part, fuels) => XLSX.utils.json_to_sheet(this.rows.map((r) => {
+                const out = { [RESOLUTIONS[this.resolution].label]: this.rowLabel(r.key) };
+                fuels.forEach(([f, label]) => { out[label] = r[part][f] != null ? Math.round(r[part][f] * 100) / 100 : null; });
+                return out;
+            }));
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, sheet('plan', FUELS), 'Planned (DPP)');
+            XLSX.utils.book_append_sheet(wb, sheet('actual', FUELS), 'Realtime');
+            XLSX.utils.book_append_sheet(wb, sheet('gap', GAP_FUELS), 'Gap');
+            const { start, end } = this.validRange();
+            XLSX.writeFile(wb, `generation_comparison_${this.resolution}_${start}_${end}.xlsx`);
+        } catch (error) {
+            console.error('Excel export failed:', error);
+            this.helpers.displayMessage('The Excel file could not be created. Try again in a moment.', 'danger');
+        }
+    },
+};

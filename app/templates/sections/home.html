@@ -1,0 +1,44 @@
+<header class="market-header">
+    <h1>Welcome to the RWE Dashboard</h1>
+    <p class="market-lead">Turkish power market data for trading and analysis: prices, planned and realtime generation, hydro, merit order and forecasts, mostly from the EPIAS transparency platform. Start with the latest prices below, or pick a tab from the list further down or the sidebar.</p>
+</header>
+
+<section class="panel price-day" aria-labelledby="price-day-title">
+    <div class="price-day-head">
+        <div>
+            <h2 id="price-day-title">System marginal price by hour</h2>
+            <p class="price-day-coverage" id="market-coverage">Loading the latest EPIAS data.</p>
+        </div>
+        <dl class="price-day-stats" id="price-day-stats"></dl>
+    </div>
+    <ol class="price-strip" id="price-strip" aria-label="System marginal price for each hour"></ol>
+    <div class="price-strip-scale" aria-hidden="true">
+        <span>Low</span><span class="ramp"></span><span>High for the day</span>
+    </div>
+</section>
+
+<div class="mini-tables-section">
+    <div id="order-summary-table"></div>
+    <div id="smp-table"></div>
+    <div id="pfc-table"></div>
+    <div id="sfc-table"></div>
+</div>
+
+<section class="panel" aria-labelledby="tab-index-title">
+    <h2 id="tab-index-title" class="tab-index-title">What is in the dashboard</h2>
+    <div class="tab-index">
+        {% for group in nav_groups if group.label %}
+        <nav aria-label="{{ group.label }}">
+            <h3>{{ group.label }}</h3>
+            <ul>
+                {% for section in group.sections %}
+                <li>
+                    <a href="#{{ section.id }}" data-section="{{ section.id }}">{{ section.label }}</a>
+                    <p>{{ section.description }}</p>
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
+        {% endfor %}
+    </div>
+</section>

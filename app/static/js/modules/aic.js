@@ -1,212 +1,133 @@
+// AIC tab: available installed capacity vs planned (DPP) and realtime generation, from
+// /get_aic_data?range=week|month|year|5year. Loads the last 7 days on first visit.
+import { SERIES, baseLayout, PLOT_CONFIG, lineTrace, mw, pct } from '../utils/plot-theme.js';
+
+const RANGE_LABELS = {
+    week: 'the last 7 days',
+    month: 'the last 30 days',
+    year: 'the last 12 months',
+    '5year': 'the last 5 years',
+};
+
+// "2026-10-15T00:00:00+03:00" + "05:00" -> "2026-10-15 05:00" (Istanbul wall time, no TZ shift)
+function hourKey(date, hour) {
+    return `${date.slice(0, 10)} ${hour}`;
+}
+
+function average(values) {
+    return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
+}
+
 export const aic = {
-    // Add properties to store helper functions
-    toggleLoading: null,
-    displayMessage: null,
-    toggleButtonLoading: null,
+    range: null,
+    requestId: 0,
+    bound: false,
 
-    // Initialize with helper functions
     setup(helpers) {
-        if (!helpers) {
-            console.error('No helpers provided to AIC module');
-            return;
-        }
-        this.toggleLoading = helpers.toggleLoading;
-        this.displayMessage = helpers.displayMessage;
-        this.toggleButtonLoading = helpers.toggleButtonLoading;
+        this.helpers = helpers;
+    },
 
-        // Verify helpers are properly set
-        if (!this.toggleButtonLoading) {
-            console.error('toggleButtonLoading helper not properly set');
+    // Runs every time the tab opens
+    init() {
+        if (!this.bound) {
+            document.querySelectorAll('.aic-range-btn').forEach((button) => {
+                button.addEventListener('click', () => this.loadAICData(button.dataset.range));
+            });
+            this.bound = true;
         }
+        if (!this.range) {
+            this.loadAICData('week');
+        } else {
+            const chart = document.getElementById('aic_realtime_chart');
+            if (chart && !chart.hidden) Plotly.Plots.resize(chart);
+        }
+    },
+
+    setStatus(text, isError = false) {
+        const status = document.getElementById('aic_status');
+        if (!status) return;
+        status.hidden = !text;
+        status.classList.toggle('is-error', isError);
+        status.innerHTML = text ? `<p>${text}</p>` : '';
     },
 
     async loadAICData(range = 'week') {
-        const button = document.querySelector(`.aic-range-btn[data-range="${range}"]`);
+        this.range = range;
+        const id = ++this.requestId;
+        document.querySelectorAll('.aic-range-btn').forEach((b) => {
+            b.setAttribute('aria-pressed', String(b.dataset.range === range));
+        });
+
+        const chart = document.getElementById('aic_realtime_chart');
+        const stats = document.getElementById('aic_stats');
+        chart.hidden = true;
+        stats.hidden = true;
+        this.setStatus(`Loading ${RANGE_LABELS[range]}. Longer periods can take up to a minute.`);
+
         try {
-            if (!this.toggleButtonLoading) {
-                console.error('toggleButtonLoading helper not available');
+            const response = await fetch(`/get_aic_data?range=${encodeURIComponent(range)}`);
+            if (!response.ok) throw new Error(`the server answered ${response.status}`);
+            const result = await response.json();
+            if (id !== this.requestId) return; // a newer range was picked meanwhile
+
+            const data = result.data;
+            if (result.code !== 200 || !data?.aic || !data?.realtime || !data?.dpp) {
+                this.setStatus(`There is no AIC data for ${RANGE_LABELS[range]}. Try a shorter period.`);
                 return;
             }
 
-            console.log('Loading AIC data for range:', range);
-            this.toggleButtonLoading(button, true);
-
-            const response = await fetch(`/get_aic_data?range=${range}`);
-            const result = await response.json();
-            console.log('AIC data received:', result);
-
-            if (result.code === 200 && result.data &&
-                result.data.aic && result.data.realtime && result.data.dpp) {
-                console.log('Processing generation data:', {
-                    aic: result.data.aic.length,
-                    realtime: result.data.realtime.length,
-                    dpp: result.data.dpp.length
-                });
-                this.displayAICChart(result.data);
-                this.updateButtonState(range);
-            } else {
-                console.error('Failed to load generation data:', result.message || 'No data received');
-                this.displayMessage("No data available for the selected period", "warning");
+            const series = this.buildSeries(data);
+            if (!series.x.length) {
+                this.setStatus(`There is no AIC data for ${RANGE_LABELS[range]}. Try a shorter period.`);
+                return;
             }
+
+            this.setStatus('');
+            chart.hidden = false;
+            this.renderStats(series);
+            this.renderChart(series);
         } catch (error) {
-            console.error('Error loading generation data:', error);
-            this.displayMessage("Error loading generation data", "danger");
-        } finally {
-            this.toggleButtonLoading(button, false);
+            if (id !== this.requestId) return;
+            console.error('AIC load failed:', error);
+            this.setStatus(`AIC data for ${RANGE_LABELS[range]} did not load: ${error.message}. Pick the period again to retry.`, true);
         }
     },
 
-    updateButtonState(range) {
-        // Remove active state from all buttons
-        document.querySelectorAll('.aic-range-btn').forEach(btn => {
-            btn.classList.remove('btn-primary');
-            btn.classList.add('btn-outline-primary');
-        });
-        // Add active state to selected button
-        const activeBtn = document.querySelector(`.aic-range-btn[data-range="${range}"]`);
-        if (activeBtn) {
-            activeBtn.classList.remove('btn-outline-primary');
-            activeBtn.classList.add('btn-primary');
-        }
+    buildSeries(data) {
+        const aicByHour = new Map(data.aic.map((d) => [hourKey(d.date, d.time), d.toplam]));
+        const dppByHour = new Map(data.dpp.map((d) => [hourKey(d.date, d.time), d.toplam]));
+        const rtByHour = new Map(data.realtime.map((d) => [hourKey(d.date, d.hour), d.total]));
+        const x = [...new Set([...aicByHour.keys(), ...dppByHour.keys(), ...rtByHour.keys()])].sort();
+        const pick = (map) => x.map((k) => (map.has(k) ? map.get(k) : null));
+        return { x, aic: pick(aicByHour), dpp: pick(dppByHour), realtime: pick(rtByHour) };
     },
 
-    displayAICChart(data) {
-        console.log('Displaying generation chart with data');
+    renderStats({ x, aic, realtime }) {
+        const both = (a, b) => a.map((v, i) => [v, b[i]]).filter(([p, q]) => p != null && q != null);
+        const rtVsAic = both(realtime, aic);
+        const headroom = x.map((t, i) => [t, aic[i] != null && realtime[i] != null ? aic[i] - realtime[i] : null])
+            .filter(([, h]) => h != null)
+            .sort((a, b) => a[1] - b[1])[0];
+        const avgAic = average(aic.filter((v) => v != null));
+        const avgRt = average(realtime.filter((v) => v != null));
+        const usage = rtVsAic.length ? average(rtVsAic.map(([r]) => r)) / average(rtVsAic.map(([, c]) => c)) : null;
 
-        // Process data for plotting
-        const dates = [...new Set([
-            ...data.aic.map(item => item.date.split('T')[0]),
-            ...data.realtime.map(item => item.date.split('T')[0]),
-            ...data.dpp.map(item => item.date.split('T')[0])
-        ])].sort();
+        const stats = document.getElementById('aic_stats');
+        stats.innerHTML = `
+            <div><dt>Average available capacity, MW</dt><dd>${avgAic != null ? mw.format(avgAic) : 'No data'}</dd></div>
+            <div><dt>Average realtime generation, MW</dt><dd>${avgRt != null ? mw.format(avgRt) : 'No data'}</dd></div>
+            <div><dt>Realtime as a share of capacity</dt><dd>${usage != null ? pct.format(usage) : 'No data'}</dd></div>
+            <div><dt>${headroom ? `Smallest headroom, MW, at ${headroom[0]}` : 'Smallest headroom, MW'}</dt><dd>${headroom ? mw.format(headroom[1]) : 'No data'}</dd></div>`;
+        stats.hidden = false;
+    },
 
-        const hours = [...new Set([
-            ...data.aic.map(item => item.time),
-            ...data.realtime.map(item => item.hour),
-            ...data.dpp.map(item => item.time)
-        ])].sort();
-
-        // Create x-axis labels combining date and hour
-        const xLabels = [];
-        const aicValues = [];
-        const realtimeValues = [];
-        const dppValues = [];
-
-        dates.forEach(date => {
-            hours.forEach(hour => {
-                const aicPoint = data.aic.find(d =>
-                    d.date.startsWith(date) && d.time === hour
-                );
-                const realtimePoint = data.realtime.find(d =>
-                    d.date.startsWith(date) && d.hour === hour
-                );
-                const dppPoint = data.dpp.find(d =>
-                    d.date.startsWith(date) && d.time === hour
-                );
-
-                if (aicPoint || realtimePoint || dppPoint) {
-                    xLabels.push(`${date} ${hour}`);
-                    aicValues.push(aicPoint ? aicPoint.toplam || 0 : null);
-                    realtimeValues.push(realtimePoint ? realtimePoint.total || 0 : null);
-                    dppValues.push(dppPoint ? dppPoint.toplam || 0 : null);
-                }
-            });
-        });
-
+    renderChart({ x, aic, dpp, realtime }) {
         const traces = [
-            {
-                name: 'AIC Total',
-                x: xLabels,
-                y: aicValues,
-                type: 'scatter',
-                mode: 'lines+markers',
-                line: { color: '#1f77b4', width: 2 },
-                marker: { size: 4 }
-            },
-            {
-                name: 'Realtime Total',
-                x: xLabels,
-                y: realtimeValues,
-                type: 'scatter',
-                mode: 'lines+markers',
-                line: { color: '#ff7f0e', width: 2 },
-                marker: { size: 4 }
-            },
-            {
-                name: 'DPP Total',
-                x: xLabels,
-                y: dppValues,
-                type: 'scatter',
-                mode: 'lines+markers',
-                line: { color: '#2ca02c', width: 2 },
-                marker: { size: 4 }
-            }
+            lineTrace('Available capacity (AIC)', x, aic, SERIES.capacity),
+            lineTrace('Planned (DPP)', x, dpp, SERIES.plan),
+            lineTrace('Realtime', x, realtime, SERIES.actual),
         ];
-
-        const layout = {
-            title: 'Generation Comparison (AIC vs Realtime vs DPP)',
-            xaxis: {
-                title: 'Date & Hour',
-                tickangle: -45,
-                tickfont: { size: 10 },
-                nticks: 24
-            },
-            yaxis: {
-                title: 'Generation (MW)',
-                rangemode: 'tozero'
-            },
-            showlegend: true,
-            legend: {
-                x: 1,
-                xanchor: 'right',
-                y: 1
-            },
-            margin: {
-                b: 100,
-                l: 80,
-                r: 50,
-                t: 50
-            },
-            hovermode: 'closest',
-            plot_bgcolor: '#ffffff',
-            paper_bgcolor: '#ffffff',
-            width: null,
-            height: 700
-        };
-
-        const config = {
-            responsive: true,
-            displayModeBar: true,
-            displaylogo: false,
-            modeBarButtonsToRemove: ['lasso2d', 'select2d']
-        };
-
-        try {
-            Plotly.newPlot('aic_realtime_chart', traces, layout, config);
-        } catch (error) {
-            console.error('Error creating chart:', error);
-            this.displayMessage("Error displaying chart", "danger");
-        }
+        const layout = baseLayout({ height: 460, yaxis: { ...baseLayout().yaxis, title: { text: 'MW' }, rangemode: 'tozero' } });
+        Plotly.react('aic_realtime_chart', traces, layout, PLOT_CONFIG);
     },
-
-    cleanup() {
-        // Clear chart if it exists
-        const chartElement = document.getElementById('aic_realtime_chart');
-        if (chartElement) {
-            Plotly.purge(chartElement);
-        }
-    },
-
-    init() {
-        console.log('Initializing AIC module');
-        this.cleanup(); // Clean up before initializing
-        // Add click handlers for range buttons
-        document.querySelectorAll('.aic-range-btn').forEach(button => {
-            button.addEventListener('click', () => {
-                const range = button.dataset.range;
-                console.log('Range button clicked:', range);
-                this.loadAICData(range);
-            });
-        });
-    }
 };

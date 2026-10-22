@@ -38,23 +38,36 @@ export function toggleLoading(display = true) {
     }
 }
 
+// One message area for the whole app (#alert_messages in base.html). Errors and warnings stay
+// until dismissed or the tab changes; success and info notes clear themselves.
+const STATUS_ALIASES = { error: "danger" };
+let messageTimer = null;
+
 export function displayMessage(message = null, status = "danger", selector = "#alert_messages") {
-    if (message && typeof message === "string") {
-        $(selector).html(`
-            <div class="alert alert-${status} alert-dismissible fade show m-0 mb-2">
-                <button type="button" class="close" data-dismiss="alert">&times;</button>
-                <div class="m-0 p-0">${message}</div>
-            </div>`);
-    } else {
-        $(selector).html("");
+    const box = document.querySelector(selector);
+    if (!box) return;
+    clearTimeout(messageTimer);
+    if (!message || typeof message !== "string") {
+        box.innerHTML = "";
+        return;
+    }
+    const type = STATUS_ALIASES[status] || status;
+    const urgent = type === "danger" || type === "warning";
+    box.innerHTML = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="${urgent ? "alert" : "status"}">
+            <div>${message}</div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Dismiss"></button>
+        </div>`;
+    if (!urgent) {
+        messageTimer = setTimeout(() => { box.innerHTML = ""; }, 6000);
     }
 }
 
 export function isInvalidDuration(start, end) {
     if (!(start && end)) {
-        return "Please select start and end date to load organizations.";
+        return "Set both dates first.";
     } else if (new Date(start).getTime() > new Date(end).getTime()) {
-        return "End Date must be bigger than Start Date.";
+        return "The end date is before the start date. Swap them and try again.";
     } else {
         return "";
     }
@@ -168,4 +181,25 @@ export function toggleButtonLoading(buttonSelector, isLoading = true) {
         button.prop('disabled', false);
         button.removeAttr('data-original-text');
     }
+}
+
+// SheetJS is only needed for Excel downloads, so it loads on first use
+const XLSX_SRC = "https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js";
+let xlsxPromise = null;
+
+export function loadXLSX() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (!xlsxPromise) {
+        xlsxPromise = new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = XLSX_SRC;
+            script.onload = () => resolve(window.XLSX);
+            script.onerror = () => {
+                xlsxPromise = null;
+                reject(new Error("Could not load the Excel library"));
+            };
+            document.head.appendChild(script);
+        });
+    }
+    return xlsxPromise;
 }

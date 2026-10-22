@@ -1,0 +1,75 @@
+{% include 'partials/page_head.html' %}
+
+<div class="container-fluid px-0">
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="form-group">
+                <label for="heatmap_date">Date</label>
+                <input type="date" id="heatmap_date" class="form-control">
+            </div>
+        </div>
+        <div class="col-md-4 d-flex align-items-end gap-2">
+            <button id="load_heatmap" class="btn btn-primary position-relative" style="min-width: 120px;">
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                <span class="button-content">Load Heatmap</span>
+            </button>
+            <button id="toggle_realtime" class="btn btn-secondary" style="min-width: 120px;" disabled>
+                Show Realtime
+            </button>
+        </div>
+    </div>
+    <div class="row">
+        <!-- Heatmap Container (initially hidden) -->
+        <div id="heatmap_container" class="col-12" style="display: none;">
+            <!-- First Version Heatmap -->
+            <div class="mb-4">
+                <h5 class="text-center">Natural Gas DPP First Version</h5>
+                <div id="generation_heatmap_first_version"></div>
+            </div>
+            <!-- Current Version Heatmap -->
+            <div class="mb-4">
+                <h5 class="text-center">Natural Gas DPP Final Version</h5>
+                <div id="generation_heatmap_current"></div>
+            </div>
+            <!-- Difference Heatmap (Final - First) -->
+            <div class="mb-4">
+                <h5 class="text-center">Natural Gas DPP Difference (Final - First)</h5>
+                <div id="generation_heatmap_difference"></div>
+            </div>
+            <!-- Realtime Values -->
+            <div class="mb-4" style="display: none;">
+                <h5 class="text-center">Realtime Generation Values</h5>
+                <div id="generation_heatmap_realtime"></div>
+            </div>
+            <!-- Difference Heatmap (Realtime - Final) -->
+            <div class="mb-4" style="display: none;">
+                <h5 class="text-center">Difference (Realtime - Final)</h5>
+                <div id="generation_heatmap_realtime_difference"></div>
+            </div>
+
+            <!-- NEW: Date Comparison Section -->
+            <div class="mb-4">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="comparison_date">Compare with</label>
+                            <input type="date" id="comparison_date" class="form-control">
+                        </div>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button id="load_comparison" class="btn btn-primary position-relative" style="min-width: 140px;">
+                            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            <span class="button-content">Compare Dates</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Date Comparison Results (initially hidden) -->
+                <div id="comparison_container" style="display: none;">
+                    <h5 class="text-center">Date Comparison (First Version Only)</h5>
+                    <div id="generation_heatmap_date_comparison"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

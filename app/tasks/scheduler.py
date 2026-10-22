@@ -318,6 +318,44 @@ def update_hydro_map_data(app):
         raise
 
 
+# CAO chart data: (service module, sync function, start of stored history).
+# Every run adds missing hours and overwrites changed ones, so windows may overlap.
+SYNC_DATASETS = {
+    'demand': ('demand_sync', 'sync_demand', (2024, 1, 1)),
+    'production': ('production_sync', 'sync_production', (2016, 1, 1)),
+    'solar': ('solar_sync', 'sync_solar', (2020, 5, 1)),
+}
+
+# How far back each sync looks. EPIAS revises realtime consumption and generation for
+# weeks: an October 2025 month was still changing 34+ days after it ended, while
+# months 65+ days old matched. The nightly window doubles that; the monthly run
+# re-checks all history so a rare very late revision is still picked up.
+# Meteologica forecast archives never change once written, so solar only needs to
+# catch files that arrive late: its archive runs about a day and a half behind.
+DEMAND_HOURLY_DAYS = 2
+DEMAND_NIGHTLY_DAYS = 120
+PRODUCTION_HOURLY_DAYS = 2
+PRODUCTION_NIGHTLY_DAYS = 120
+SOLAR_RECENT_DAYS = 4
+SOLAR_WEEKLY_DAYS = 40
+
+
+def sync_job(app, dataset, days=None):
+    """Sync one CAO dataset for the last `days` days, or all its history if None."""
+    try:
+        with app.app_context():
+            import importlib
+            module, func, history_start = SYNC_DATASETS[dataset]
+            sync = getattr(importlib.import_module(f'..services.{module}', __package__), func)
+            today = datetime.now(timezone('Europe/Istanbul')).date()
+            start = today - timedelta(days=days) if days else datetime(*history_start).date()
+            stats = sync(start, today, pause=1) if dataset == 'solar' else sync(start, today)
+            app.logger.info(f"{dataset} sync {start}..{today}: {stats}")
+    except Exception as e:
+        app.logger.error(f"Error in {dataset} sync job: {str(e)}")
+        raise
+
+
 def init_scheduler(app):
     """Initialize the scheduler with proper timezone and error handling"""
     tz = timezone('Europe/Istanbul')
@@ -403,6 +441,42 @@ def init_scheduler(app):
         max_instances=1,
         misfire_grace_time=3600  # long job; allow a late start
     )
+
+    # CAO chart data. EPIAS jobs are staggered so they never share a minute:
+    # - demand: hourly 1-2 requests; nightly 120 days, 5 requests; monthly all history
+    #   from 2024, about 35 requests
+    # - production: the same windows; EPIAS takes 10-20 s per month here, so the
+    #   monthly run over history from 2016 takes 30-45 minutes at a quiet hour
+    # - solar: Meteologica, one 5-8 MB archive per month per table
+    for job_id, trigger, dataset, days, name in (
+        ('demand_sync_hourly', CronTrigger(minute=20, timezone=tz), 'demand', DEMAND_HOURLY_DAYS,
+         'Sync demand with EPIAS hourly at :20'),
+        ('demand_sync_nightly', CronTrigger(hour=3, minute=40, timezone=tz), 'demand', DEMAND_NIGHTLY_DAYS,
+         'Re-check 120 days of demand for EPIAS revisions at 03:40'),
+        ('demand_sync_monthly', CronTrigger(day=2, hour=4, minute=10, timezone=tz), 'demand', None,
+         'Re-check all demand history on the 2nd of each month at 04:10'),
+        ('production_sync_hourly', CronTrigger(minute=24, timezone=tz), 'production', PRODUCTION_HOURLY_DAYS,
+         'Sync generation with EPIAS hourly at :24'),
+        ('production_sync_nightly', CronTrigger(hour=3, minute=50, timezone=tz), 'production', PRODUCTION_NIGHTLY_DAYS,
+         'Re-check 120 days of generation for EPIAS revisions at 03:50'),
+        ('production_sync_monthly', CronTrigger(day=3, hour=2, minute=30, timezone=tz), 'production', None,
+         'Re-check all generation history on the 3rd of each month at 02:30'),
+        ('solar_sync_recent', CronTrigger(hour='2,8,14,20', minute=27, timezone=tz), 'solar', SOLAR_RECENT_DAYS,
+         'Sync solar with Meteologica every six hours at :27'),
+        ('solar_sync_weekly', CronTrigger(day_of_week='sun', hour=5, minute=10, timezone=tz), 'solar', SOLAR_WEEKLY_DAYS,
+         'Re-check 40 days of solar on Sundays at 05:10'),
+    ):
+        scheduler.add_job(
+            sync_job,
+            trigger=trigger,
+            id=job_id,
+            name=name,
+            args=[app, dataset, days],
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=900
+        )
 
     # Schedule daily email report (runs at 16:10 every day)
     email_report = CronTrigger(hour=16, minute=10, timezone=tz)

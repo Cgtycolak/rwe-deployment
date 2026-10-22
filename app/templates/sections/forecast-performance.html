@@ -1,0 +1,47 @@
+{% include 'partials/page_head.html' %}
+
+<div class="container-fluid">
+    <div class="toolbar">
+        <div class="field">
+            <label for="forecast_horizon">Horizon</label>
+            <select id="forecast_horizon" class="form-select form-select-sm">
+                <option value="d+1" selected>Day ahead (D+1)</option>
+                <option value="d+2">Two days ahead (D+2)</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="performance_period">Period</label>
+            <select id="performance_period" class="form-select form-select-sm">
+                <option value="7" selected>Last 7 days</option>
+                <option value="14">Last 14 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="60">Last 60 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="custom">Custom dates</option>
+            </select>
+        </div>
+        <div class="field" id="custom_date_range" style="display: none;">
+            <label for="performance_start_date">From</label>
+            <input type="date" id="performance_start_date" class="form-control form-control-sm">
+        </div>
+        <div class="field" id="custom_date_range_end" style="display: none;">
+            <label for="performance_end_date">To</label>
+            <input type="date" id="performance_end_date" class="form-control form-control-sm">
+        </div>
+        <button id="load_forecast_performance" class="btn btn-primary btn-sm">
+            <span class="button-content">Show performance</span>
+            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+        </button>
+        <button id="download_performance_chart" class="btn btn-outline-secondary btn-sm push" disabled>Download chart</button>
+        <button id="download_performance_excel" class="btn btn-outline-secondary btn-sm" disabled>Download Excel</button>
+    </div>
+
+    <div id="performance_loading" class="placeholder-note" style="display: none;"><p>Loading forecasts and realised prices.</p></div>
+    <div id="forecast_performance_chart" class="chart-frame"></div>
+
+    <section id="performance_metrics" class="performance-metrics" style="display: none;" aria-labelledby="performance-metrics-title">
+        <h3 id="performance-metrics-title">Accuracy over the period</h3>
+        <p class="text-muted small">Lower WMAPE and RMSE are better; R² closer to 1 is better. The best value in each column is marked.</p>
+        <div id="performance_metrics_table" class="table-responsive"></div>
+    </section>
+</div>

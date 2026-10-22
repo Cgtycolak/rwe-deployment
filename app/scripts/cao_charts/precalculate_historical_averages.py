@@ -7,7 +7,7 @@ from datetime import datetime
 
 # Add the parent directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(os.path.dirname(current_dir))
+parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
 sys.path.append(parent_dir)
 
 from app.factory import create_app
@@ -19,17 +19,18 @@ def precalculate_historical_averages():
     with app.app_context():
         print("Fetching production data...")
         
-        # Get all production data up to the end of 2025
-        cutoff_date = datetime(2026, 1, 1)
+        # Full years 2016-2025. production_data also holds a few hours of 2015-12-31,
+        # which would otherwise form a one-day "2015" year in the ranges.
         data = db.session.query(ProductionData).filter(
-            ProductionData.datetime < cutoff_date
+            ProductionData.datetime >= datetime(2016, 1, 1),
+            ProductionData.datetime < datetime(2026, 1, 1)
         ).order_by(ProductionData.datetime).all()
         
         print(f"Processing {len(data)} historical records...")
         
         # Convert to DataFrame with timezone handling
         df = pd.DataFrame([{
-            'datetime': d.datetime.astimezone(pytz.UTC),  # Convert to UTC
+            'datetime': d.datetime,
             'fueloil': d.fueloil,
             'gasoil': d.gasoil,
             'blackcoal': d.blackcoal,
@@ -51,13 +52,12 @@ def precalculate_historical_averages():
             'wasteheat': d.wasteheat
         } for d in data])
         
-        # Convert datetime to pandas datetime with UTC timezone
-        df['datetime'] = pd.to_datetime(df['datetime'], utc=True)
+        # production_data holds naive Istanbul time. (astimezone() on a naive value
+        # would assume the machine's own zone: right on a laptop in Turkey, 3 hours
+        # off on a UTC server.)
+        df['datetime'] = pd.to_datetime(df['datetime'])
         df = df.set_index('datetime')
-        
-        # Convert to local time (Istanbul)
-        istanbul_tz = pytz.timezone('Europe/Istanbul')
-        df.index = df.index.tz_convert(istanbul_tz)
+        df.index = df.index.tz_localize('Europe/Istanbul')
         
         # For the base historical averages, we use 'sun' column directly
         # (Combined solar data is handled separately in generate_combined_historical_averages.py)

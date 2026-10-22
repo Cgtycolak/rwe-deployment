@@ -1,0 +1,30 @@
+{% include 'partials/page_head.html' %}
+
+<div class="container-fluid">
+    <aside class="method-note" aria-labelledby="gasgm-method-title">
+        <h3 id="gasgm-method-title">How these expectations are built</h3>
+        <ul>
+            <li>Price (MCP) forecasts for the first 14 days come from Meteologica XTraders; later days use an internal model.</li>
+            <li>Interest income weights each day by its distance from the interest date.</li>
+            <li>Interest consumption, next to the gas chart title, is the extra gas expected because of interest prices. Interest revenue, next to the margin chart title, is the extra revenue expected from total gas consumption.</li>
+        </ul>
+    </aside>
+    <div class="row gy-2">
+        <div class="col-12 ata-embed">
+            <h2 class="mb-3">Gas Consumption</h2>
+            <div class="card">
+                <div class="card-body">
+                    <iframe class="ata-iframe" title="Gas consumption chart" data-src="{{ url_for('main.report', name='mtd_gc.html') }}"></iframe>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 ata-embed">
+            <h2 class="mb-3 mt-0">Gross Margin</h2>
+            <div class="card">
+                <div class="card-body">
+                    <iframe class="ata-iframe" title="Gross margin chart" data-src="{{ url_for('main.report', name='mtd_gm.html') }}"></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

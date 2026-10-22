@@ -1,0 +1,792 @@
+/* App shell: design tokens, the RWE font, sidebar, layout, home page and error pages. */
+
+:root {
+    /* Colour */
+    --ink: #1B2B3A;          /* sidebar, table headers */
+    --ink-raised: #253A4E;   /* sidebar header, hovered nav item */
+    --text: #1F2933;
+    --text-muted: #5B6B7A;
+    --text-on-ink: #E6ECF1;
+    --text-on-ink-muted: #9FB0C0;
+    --paper: #EEF1F4;        /* app background */
+    --surface: #FFFFFF;
+    --rule: #D5DCE3;
+    --accent: #1F5F99;       /* interaction, and the top of the price scale */
+    --accent-strong: #174A78;
+    --accent-soft: #E3EDF6;
+    --load: #2C7A5B;
+    --deload: #B4532A;
+    --focus: 0 0 0 3px rgba(31, 95, 153, 0.35);
+
+    /* Type scale (1.25 ratio from 16px) */
+    --fs-xs: 0.75rem;
+    --fs-sm: 0.875rem;
+    --fs-md: 1rem;
+    --fs-lg: 1.25rem;
+    --fs-xl: 1.75rem;
+    --fs-xxl: 2.5rem;
+
+    /* Space and shape */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 24px;
+    --sp-6: 32px;
+    --radius: 6px;
+
+    --sidebar-width: 264px;
+    --sidebar-collapsed: 60px;
+    --header-height: 60px;
+
+    /* Kept for older section CSS */
+    --primary-color: var(--ink);
+    --secondary-color: var(--ink-raised);
+    --text-light: var(--text-on-ink);
+    --hover-color: var(--accent);
+}
+
+@font-face {
+    font-family: 'RWE Sans Web';
+    src: url("../fonts/rwe-sans-web/RWE%20Sans%20Web.otf") format('opentype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'RWE Sans Web';
+    src: url("../fonts/rwe-sans-web/RWE%20Sans%20Web%20Medium.otf") format('opentype');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'RWE Sans Web';
+    src: url("../fonts/rwe-sans-web/RWE%20Sans%20Web%20Bold.otf") format('opentype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+}
+
+html,
+body, button, input, select, textarea, .plotly-graph-div text {
+    font-family: 'RWE Sans Web', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+body {
+    min-height: 100vh;
+    background-color: var(--paper);
+    color: var(--text);
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 500;
+    color: var(--text);
+}
+
+a {
+    color: var(--accent);
+}
+
+:focus-visible {
+    outline: none;
+    box-shadow: var(--focus);
+}
+
+/* ---------- Sidebar ---------- */
+
+.sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: var(--sidebar-width);
+    background-color: var(--ink);
+    z-index: 1000;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-bottom: var(--sp-5);
+    transition: width 0.2s ease;
+}
+
+.sidebar-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    height: var(--header-height);
+    padding: 0 var(--sp-2) 0 var(--sp-4);
+    background-color: var(--ink-raised);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.sidebar-header h1 {
+    margin: 0;
+    font-size: var(--fs-md);
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.home-link,
+.home-link:hover {
+    color: var(--text-on-ink);
+    text-decoration: none;
+}
+
+.sidebar-controls {
+    display: flex;
+    gap: var(--sp-1);
+}
+
+.toggle-sidebar,
+.logout-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    color: var(--text-on-ink-muted);
+    background: none;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.toggle-sidebar:hover,
+.logout-btn:hover {
+    color: var(--text-on-ink);
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.nav-category {
+    padding: var(--sp-5) var(--sp-4) var(--sp-1);
+    color: var(--text-on-ink-muted);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+}
+
+.sidebar .nav-link {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: 7px var(--sp-4);
+    color: var(--text-on-ink);
+    font-size: var(--fs-sm);
+    text-decoration: none;
+    white-space: nowrap;
+    border-left: 3px solid transparent;
+}
+
+.sidebar .nav-link:hover {
+    background-color: var(--ink-raised);
+    color: #fff;
+}
+
+.sidebar .nav-link.active {
+    background-color: var(--ink-raised);
+    border-left-color: #7FB3E0;
+    color: #fff;
+    font-weight: 500;
+}
+
+.sidebar .nav-link i {
+    width: 18px;
+    text-align: center;
+    color: var(--text-on-ink-muted);
+}
+
+.sidebar .nav-link.active i,
+.sidebar .nav-link:hover i {
+    color: #fff;
+}
+
+.sidebar .nav-link span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Collapsed: icons only */
+.sidebar.collapsed {
+    width: var(--sidebar-collapsed);
+}
+
+.sidebar.collapsed .nav-link span,
+.sidebar.collapsed .nav-category,
+.sidebar.collapsed .sidebar-header h1 {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-header {
+    padding: 0;
+    justify-content: center;
+}
+
+.sidebar.collapsed .logout-btn {
+    display: none;
+}
+
+.sidebar.collapsed .nav-link {
+    justify-content: center;
+    padding: 9px 0;
+}
+
+/* ---------- Main area ---------- */
+
+.main-content {
+    margin-left: var(--sidebar-width);
+    padding: var(--sp-5);
+    transition: margin-left 0.2s ease;
+}
+
+.main-content.expanded {
+    margin-left: var(--sidebar-collapsed);
+}
+
+.app-messages {
+    position: sticky;
+    top: var(--sp-2);
+    z-index: 900;
+}
+
+.app-messages .alert {
+    margin-bottom: var(--sp-4);
+    border-radius: var(--radius);
+}
+
+.content-section {
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: var(--sp-5);
+    margin-bottom: var(--sp-5);
+}
+
+.content-section.active {
+    display: block;
+}
+
+.content-section h2 {
+    font-size: var(--fs-xl);
+}
+
+/* Phones and small tablets: the sidebar starts as icons and opens over the content */
+@media (max-width: 768px) {
+    .sidebar {
+        width: var(--sidebar-collapsed);
+    }
+
+    .sidebar:not(.expanded) .nav-link span,
+    .sidebar:not(.expanded) .nav-category,
+    .sidebar:not(.expanded) .sidebar-header h1,
+    .sidebar:not(.expanded) .logout-btn {
+        display: none;
+    }
+
+    .sidebar:not(.expanded) .sidebar-header {
+        padding: 0;
+        justify-content: center;
+    }
+
+    .sidebar:not(.expanded) .nav-link {
+        justify-content: center;
+        padding: 9px 0;
+    }
+
+    .sidebar.expanded {
+        width: var(--sidebar-width);
+        box-shadow: 0 0 0 100vmax rgba(27, 43, 58, 0.4);
+    }
+
+    .main-content,
+    .main-content.expanded {
+        margin-left: var(--sidebar-collapsed);
+        padding: var(--sp-4);
+    }
+
+    .content-section {
+        padding: var(--sp-4);
+    }
+}
+
+/* ---------- Home: market today ---------- */
+
+.content-section[data-section="home"] {
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+.market-header {
+    margin-bottom: var(--sp-5);
+}
+
+.market-header h1 {
+    font-size: var(--fs-xxl);
+    line-height: 1.1;
+    margin: 0;
+}
+
+.market-lead {
+    max-width: 68ch;
+    margin: var(--sp-3) 0 0;
+    font-size: var(--fs-md);
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.price-day-coverage {
+    margin: var(--sp-1) 0 0;
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+}
+
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: var(--sp-5);
+}
+
+/* The 24-hour price strip */
+.price-day {
+    margin-bottom: var(--sp-5);
+}
+
+.price-day-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sp-2) var(--sp-5);
+    margin-bottom: var(--sp-4);
+}
+
+.price-day-head h2 {
+    font-size: var(--fs-lg);
+    margin: 0;
+}
+
+.price-day-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-5);
+    margin: 0;
+}
+
+.price-day-stats div {
+    display: flex;
+    flex-direction: column-reverse;
+}
+
+.price-day-stats dt {
+    font-size: var(--fs-xs);
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.price-day-stats dd {
+    margin: 0;
+    font-size: var(--fs-lg);
+    font-weight: 500;
+}
+
+.price-strip {
+    display: grid;
+    grid-template-columns: repeat(24, minmax(0, 1fr));
+    gap: 2px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.price-strip li {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 64px;
+    padding: var(--sp-1) 2px;
+    border-radius: 3px;
+    text-align: center;
+    font-size: var(--fs-xs);
+    line-height: 1.2;
+}
+
+.price-strip .hour {
+    opacity: 0.75;
+}
+
+.price-strip .value {
+    font-weight: 500;
+    font-size: var(--fs-sm);
+}
+
+.price-strip .extreme {
+    min-height: 1.2em;
+    font-weight: 700;
+}
+
+.price-strip-scale .ramp {
+    width: 120px;
+    height: 8px;
+    border-radius: 2px;
+    background: linear-gradient(to right, #E3EDF6, #1F5F99, #0E2F4F);
+}
+
+.price-strip-scale {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
+}
+
+@media (max-width: 900px) {
+    .price-strip {
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 600px) {
+    .market-header h1 {
+        font-size: var(--fs-xl);
+    }
+
+    .panel {
+        padding: var(--sp-4);
+    }
+
+    .price-strip {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .price-strip li {
+        min-height: 0;
+    }
+}
+
+/* Hourly tables */
+.mini-tables-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--sp-4);
+    margin-bottom: var(--sp-5);
+}
+
+.mini-table-container {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: var(--sp-4);
+}
+
+.mini-table-container h3 {
+    font-size: var(--fs-md);
+    margin: 0;
+}
+
+.mini-table-container .summary {
+    margin: var(--sp-1) 0 var(--sp-3);
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+}
+
+.mini-table-scroll {
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.mini-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--fs-sm);
+}
+
+.mini-table th {
+    position: sticky;
+    top: 0;
+    background-color: var(--surface);
+    color: var(--text-muted);
+    font-weight: 400;
+    font-size: var(--fs-xs);
+    text-align: left;
+    padding: 0 var(--sp-2) var(--sp-1);
+    border-bottom: 1px solid var(--rule);
+}
+
+.mini-table td {
+    padding: 3px var(--sp-2);
+    border-bottom: 1px solid #EDF0F3;
+}
+
+.mini-table th:last-child,
+.mini-table td:last-child {
+    text-align: right;
+}
+
+.mini-table .day-break td {
+    border-top: 1px solid var(--rule);
+}
+
+/* Tab index */
+.tab-index {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--sp-5);
+}
+
+.tab-index h3 {
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+    font-weight: 400;
+    margin: 0 0 var(--sp-2);
+}
+
+.tab-index ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.tab-index-title {
+    font-size: var(--fs-lg);
+    margin: 0 0 var(--sp-4);
+}
+
+.tab-index li + li {
+    margin-top: var(--sp-3);
+}
+
+.tab-index a {
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.tab-index li p {
+    margin: 2px 0 0;
+    font-size: var(--fs-sm);
+    line-height: 1.4;
+    color: var(--text-muted);
+}
+
+.tab-index a:hover {
+    text-decoration: underline;
+}
+
+.home-status {
+    color: var(--text-muted);
+}
+
+/* ---------- Gas/GM report iframes ---------- */
+
+.ata-embed .card {
+    border: none;
+    box-shadow: none;
+    margin: 0;
+}
+
+.ata-embed .card-body {
+    padding: 0;
+}
+
+.ata-iframe {
+    border: 0;
+    width: 100%;
+    height: 65vh;
+    display: block;
+}
+
+@media (max-height: 700px) {
+    .ata-iframe { height: 60vh; }
+}
+
+@media (max-width: 576px) {
+    .ata-iframe { height: 68vh; }
+}
+
+/* ---------- Error pages (templates/errors/_layout.html) ---------- */
+
+.error-page {
+    display: grid;
+    place-items: center;
+    padding: var(--sp-4);
+}
+
+.error-panel {
+    max-width: 32rem;
+}
+
+.error-code {
+    font-size: var(--fs-xxl);
+    font-weight: 700;
+    color: var(--accent);
+    margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+
+/* ---------- Login (templates/login.html) ---------- */
+
+.login-page {
+    display: grid;
+    place-items: center;
+    padding: var(--sp-4);
+}
+
+.login-layout {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    width: 100%;
+    max-width: 880px;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.login-intro {
+    display: flex;
+    flex-direction: column;
+    background: var(--ink);
+    color: var(--text-on-ink);
+    padding: var(--sp-6);
+}
+
+.login-intro h1 {
+    color: #fff;
+    font-size: var(--fs-xl);
+    font-weight: 700;
+    margin: 0 0 var(--sp-3);
+}
+
+.login-intro p {
+    color: var(--text-on-ink-muted);
+    max-width: 30ch;
+    margin: 0 0 var(--sp-6);
+    line-height: 1.5;
+}
+
+.login-strip {
+    display: grid;
+    grid-template-columns: repeat(24, 1fr);
+    align-items: end;
+    gap: 3px;
+    height: 120px;
+    margin: auto 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.login-strip li {
+    height: calc(var(--level) * 10%);
+    border-radius: 2px 2px 0 0;
+    background: color-mix(in srgb, #7FB3E0 calc(var(--level) * 11%), var(--ink-raised));
+}
+
+.login-form {
+    padding: var(--sp-6);
+}
+
+.login-form h2 {
+    font-size: var(--fs-lg);
+    margin: 0 0 var(--sp-5);
+}
+
+.login-form form {
+    display: grid;
+    gap: var(--sp-2);
+}
+
+.login-form label {
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+}
+
+.login-form input {
+    width: 100%;
+    padding: 10px var(--sp-3);
+    margin-bottom: var(--sp-3);
+    font-size: var(--fs-md);
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+}
+
+.login-form input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--focus);
+}
+
+.login-form button {
+    margin-top: var(--sp-2);
+    padding: 11px;
+    font-size: var(--fs-md);
+    font-weight: 500;
+    color: #fff;
+    background: var(--accent);
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.login-form button:hover {
+    background: var(--accent-strong);
+}
+
+.login-form button:focus-visible {
+    box-shadow: var(--focus);
+}
+
+.login-error {
+    margin: 0 0 var(--sp-4);
+    padding: var(--sp-3);
+    font-size: var(--fs-sm);
+    color: #8A2E12;
+    background: #FBEDE7;
+    border-left: 3px solid var(--deload);
+    border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.login-note {
+    margin: var(--sp-4) 0 0;
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
+}
+
+@media (max-width: 700px) {
+    .login-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .login-intro,
+    .login-form {
+        padding: var(--sp-5);
+    }
+
+    .login-strip {
+        height: 56px;
+        margin-top: 0;
+    }
+
+    .login-intro p {
+        margin-bottom: var(--sp-4);
+    }
+}

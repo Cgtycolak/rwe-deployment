@@ -15,6 +15,11 @@ import { forecastPerformance } from './modules/forecast-performance.js';
 import { meritOrder } from './modules/merit-order.js';
 import { hydroMap } from './modules/hydro-map.js';
 import { sfcChart } from './modules/sfc-chart.js';
+import { rollingAverages } from './modules/rolling-averages.js';
+import { supplyDemandPrice } from './modules/supply-demand-price.js';
+import { gasGm } from './modules/gas-gm.js';
+import { startRouter } from './router.js';
+import { setupSidebar, setupSelectFilters } from './shell.js';
 
 // Main app object
 const app = {
@@ -37,6 +42,10 @@ const app = {
     meritOrder,
     hydroMap,
     sfcChart,
+    rollingAverages,
+    supplyDemandPrice,
+    gasGm,
+    endpoints: JSON.parse(document.getElementById('endpoints-data')?.textContent || '{}'),
     helpers: {
         toggleLoading: function (show) {
             const loader = document.getElementById('aic_loading');
@@ -44,24 +53,7 @@ const app = {
                 loader.style.display = show ? 'block' : 'none';
             }
         },
-        displayMessage: function (message, type) {
-            const alertContainer = document.getElementById('alert_messages');
-            if (alertContainer) {
-                const alertDiv = document.createElement('div');
-                alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-                alertDiv.role = 'alert';
-                alertDiv.innerHTML = `
-                    ${message}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                `;
-                alertContainer.appendChild(alertDiv);
-                
-                // Auto-dismiss after 5 seconds
-                setTimeout(() => {
-                    alertDiv.remove();
-                }, 5000);
-            }
-        },
+        displayMessage,
         toggleButtonLoading: function (button, isLoading) {
             if (!button) return;
 
@@ -80,23 +72,8 @@ const app = {
         }
     },
 
-    // Add cleanup method
+    // Runs before every tab switch
     cleanup() {
-        // Clear any intervals
-        if (this.intervals) {
-            Object.values(this.intervals).forEach(interval => {
-                if (interval) clearInterval(interval);
-            });
-        }
-        
-        // Reset any active requests
-        if (this.activeRequests) {
-            Object.values(this.activeRequests).forEach(request => {
-                if (request && request.abort) request.abort();
-            });
-        }
-
-        // Clear any error messages
         const alertContainer = document.getElementById('alert_messages');
         if (alertContainer) {
             alertContainer.innerHTML = '';
@@ -115,6 +92,10 @@ const app = {
             this.ligniteHeatmap.setup(this.helpers);
             this.sourceHeatmap.setup(this.helpers);
             this.hydroHeatmap.setup(this.helpers);
+            this.heatmap.init();
+            this.importCoalHeatmap.init();
+            this.ligniteHeatmap.init();
+            this.sourceHeatmap.init();
             this.miniTables.setup(this.helpers);
             
             // Initialize forecasting module
@@ -123,7 +104,6 @@ const app = {
                 displayMessage: this.helpers.displayMessage,
                 toggleButtonLoading: this.helpers.toggleButtonLoading
             });
-            this.forecasting.init();
             
             // Initialize forecast performance module
             this.forecastPerformance.setup(this.helpers);
@@ -143,25 +123,51 @@ const app = {
             
             // Initialize mini-tables when showing home section
             this.miniTables.init();
-            
-            // Store intervals and active requests
-            this.intervals = {};
-            this.activeRequests = {};
-            
-            // Add event dispatching for section changes
-            document.addEventListener('click', function(e) {
-                const target = e.target.closest('[data-section]');
-                if (target) {
-                    const section = target.dataset.section;
-                    // Dispatch a custom event when a section is activated
-                    document.dispatchEvent(new CustomEvent('section:activated', {
-                        detail: { section }
-                    }));
-                }
+
+            this.rollingAverages.init();
+            this.supplyDemandPrice.init();
+            this.gasGm.init();
+
+            setupSidebar();
+            setupSelectFilters();
+            autoloadOnFirstVisit();
+
+            // Started last so the first 'section:activated' reaches every module
+            startRouter({
+                beforeEnter: () => this.cleanup(),
+                onEnter: {
+                    'aic-realtime': () => this.aic.init(),
+                    'generation-comparison': () => this.generationComparison.init(),
+                },
             });
         });
     }
 };
+
+// Tabs whose defaults (today, or the last 30 days) are always valid load on their first visit
+// by pressing their own load button, so they show data straight away like the other tabs.
+// DPP - Realtime and the forecast need choices or a file first, so they are not listed.
+const AUTOLOAD = {
+    'generation-heatmap': 'load_heatmap',
+    'import-coal-heatmap': 'load_import_coal_heatmap',
+    'hydro-heatmap': 'load_hydro_heatmap',
+    'lignite-heatmap': 'load_lignite_heatmap',
+    'source-heatmap': 'load_source_heatmap',
+    'forecast-performance': 'load_forecast_performance',
+    'merit-order': 'load_merit_order',
+    'supply-demand-price': 'load_sdp',
+};
+
+function autoloadOnFirstVisit() {
+    const visited = new Set();
+    document.addEventListener('section:activated', (e) => {
+        const section = e.detail.section;
+        if (!AUTOLOAD[section] || visited.has(section)) return;
+        visited.add(section);
+        const button = document.getElementById(AUTOLOAD[section]);
+        if (button && !button.disabled) button.click();
+    });
+}
 
 // Setup events
 function setupEvents() {
@@ -184,50 +190,14 @@ function setupEvents() {
     // Switch events
     $(".switch_selector").on("click", switcher);
     
-    // Generation comparison specific switches
-    $("[data-group='comparison_view']").on("click", (e) => {
-        const button = $(e.currentTarget);
-        const targetView = button.data('switch');
-        
-        // Update buttons
-        $("[data-group='comparison_view']").removeClass('active');
-        button.addClass('active');
-        
-        // Show/hide views
-        $(".switch_arg[data-group='comparison_view']").hide();
-        $(`.switch_arg[data-switch='${targetView}']`).show();
-    });
-
     // Realtime events  
     $("#load_powerplants").on("click", () => app.realtime.loadPowerPlants(app));
     $("#load_realtime").on("click", () => app.realtime.getRealtimeData(app));
     $("#download_realtime_excel").on("click", () => app.realtime.downloadExcel());
 
-    // AIC events
-    $("#load_aic").on("click", () => app.aic.loadAICData());
-    $("#download_aic_excel").on("click", () => app.aic.downloadExcel());
-
-    // AIC specific events
-    document.querySelectorAll('.aic-range-btn').forEach(button => {
-        button.addEventListener('click', (e) => {
-            // Update button states
-            document.querySelectorAll('.aic-range-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            e.target.classList.add('active');
-
-            // Load data for selected range
-            const range = e.target.dataset.range;
-            if (window.app?.aic) {
-                window.app.aic.loadAICData(range);
-            }
-        });
-    });
 }
 
-// Wait for document and plugins to be ready
-$(document).ready(() => {
-    app.init();
-});
+window.app = app;
+app.init();
 
 export default app;

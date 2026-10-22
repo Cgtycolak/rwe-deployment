@@ -159,12 +159,23 @@ def create_app():
                 "https://code.jquery.com https://cdn.plot.ly https://cdn.sheetjs.com; "
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
             "font-src 'self' https://cdnjs.cloudflare.com; "
-            "img-src 'self' data:; "
+            # blob: lets Plotly's "Download plot as png" render the chart through an <img>
+            "img-src 'self' data: blob:; "
             "connect-src 'self' https://cdn.jsdelivr.net; "
-            "frame-src 'self' https://dbc-6991d07f-d61a.cloud.databricks.com; "
+            "frame-src 'self'; "
             "frame-ancestors 'self';"
         )
         return response
+
+    from .nav import nav_groups
+
+    @app.context_processor
+    def inject_nav():
+        return {'nav_groups': nav_groups()}
+
+    for code in (400, 404, 405, 500):
+        app.register_error_handler(
+            code, lambda e, code=code: (render_template(f'errors/error_{code}.html'), code))
 
     # Register blueprints
     from .main import main

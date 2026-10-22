@@ -1,0 +1,60 @@
+<header class="page-head">
+    <h2>Planned against realtime generation</h2>
+    <p>Planned generation (DPP) and realtime output by fuel for the dates you pick, and the gap between them. A positive gap means plants generated more than planned. Gaps and the chart leave out solar and hard coal, which the two sources count differently.</p>
+</header>
+
+<div class="toolbar">
+    <div class="field">
+        <label for="comparison_start_date">From</label>
+        <input type="date" class="form-control form-control-sm" id="comparison_start_date">
+    </div>
+    <div class="field">
+        <label for="comparison_end_date">To</label>
+        <input type="date" class="form-control form-control-sm" id="comparison_end_date">
+    </div>
+    <div class="field">
+        <span class="field-label" id="comparison-resolution-label">Resolution</span>
+        <div class="segmented" role="group" aria-labelledby="comparison-resolution-label">
+            <button type="button" class="comparison-range-btn" data-range="hourly" aria-pressed="true">Hourly</button>
+            <button type="button" class="comparison-range-btn" data-range="weekly" aria-pressed="false">Weekly average</button>
+            <button type="button" class="comparison-range-btn" data-range="monthly" aria-pressed="false">Monthly average</button>
+            <button type="button" class="comparison-range-btn" data-range="yearly" aria-pressed="false">Yearly average</button>
+        </div>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" id="load_comparison_data">Show comparison</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm push" id="download_comparison_excel" disabled>Download Excel</button>
+</div>
+
+<dl class="stat-row" id="comparison_stats" hidden></dl>
+
+<div class="field mb-3" id="comparison_views" hidden>
+    <div class="segmented" role="group" aria-label="View">
+        <button type="button" data-view="chart" aria-pressed="true">Chart</button>
+        <button type="button" data-view="gap" aria-pressed="false">Gap by fuel</button>
+        <button type="button" data-view="tables" aria-pressed="false">Planned and realtime tables</button>
+    </div>
+</div>
+
+<div class="placeholder-note" id="comparison_status"><p>Loading the last 7 days.</p></div>
+
+<div data-view-panel="chart" hidden>
+    <div id="generation_comparison_chart" class="chart-frame"></div>
+</div>
+
+<div data-view-panel="gap" hidden>
+    <p class="text-muted small mb-2">Realtime minus plan, MW. Solar and hard coal are left out because the planned and realtime sources count them differently; the compared total is the sum of the fuels shown.</p>
+    <div class="table-responsive dynamic_table_cont">
+        <table id="comparison_differences_table" class="table table-sm"></table>
+    </div>
+</div>
+
+<div data-view-panel="tables" hidden>
+    <h3 class="view-title">Planned (DPP), MW</h3>
+    <div class="table-responsive dynamic_table_cont">
+        <table id="dpp_data_table" class="table table-sm"></table>
+    </div>
+    <h3 class="view-title">Realtime, MW</h3>
+    <div class="table-responsive dynamic_table_cont">
+        <table id="realtime_data_table" class="table table-sm"></table>
+    </div>
+</div>

@@ -1,0 +1,49 @@
+{% set page_note = "Each cell is the supply minus demand at that price level and hour. Cells above the threshold are shaded amber, darker for larger values. The price column runs from red for the lowest price to green for the highest." %}
+{% include 'partials/page_head.html' %}
+
+<div class="container-fluid">
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h5 class="mb-0"><i class="fas fa-cogs"></i> Controls</h5>
+                </div>
+                <div class="col-md-6 text-end">
+                    <button id="load_sdp" class="btn btn-primary">
+                        <span class="button-content"><i class="fas fa-search"></i> Load Data</span>
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label for="sdp_date" class="form-label fw-semibold">Date</label>
+                    <input type="date" id="sdp_date" class="form-control" />
+                </div>
+                <div class="col-md-3">
+                    <label for="sdp_threshold" class="form-label fw-semibold">Diff Filter Threshold</label>
+                    <input type="number" id="sdp_threshold" class="form-control" value="50" step="1" min="0" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="sdp_status" class="mb-3" style="display:none;"></div>
+
+    <div class="card">
+        <div class="card-body p-2">
+            <div class="sdp-table-wrapper" id="sdp_wrapper" style="overflow-x:auto;overflow-y:auto;height:70vh;">
+                <table class="sdp-table mb-0" id="sdp_table">
+                    <thead id="sdp_thead"></thead>
+                    <tbody id="sdp_tbody"></tbody>
+                </table>
+            </div>
+            <div id="sdp_empty" class="text-center text-muted py-5" style="display:none;">
+                <i class="fas fa-inbox fa-2x mb-2"></i><br>No data found for the selected date and threshold.
+            </div>
+        </div>
+    </div>
+</div>

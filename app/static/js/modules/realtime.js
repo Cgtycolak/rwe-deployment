@@ -1,4 +1,4 @@
-import { postData, toggleLoading, displayMessage, isInvalidDuration, toggleButtonLoading } from '../utils/helpers.js';
+import { postData, toggleLoading, displayMessage, isInvalidDuration, toggleButtonLoading, loadXLSX } from '../utils/helpers.js';
 import { getEndpoints } from '../config/endpoints.js';
 import { THead } from '../classes/THead.js';
 import { TBody } from '../classes/TBody.js';
@@ -387,11 +387,11 @@ export const realtime = {
                     this.installed = true;
                 }
             } else {
-                displayMessage(res.message || "Unable to load power plants", "danger");
+                displayMessage(res.message || "EPIAS did not return the power plant list. Try again in a moment.", "danger");
             }
         } catch (error) {
             console.error("loadPowerPlants Error", error);
-            displayMessage("System error while loading power plants.", "danger");
+            displayMessage("The power plant list could not be loaded. Try again in a moment.", "danger");
         } finally {
             toggleButtonLoading('#load_powerplants', false);
         }
@@ -404,7 +404,7 @@ export const realtime = {
             const selectedPlants = powerplantSelect.val();
 
             if (!selectedPlants || selectedPlants.length === 0) {
-                displayMessage("Please select at least one power plant", "warning");
+                displayMessage("Select at least one power plant, then show the realtime table.", "warning");
                 return;
             }
 
@@ -420,7 +420,7 @@ export const realtime = {
             today.setHours(0, 0, 0, 0);
             const endDate = new Date(app.global.end);
             if (endDate >= today) {
-                displayMessage("Only data up to one day before the current date can be viewed for realtime data.", "warning");
+                displayMessage("Realtime data is available up to yesterday. Move the end date back a day.", "warning");
                 return;
             }
 
@@ -495,12 +495,12 @@ export const realtime = {
                 });
 
             } else {
-                displayMessage(res.message || "Unable to load realtime data", "danger");
+                displayMessage(res.message || "EPIAS did not return realtime data. Try again in a moment.", "danger");
             }
             // toggleLoading(false);
         } catch (error) {
             console.error("getRealtimeData Error", error);
-            displayMessage("System error while loading realtime data.", "danger");
+            displayMessage("The realtime table could not be loaded. Try again, or pick fewer plants or a shorter range.", "danger");
             // toggleLoading(false);
         } finally {
             toggleButtonLoading('#load_realtime', false);
@@ -733,10 +733,10 @@ export const realtime = {
         setTimeout(resizeChart, 50);
     },
 
-    downloadExcel() {
+    async downloadExcel() {
         try {
             if (!this.rows || !this.columns) {
-                displayMessage("No data available to download", "warning");
+                displayMessage("Load a table first, then download it.", "warning");
                 return;
             }
 
@@ -748,6 +748,7 @@ export const realtime = {
             });
 
             // Create workbook and worksheet
+            const XLSX = await loadXLSX();
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.aoa_to_sheet(ws_data);
 
@@ -762,7 +763,7 @@ export const realtime = {
             XLSX.writeFile(wb, filename);
         } catch (error) {
             console.error("Error downloading Excel:", error);
-            displayMessage("Error generating Excel file", "danger");
+            displayMessage("The Excel file could not be created. Try again in a moment.", "danger");
         }
     }
 };

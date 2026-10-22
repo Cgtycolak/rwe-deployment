@@ -1,0 +1,1528 @@
+/* Dashboard tab styles. Shared components first, then per-tab blocks. Colours come from
+   the tokens in base.css. */
+
+/* ---------- Utilities used by the DPP and realtime tabs ---------- */
+
+.btn_vsm {
+  font-size: 0.55rem;
+  line-height: 0.7 !important;
+  padding: 4px;
+  border-radius: 50% !important;
+}
+.lh_0 { line-height: 0; }
+.mxh_112 { max-height: 112px !important; overflow: auto !important; }
+.h_80vh { height: 80vh; }
+.wait_text {
+  font-weight: 700;
+  text-shadow: 2px 2px 4px #000;
+  color: #fff;
+  font-size: var(--fs-lg);
+}
+.bg1 { background: var(--ink) !important; }
+.mxw_precent_100 { max-width: 100% !important; }
+.dynamic_table_cont { max-height: 75vh !important; }
+.cont_overflow_99 { max-width: 99% !important; overflow: auto; }
+
+.container-fluid {
+  max-width: 100% !important;
+  /* clip, not hidden: hidden turns every container into its own scroll box */
+  overflow-x: clip !important;
+}
+
+/* ---------- View switches (data-switch / data-group buttons) ---------- */
+
+.switch_arg { display: none; }
+.switch_arg.active { display: block; }
+.switch_arg[data-switch="fuel_types_chart"] #dpp_chart_btns { display: none !important; }
+
+.table_args[data-table="realtime"],
+.realtime_options,
+.switch_arg {
+  margin: 0 !important;
+  padding: 0 !important;
+  max-width: 100% !important;
+  overflow-x: clip !important;
+}
+
+.switch_arg[data-switch="realtime_difference"] {
+  position: relative;
+  width: 100% !important;
+  overflow: hidden !important;
+}
+
+.btn-group {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--sp-4);
+}
+
+.switch_selector, .btn[data-switch] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 0.375rem 0.75rem;
+}
+
+.switch_selector i, .btn[data-switch] i { font-size: 1rem; }
+
+.d-flex.justify-content-start.align-items-center.p-2.border.mx-2.shadow {
+  justify-content: center !important;
+}
+
+.difference-chart-container {
+  width: 95%;
+  height: 85vh;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+#difference_chart {
+  position: relative;
+  width: 100% !important;
+  height: 100%;
+  max-width: none !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+}
+
+.switch_arg[data-group="comparison_view"] {
+  background: var(--surface);
+  padding: 15px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+/* ---------- Tables ---------- */
+
+.table {
+  font-size: 0.85rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.table th,
+.table td {
+  padding: 0.3rem 0.5rem !important;
+  white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  border: 1px solid #E3E8ED !important;
+}
+
+.table td[title],
+.table th[title] {
+  cursor: help;
+}
+
+.table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.table thead th,
+.table-primary thead th,
+.table-success thead th,
+.table-dark thead th,
+.table thead.table-primary,
+.table thead.table-success,
+.table thead.table-dark,
+.table-primary th, .table-success th, .table-dark th,
+#comparison_differences_table thead th {
+  background-color: var(--ink) !important;
+  color: #fff !important;
+  font-weight: 500;
+  font-size: 0.8rem;
+  border-color: var(--ink-raised) !important;
+}
+
+.table-primary,
+.table-success,
+.table-dark {
+  --bs-table-bg: var(--ink) !important;
+  --bs-table-striped-bg: var(--ink) !important;
+  --bs-table-active-bg: var(--ink) !important;
+  --bs-table-hover-bg: var(--ink) !important;
+  border-color: var(--ink) !important;
+  color: #fff !important;
+}
+
+.table > :not(caption) > * > * {
+  background-color: var(--bs-table-bg);
+}
+
+.table-bordered {
+  border: 1px solid var(--rule);
+}
+
+.table-responsive {
+  position: relative;
+  min-height: 200px;
+}
+
+.day-header {
+  font-size: 0.9rem;
+  padding: 0.4rem !important;
+  background: var(--accent-soft) !important;
+  font-weight: 500;
+}
+
+.org-name { font-weight: 500; }
+
+.option-checkbox {
+  vertical-align: middle;
+  margin-right: 5px;
+}
+
+select option {
+  padding: 5px;
+}
+
+/* ---------- Buttons ----------
+   Every Bootstrap state (hover, pressed, toggled, focused, disabled) is restated so none
+   falls back to Bootstrap's own blue. */
+
+.btn-primary {
+  color: #fff;
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn-primary:hover,
+.btn-primary:active,
+.btn-primary.active,
+.btn-primary:focus,
+.btn-check:checked + .btn-primary,
+.btn-check:active + .btn-primary,
+.btn-check:focus + .btn-primary,
+.show > .btn-primary.dropdown-toggle {
+  color: #fff;
+  background-color: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.btn-outline-primary {
+  color: var(--accent);
+  background-color: transparent;
+  border-color: var(--accent);
+}
+
+.btn-outline-primary:hover,
+.btn-outline-primary:active,
+.btn-outline-primary.active,
+.btn-outline-primary:focus,
+.btn-check:checked + .btn-outline-primary,
+.btn-check:active + .btn-outline-primary,
+.btn-check:focus + .btn-outline-primary,
+.show > .btn-outline-primary.dropdown-toggle {
+  color: #fff;
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn-primary:disabled, .btn-primary.disabled {
+  color: #fff;
+  background-color: var(--accent);
+  border-color: var(--accent);
+  opacity: 0.5;
+}
+
+.btn-outline-primary:disabled, .btn-outline-primary.disabled {
+  color: var(--accent);
+  background-color: transparent;
+  border-color: var(--accent);
+  opacity: 0.5;
+}
+
+.btn-primary:focus,
+.btn-primary:active:focus,
+.btn-primary.active:focus,
+.btn-check:focus + .btn-primary,
+.btn-check:checked + .btn-primary:focus,
+.btn-check:active + .btn-primary:focus,
+.btn-outline-primary:focus,
+.btn-outline-primary:active:focus,
+.btn-outline-primary.active:focus,
+.btn-check:focus + .btn-outline-primary,
+.btn-check:checked + .btn-outline-primary:focus,
+.btn-check:active + .btn-outline-primary:focus {
+  box-shadow: var(--focus);
+}
+
+.btn-dark {
+  color: #fff;
+  background-color: var(--ink);
+  border-color: var(--ink);
+}
+
+.btn-dark:hover,
+.btn-dark:active,
+.btn-dark.active,
+.btn-dark:focus,
+.btn-check:checked + .btn-dark,
+.btn-check:active + .btn-dark,
+.btn-check:focus + .btn-dark,
+.show > .btn-dark.dropdown-toggle {
+  color: #fff;
+  background-color: #0F1B26;
+  border-color: #0F1B26;
+}
+
+.btn-outline-dark {
+  color: var(--ink);
+  background-color: transparent;
+  border-color: var(--ink);
+}
+
+.btn-outline-dark:hover,
+.btn-outline-dark:active,
+.btn-outline-dark.active,
+.btn-outline-dark:focus,
+.btn-check:checked + .btn-outline-dark,
+.btn-check:active + .btn-outline-dark,
+.btn-check:focus + .btn-outline-dark,
+.show > .btn-outline-dark.dropdown-toggle {
+  color: #fff;
+  background-color: var(--ink);
+  border-color: var(--ink);
+}
+
+.btn-dark:disabled, .btn-dark.disabled {
+  color: #fff;
+  background-color: var(--ink);
+  border-color: var(--ink);
+  opacity: 0.5;
+}
+
+.btn-outline-dark:disabled, .btn-outline-dark.disabled {
+  color: var(--ink);
+  background-color: transparent;
+  border-color: var(--ink);
+  opacity: 0.5;
+}
+
+.btn-dark:focus,
+.btn-dark:active:focus,
+.btn-dark.active:focus,
+.btn-check:focus + .btn-dark,
+.btn-check:checked + .btn-dark:focus,
+.btn-check:active + .btn-dark:focus,
+.btn-outline-dark:focus,
+.btn-outline-dark:active:focus,
+.btn-outline-dark.active:focus,
+.btn-check:focus + .btn-outline-dark,
+.btn-check:checked + .btn-outline-dark:focus,
+.btn-check:active + .btn-outline-dark:focus {
+  box-shadow: var(--focus);
+}
+
+.btn-secondary {
+  color: #fff;
+  background-color: #5B6B7A;
+  border-color: #5B6B7A;
+}
+
+.btn-secondary:hover,
+.btn-secondary:active,
+.btn-secondary.active,
+.btn-secondary:focus,
+.btn-check:checked + .btn-secondary,
+.btn-check:active + .btn-secondary,
+.btn-check:focus + .btn-secondary,
+.show > .btn-secondary.dropdown-toggle {
+  color: #fff;
+  background-color: #4A5866;
+  border-color: #4A5866;
+}
+
+.btn-outline-secondary {
+  color: #5B6B7A;
+  background-color: transparent;
+  border-color: #5B6B7A;
+}
+
+.btn-outline-secondary:hover,
+.btn-outline-secondary:active,
+.btn-outline-secondary.active,
+.btn-outline-secondary:focus,
+.btn-check:checked + .btn-outline-secondary,
+.btn-check:active + .btn-outline-secondary,
+.btn-check:focus + .btn-outline-secondary,
+.show > .btn-outline-secondary.dropdown-toggle {
+  color: #fff;
+  background-color: #5B6B7A;
+  border-color: #5B6B7A;
+}
+
+.btn-secondary:disabled, .btn-secondary.disabled {
+  color: #fff;
+  background-color: #5B6B7A;
+  border-color: #5B6B7A;
+  opacity: 0.5;
+}
+
+.btn-outline-secondary:disabled, .btn-outline-secondary.disabled {
+  color: #5B6B7A;
+  background-color: transparent;
+  border-color: #5B6B7A;
+  opacity: 0.5;
+}
+
+.btn-secondary:focus,
+.btn-secondary:active:focus,
+.btn-secondary.active:focus,
+.btn-check:focus + .btn-secondary,
+.btn-check:checked + .btn-secondary:focus,
+.btn-check:active + .btn-secondary:focus,
+.btn-outline-secondary:focus,
+.btn-outline-secondary:active:focus,
+.btn-outline-secondary.active:focus,
+.btn-check:focus + .btn-outline-secondary,
+.btn-check:checked + .btn-outline-secondary:focus,
+.btn-check:active + .btn-outline-secondary:focus {
+  box-shadow: var(--focus);
+}
+
+.btn-success {
+  color: #fff;
+  background-color: var(--load);
+  border-color: var(--load);
+}
+
+.btn-success:hover,
+.btn-success:active,
+.btn-success.active,
+.btn-success:focus,
+.btn-check:checked + .btn-success,
+.btn-check:active + .btn-success,
+.btn-check:focus + .btn-success,
+.show > .btn-success.dropdown-toggle {
+  color: #fff;
+  background-color: #226148;
+  border-color: #226148;
+}
+
+.btn-outline-success {
+  color: var(--load);
+  background-color: transparent;
+  border-color: var(--load);
+}
+
+.btn-outline-success:hover,
+.btn-outline-success:active,
+.btn-outline-success.active,
+.btn-outline-success:focus,
+.btn-check:checked + .btn-outline-success,
+.btn-check:active + .btn-outline-success,
+.btn-check:focus + .btn-outline-success,
+.show > .btn-outline-success.dropdown-toggle {
+  color: #fff;
+  background-color: var(--load);
+  border-color: var(--load);
+}
+
+.btn-success:disabled, .btn-success.disabled {
+  color: #fff;
+  background-color: var(--load);
+  border-color: var(--load);
+  opacity: 0.5;
+}
+
+.btn-outline-success:disabled, .btn-outline-success.disabled {
+  color: var(--load);
+  background-color: transparent;
+  border-color: var(--load);
+  opacity: 0.5;
+}
+
+.btn-success:focus,
+.btn-success:active:focus,
+.btn-success.active:focus,
+.btn-check:focus + .btn-success,
+.btn-check:checked + .btn-success:focus,
+.btn-check:active + .btn-success:focus,
+.btn-outline-success:focus,
+.btn-outline-success:active:focus,
+.btn-outline-success.active:focus,
+.btn-check:focus + .btn-outline-success,
+.btn-check:checked + .btn-outline-success:focus,
+.btn-check:active + .btn-outline-success:focus {
+  box-shadow: var(--focus);
+}
+
+/* ---------- Form controls ---------- */
+
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus);
+}
+
+.form-check-input:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.spinner-border-sm {
+  width: 1rem;
+  height: 1rem;
+  border-width: 0.15em;
+}
+
+.aic-range-btn.active {
+  background-color: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* In-tab sub navigation (forecasting) */
+.nav-tabs {
+  border-bottom-color: var(--rule);
+}
+
+.nav-tabs .nav-link {
+  color: var(--text-muted);
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.nav-tabs .nav-link:hover {
+  color: var(--text);
+  border-bottom-color: var(--rule);
+}
+
+.nav-tabs .nav-link.active {
+  color: var(--accent);
+  background: none;
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
+
+/* ---------- Generation comparison ---------- */
+
+#load_comparison_data {
+  min-width: 120px;
+  position: relative;
+}
+
+#load_comparison_data .loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+
+#load_comparison_data:disabled {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+#comparison_loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 20px;
+  border-radius: var(--radius);
+  z-index: 1000;
+  text-align: center;
+}
+
+/* Update the chart container CSS */
+.content-section[data-section="rolling-averages"] .chart-container {
+  margin-bottom: 2rem;
+  padding: 0;
+  background: transparent;
+  height: 480px;  /* Reduced height */
+  width: 100%;
+  max-width: 100%;
+  position: relative;
+  margin: 0 auto;
+  aspect-ratio: 16 / 9;  /* Force a widescreen aspect ratio */
+}
+
+/* Add responsive container for charts */
+.content-section[data-section="rolling-averages"] .col-md-6 {
+  padding: 0 15px;
+}
+
+/* Adjust chart title position at different zoom levels */
+@media screen and (min-width: 1200px) {
+  .content-section[data-section="rolling-averages"] .gtitle {
+    transform: translateX(-20px);
+  }
+}
+
+.content-section[data-section="rolling-averages"] h2 {
+  font-weight: normal;
+  color: var(--ink);
+}
+
+/* Force Plotly to use our font */
+.content-section[data-section="rolling-averages"] .js-plotly-plot .plotly .main-svg text {
+  font-family: 'RWE Sans Web', -apple-system, 'Segoe UI', sans-serif !important;
+}
+
+/* Ensure title uses correct font */
+.content-section[data-section="rolling-averages"] .gtitle {
+  font-family: 'RWE Sans Web', -apple-system, 'Segoe UI', sans-serif !important;
+  font-weight: normal !important;
+}
+
+/* Move modebar to bottom of chart */
+.content-section[data-section="rolling-averages"] .js-plotly-plot .plotly .modebar {
+  top: auto !important;
+  bottom: 0 !important;
+  right: 0 !important;
+  background-color: rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
+}
+
+/* Option to hide modebar completely */
+.content-section[data-section="rolling-averages"] .hide-modebar .js-plotly-plot .plotly .modebar {
+  display: none !important;
+}
+
+/* Debug info */
+.content-section[data-section="rolling-averages"] #debug-data {
+  font-family: monospace;
+  white-space: pre;
+  font-size: 12px;
+  margin-top: 20px;
+  padding: 10px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  display: none;
+}
+
+.content-section[data-section="rolling-averages"] #loading {
+  text-align: center;
+  padding: 20px;
+}
+
+/* Controls for all charts */
+.content-section[data-section="rolling-averages"] .chart-controls {
+  margin-bottom: 20px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+/* Forecast Performance specific styles */
+.content-section[data-section="forecast-performance"] .metric-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.content-section[data-section="forecast-performance"] .metric-item:last-child {
+  margin-bottom: 0;
+}
+
+.content-section[data-section="forecast-performance"] .card-body {
+  padding: 1rem;
+}
+
+.content-section[data-section="forecast-performance"] .card-header h6 {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* Loading spinner for forecast performance */
+#performance_loading {
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Forecast Performance Styling */
+.metric-item {
+  padding: 2px 0;
+}
+
+.badge {
+  font-size: 0.85em;
+  padding: 0.5em 0.75em;
+  border-radius: 0.5rem;
+}
+
+/* Chart container styling */
+#forecast_performance_chart {
+  border-radius: 0.5rem;
+  background: white;
+}
+
+/* Loading spinner styling */
+#performance_loading {
+  padding: 3rem 0;
+}
+
+/* Info alert styling */
+.content-section[data-section="forecast-performance"] .alert-info {
+  background: var(--accent-soft);
+  border: 1px solid var(--rule);
+  border-radius: 0.5rem;
+}
+
+/* Merit Order specific styles */
+.merit-order-table {
+  font-size: 0.8rem;
+}
+
+.merit-order-table th {
+  font-size: 0.75rem;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.merit-order-table td {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.4rem;
+  white-space: nowrap;
+}
+
+.aic-editable-input {
+  width: 60px;
+  text-align: center;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 0.8rem;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.aic-editable-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 0.15rem rgba(31, 95, 153, 0.25);
+  outline: none;
+}
+
+.aic-editable-input.aic-nonzero {
+  background: #fff3cd;
+  font-weight: 600;
+}
+
+.aic-toggle-btn,
+.aic-col-toggle-btn {
+  border: none;
+  background: #e9ecef;
+  color: #6c757d;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.aic-toggle-btn:hover,
+.aic-col-toggle-btn:hover {
+  background: var(--rule);
+}
+
+.aic-toggle-btn.active {
+  background: var(--load);
+  color: white;
+}
+
+.aic-col-toggle-btn.active {
+  background: var(--accent);
+  color: white;
+}
+
+.aic-editable-input.aic-selected {
+  outline: 2px solid var(--accent) !important;
+  background: var(--accent-soft) !important;
+  border-color: var(--accent) !important;
+}
+
+/* Suppress text cursor highlight while drag-selecting */
+.aic-selecting-active {
+  user-select: none;
+}
+
+.aic-typing-indicator {
+  position: fixed;
+  background: #212529;
+  color: #fff;
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+  min-width: 60px;
+  text-align: center;
+  border: 2px solid var(--accent);
+}
+
+.aic-typing-indicator.placeholder {
+  opacity: 0.6;
+  font-weight: 400;
+  font-style: italic;
+}
+
+/* Supply Demand Price specific styles */
+.sdp-table-wrapper {
+  overflow-x: auto;
+  overflow-y: auto;
+  height: 72vh;
+  border: 1px solid var(--rule);
+}
+
+.sdp-table {
+  font-size: 0.75rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.sdp-table th {
+  background-color: var(--ink);
+  color: white;
+  padding: 6px 8px;
+  text-align: center;
+  border-right: 1px solid var(--ink-raised);
+  border-bottom: 2px solid var(--ink);
+}
+
+/* Sticky DATE column header */
+.sdp-table th:nth-child(1) {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  min-width: 95px;
+  background-color: var(--ink);
+}
+
+/* Sticky PRICE column header */
+.sdp-table th:nth-child(2) {
+  position: sticky;
+  top: 0;
+  left: 95px;
+  z-index: 6;
+  min-width: 80px;
+  background-color: var(--ink);
+}
+
+.sdp-table td {
+  padding: 4px 8px;
+  text-align: center;
+  border-right: 1px solid #e0e0e0;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+/* Sticky DATE column cells */
+.sdp-table td:nth-child(1) {
+  position: sticky;
+  left: 0;
+  background: #f8f9fa;
+  font-weight: 600;
+  z-index: 1;
+  min-width: 95px;
+  border-right: 1px solid #ccc;
+}
+
+/* Sticky PRICE column cells */
+.sdp-table td:nth-child(2) {
+  position: sticky;
+  left: 95px;
+  z-index: 1;
+  min-width: 80px;
+  font-weight: 600;
+  border-right: 1px solid #ccc;
+}
+
+.content-section[data-section="rolling-averages"] .section-title {
+  font-size: var(--fs-lg);
+  color: var(--text);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: var(--sp-2);
+}
+
+/* ---------- Shared tab layout (DPP - Realtime, AIC, Generation comparison) ---------- */
+
+.page-head {
+  margin-bottom: var(--sp-5);
+}
+
+.page-head h2 {
+  margin: 0 0 var(--sp-1);
+}
+
+.page-head p {
+  margin: 0;
+  max-width: 72ch;
+  color: var(--text-muted);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-3) var(--sp-4);
+  padding-bottom: var(--sp-4);
+  margin-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--rule);
+}
+
+.toolbar .field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.toolbar .field > label,
+.toolbar .field > .field-label {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.toolbar .push {
+  margin-left: auto;
+}
+
+/* Segmented control: one choice from a few, e.g. the time range */
+.segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  padding: 2px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.segmented button {
+  padding: 5px var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.segmented button:hover {
+  color: var(--text);
+}
+
+.segmented button[aria-pressed="true"] {
+  color: var(--text);
+  font-weight: 500;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--rule);
+}
+
+.segmented button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.segmented button:disabled {
+  cursor: progress;
+}
+
+/* Summary figures above a chart or table */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--sp-4);
+  margin: 0 0 var(--sp-4);
+}
+
+.stat-row div {
+  display: flex;
+  flex-direction: column-reverse;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.stat-row dt {
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.stat-row dd {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 500;
+}
+
+.stat-row .up { color: var(--load); }
+.stat-row .down { color: var(--deload); }
+
+/* Placeholder shown before data, while loading, or when a request fails */
+.placeholder-note {
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  padding: var(--sp-5);
+  text-align: center;
+  color: var(--text-muted);
+  border: 1px dashed var(--rule);
+  border-radius: var(--radius);
+}
+
+.placeholder-note p {
+  margin: 0;
+  max-width: 48ch;
+}
+
+@media (max-width: 600px) {
+  .page-head h2 {
+    font-size: var(--fs-lg);
+  }
+
+  .toolbar .push {
+    margin-left: 0;
+  }
+}
+
+.placeholder-note.is-error {
+  color: #8A2E12;
+  border-color: #E8C3B3;
+  background: #FBF3EF;
+}
+
+.chart-frame {
+  width: 100%;
+  min-height: 460px;
+}
+
+.view-title {
+  font-size: var(--fs-md);
+  margin: var(--sp-4) 0 var(--sp-2);
+}
+
+/* Gap tables: realtime above plan is green, below plan is rust */
+.gap-pos { background-color: rgba(44, 122, 91, var(--a, 0.15)); }
+.gap-neg { background-color: rgba(180, 83, 42, var(--a, 0.15)); }
+
+.num {
+  text-align: right;
+}
+
+/* ---------- DPP - Realtime tab ---------- */
+
+.dpp-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.dpp-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  position: sticky;
+  top: var(--sp-4);
+  max-height: calc(100vh - 2 * var(--sp-4));
+  overflow-y: auto;
+}
+
+.control-group {
+  margin: 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.control-group legend {
+  float: none;
+  width: auto;
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.date-pair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sp-2);
+}
+
+.date-pair .field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.date-pair label {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* Numbered steps: the order matters (load, choose, show) */
+.steps {
+  margin: 0;
+  padding-left: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.steps + .steps,
+#dpp_args,
+#realtime_args_content {
+  margin-top: var(--sp-4);
+}
+
+.steps li::marker {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.steps .btn {
+  width: 100%;
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.picker-label {
+  font-size: var(--fs-sm);
+}
+
+.picker .form-check {
+  font-size: var(--fs-sm);
+  margin: 0;
+}
+
+.picker select[multiple] {
+  height: 168px;
+  padding: 2px;
+  font-size: var(--fs-sm);
+  background-image: none;
+}
+
+.picker select[multiple] option {
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+
+.picker select[multiple] option:checked {
+  background: var(--accent-soft) linear-gradient(var(--accent-soft), var(--accent-soft));
+  color: var(--text);
+}
+
+.dpp-results {
+  min-width: 0;
+}
+
+/* Hide the empty note once either result set is showing */
+.dpp-results:has(.dpp_options:not([style*="none"])) .results-empty,
+.dpp-results:has(.realtime_options:not([style*="none"])) .results-empty {
+  display: none;
+}
+
+.results-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-3);
+}
+
+.results-toolbar h3 {
+  font-size: var(--fs-lg);
+  margin: 0 var(--sp-2) 0 0;
+}
+
+.results-toolbar .push {
+  margin-left: auto;
+}
+
+.table_args[data-table="realtime"] .results-toolbar {
+  margin-top: var(--sp-5);
+}
+
+.results-chart {
+  width: 100%;
+  min-height: 520px;
+  height: 70vh;
+}
+
+#dpp_chart_btns .shadow,
+#realtime_fuel_buttons .shadow,
+#dpp_chart_btns .border,
+#realtime_fuel_buttons .border {
+  box-shadow: none !important;
+  border: none !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+#dpp_chart_btns,
+#realtime_fuel_buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-2);
+}
+
+@media (max-width: 992px) {
+  .dpp-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .dpp-controls {
+    position: static;
+    max-height: none;
+  }
+}
+
+.data-freshness {
+  margin: 0;
+}
+
+/* Chart placeholder that disappears once Plotly draws (it adds .js-plotly-plot) */
+.chart-slot:not(.js-plotly-plot) {
+  height: 0 !important;
+  min-height: 0 !important;
+}
+
+.card-body:has(> .chart-slot.js-plotly-plot) > .chart-empty {
+  display: none;
+}
+
+/* Short methodology note under a page header */
+.method-note {
+  max-width: 80ch;
+  margin: 0 0 var(--sp-5);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.method-note h3 {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  margin: 0 0 var(--sp-1);
+}
+
+.method-note ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: var(--fs-sm);
+}
+
+.method-note li + li {
+  margin-top: 2px;
+}
+
+/* DPP heatmaps are drawn at a fixed 1400px so every plant row stays legible. Centre them in
+   whatever width the sidebar leaves, and scroll sideways rather than clip on narrow screens. */
+.content-section[data-section$="heatmap"] .js-plotly-plot {
+    overflow-x: auto;
+}
+
+.content-section[data-section$="heatmap"] .js-plotly-plot .svg-container {
+    margin: 0 auto;
+}
+
+/* System Direction Forecast: the report upload that every action on the tab depends on */
+.forecast-upload {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 340px);
+  gap: var(--sp-5);
+  align-items: start;
+  margin-bottom: var(--sp-5);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.forecast-upload h3 {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  margin: 0 0 var(--sp-3);
+}
+
+.forecast-upload .steps {
+  gap: var(--sp-2);
+  max-width: 70ch;
+}
+
+.forecast-caveat {
+  margin: var(--sp-3) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: var(--sp-5) var(--sp-4);
+  border: 2px dashed var(--rule);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  text-align: center;
+  cursor: pointer;
+}
+
+.upload-area i {
+  font-size: 1.6rem;
+  color: var(--load);
+}
+
+.upload-area .upload-title {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.upload-area .upload-hint {
+  font-size: var(--fs-sm);
+}
+
+.upload-area:hover,
+.upload-area.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* The real input is visually hidden; show its keyboard focus on the box */
+.forecast-upload-drop:has(#forecast_file_input:focus-visible) .upload-area {
+  border-color: var(--accent);
+  box-shadow: var(--focus);
+}
+
+.upload-file {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+
+.upload-file i { color: var(--load); }
+
+.upload-file span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chart-subtitle {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  margin: var(--sp-5) 0 var(--sp-3);
+}
+
+@media (max-width: 768px) {
+  .forecast-upload { grid-template-columns: 1fr; }
+}
+
+/* Hydro Map: the map and its ranked table side by side, so a bubble and its row read together */
+.hydro-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.hydro-map-figure {
+  margin: 0;
+}
+
+.hydro-map-chart {
+  height: 500px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.hydro-map-figure figcaption {
+  margin-top: var(--sp-2);
+}
+
+.hydro-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-5);
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.hydro-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hydro-legend .dot {
+  display: inline-block;
+  border: 1px solid #5D7F9E;
+  border-radius: 50%;
+}
+
+.hydro-legend .dot.sm { width: 8px; height: 8px; }
+.hydro-legend .dot.lg { width: 16px; height: 16px; margin-right: 2px; }
+
+.hydro-legend .swatch {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.hydro-legend-level {
+  margin-left: auto;
+}
+
+.hydro-table h3 {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  margin: 0 0 var(--sp-2);
+}
+
+.hydro-table .table-scroll {
+  max-height: 470px;
+}
+
+.hydro-table th {
+  white-space: normal;
+  vertical-align: bottom;
+}
+
+.hydro-table tbody tr {
+  cursor: default;
+}
+
+.cf-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  white-space: nowrap;
+}
+
+.cf-bar {
+  width: 48px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--cf-color) var(--cf), var(--paper) var(--cf));
+}
+
+@media (max-width: 1200px) {
+  .hydro-layout { grid-template-columns: 1fr; }
+  .hydro-table .table-scroll { max-height: none; }
+}
+
+/* Forecast Performance: accuracy table under the chart */
+.performance-metrics {
+  max-width: 720px;
+  margin-top: var(--sp-5);
+}
+
+.performance-metrics h3 {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  margin: 0 0 var(--sp-1);
+}
+
+td.is-best {
+  font-weight: 700;
+  color: var(--load);
+}
+
+.page-head .page-note {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+/* A long table kept to a fixed height, with its header pinned while it scrolls */
+.table-scroll {
+  max-height: 480px;
+  overflow-y: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.confusion-chart {
+  max-width: 760px;
+}
+
+/* CAO Charts: month- and year-to-date demand above the demand charts */
+.demand-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-4);
+}
+
+.demand-period {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.demand-period h4 {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  margin: 0 0 var(--sp-2);
+}
+
+.demand-period dl {
+  margin: 0;
+}
+
+.demand-period dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 2px 0;
+}
+
+.demand-period dt {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.demand-period dd {
+  margin: 0;
+  font-weight: 500;
+}
+
+.demand-period dd.up { color: var(--load); }
+.demand-period dd.down { color: var(--deload); }

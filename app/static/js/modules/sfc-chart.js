@@ -85,7 +85,7 @@ export const sfcChart = {
             y: series.map(p => p.value),
             type: 'scatter',
             mode: 'lines',
-            line: { color: '#29b6f6', width: 2, shape: 'linear' },
+            line: { color: '#1F5F99', width: 1.6, shape: 'linear' },
             hovertemplate: '%{x}<br>%{y:,.0f} TL/MWh<extra></extra>'
         };
 

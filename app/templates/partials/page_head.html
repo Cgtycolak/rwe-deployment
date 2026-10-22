@@ -1,0 +1,7 @@
+{# Title and one-line description for a tab, from app/nav.py. Expects `section` from the index loop.
+   A partial can set `page_note` before including this to add a longer explanation underneath. #}
+<header class="page-head">
+    <h2>{{ section.label }}</h2>
+    <p>{{ section.description }}</p>
+    {% if page_note %}<p class="page-note">{{ page_note }}</p>{% endif %}
+</header>

@@ -1,0 +1,20 @@
+<header class="page-head">
+    <h2>Available capacity, plan and realtime</h2>
+    <p>System-wide available installed capacity (AIC) against planned generation (DPP) and realtime output, hour by hour. The space between AIC and realtime is capacity that was declared available but not generating. Totals are as reported: the plan counts more solar than the realtime feed, so realtime dips below plan around midday.</p>
+</header>
+
+<div class="toolbar">
+    <div class="field">
+        <span class="field-label" id="aic-range-label">Period</span>
+        <div class="segmented" role="group" aria-labelledby="aic-range-label">
+            <button type="button" class="aic-range-btn" data-range="week" aria-pressed="false">Last 7 days</button>
+            <button type="button" class="aic-range-btn" data-range="month" aria-pressed="false">Last 30 days</button>
+            <button type="button" class="aic-range-btn" data-range="year" aria-pressed="false">Last 12 months</button>
+            <button type="button" class="aic-range-btn" data-range="5year" aria-pressed="false">Last 5 years</button>
+        </div>
+    </div>
+</div>
+
+<dl class="stat-row" id="aic_stats" hidden></dl>
+<div class="placeholder-note" id="aic_status"><p>Loading the last 7 days.</p></div>
+<div id="aic_realtime_chart" class="chart-frame" hidden></div>

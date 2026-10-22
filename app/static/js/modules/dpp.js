@@ -1,5 +1,5 @@
 import { DPPDayReport } from '../classes/DPPDayReport.js';
-import { postData, toggleLoading, displayMessage, isInvalidDuration, toggleButtonLoading } from '../utils/helpers.js';
+import { postData, toggleLoading, displayMessage, isInvalidDuration, toggleButtonLoading, loadXLSX } from '../utils/helpers.js';
 import { getEndpoints } from '../config/endpoints.js';
 import { THead } from '../classes/THead.js';
 import { TBody } from '../classes/TBody.js';
@@ -223,11 +223,11 @@ export const dpp = {
                     displayMessage(durationError, "danger");
                 }
             } else {
-                displayMessage("System error unable to load organizations.", "danger");
+                displayMessage("The organisation list could not be loaded. Reload the page and try again.", "danger");
             }
         } catch (error) {
             console.error("loadOrgs Error", error);
-            displayMessage("System error while loading organizations.", "danger");
+            displayMessage("The organisation list could not be loaded. Check the dates and try again.", "danger");
         } finally {
             toggleButtonLoading('#load_orgs', false);
         }
@@ -279,13 +279,13 @@ export const dpp = {
                             displayMessage(
                                 res.message
                                     ? res.message
-                                    : "Unable to load UEVCB list due to connection error",
+                                    : "EPIAS did not return the generation units. Try again in a moment.",
                                 "danger"
                             );
                         }
                     } else {
                         displayMessage(
-                            "Unable to load UEVCB options please select organizations",
+                            "Select at least one organisation, then load its generation units.",
                             "warning"
                         );
                     }
@@ -293,11 +293,11 @@ export const dpp = {
                     displayMessage(durationError, "danger");
                 }
             } else {
-                displayMessage("Unable to load UEVCB list system error", "danger");
+                displayMessage("The generation units could not be loaded. Reload the page and try again.", "danger");
             }
         } catch (error) {
             console.error("getOrgbasedOptions Error", error);
-            displayMessage("System error while loading UEVCB options.", "danger");
+            displayMessage("The generation units could not be loaded. Try again in a moment.", "danger");
         } finally {
             toggleButtonLoading('#load_uevcbids', false);
         }
@@ -409,7 +409,7 @@ export const dpp = {
                         displayMessage(
                             res.message
                                 ? res.message
-                                : "Unable to load DPP Table Data due to connection error",
+                                : "EPIAS did not return DPP data. Try again in a moment.",
                             "danger"
                         );
                     }
@@ -417,7 +417,7 @@ export const dpp = {
                     // reload org when error detected (by selected invalid uevcb of modifed orgs) (note this click is UX it so just notify user he selet uevcb for removed org by him so load the selected orgs uevcb for him to notice and continue)
                     $("#load_uevcbids").click();
                     displayMessage(
-                        "Unable to load Table data, New changes detected in organizations. Please click 'Load Uevcbids' next time when make changes to org first to detect the changes, then select 'Uevcbids' and click 'Display Table'. I clicked for u ",
+                        "The organisation selection changed after the units were loaded, so the units have been reloaded. Select them again, then show the DPP table.",
                         "warning"
                     );
                 }
@@ -426,17 +426,17 @@ export const dpp = {
             }
         } catch (error) {
             console.error("getDPPTableData Error", error);
-            displayMessage("System error while loading DPP data.", "danger");
+            displayMessage("The DPP table could not be loaded. Try again, or pick fewer units or a shorter range.", "danger");
         } finally {
             toggleButtonLoading('#load_dpp', false);
         }
     },
 
-    downloadExcel() {
+    async downloadExcel() {
         try {
             if (!this._rows || !this.columns) {
-                console.warn("No data available to download");
-                displayMessage("No data available to download", "warning");
+                console.warn("Load a table first, then download it.");
+                displayMessage("Load a table first, then download it.", "warning");
                 return;
             }
 
@@ -451,6 +451,7 @@ export const dpp = {
             });
 
             // Create workbook and worksheet
+            const XLSX = await loadXLSX();
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.aoa_to_sheet(ws_data);
 
@@ -465,7 +466,7 @@ export const dpp = {
             XLSX.writeFile(wb, filename);
         } catch (error) {
             console.error("Error downloading Excel:", error);
-            displayMessage("Error generating Excel file", "danger");
+            displayMessage("The Excel file could not be created. Try again in a moment.", "danger");
         }
     }
 };

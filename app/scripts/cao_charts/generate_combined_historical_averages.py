@@ -70,7 +70,7 @@ def generate_combined_historical_averages():
         
         # Convert production data to DataFrame
         df_production = pd.DataFrame([{
-            'datetime': d.datetime.astimezone(pytz.UTC),
+            'datetime': d.datetime,
             'fueloil': d.fueloil,
             'gasoil': d.gasoil,
             'blackcoal': d.blackcoal,
@@ -92,13 +92,12 @@ def generate_combined_historical_averages():
             'wasteheat': d.wasteheat
         } for d in production_data])
         
-        # Convert datetime and set timezone
-        df_production['datetime'] = pd.to_datetime(df_production['datetime'], utc=True)
+        # production_data holds naive Istanbul time; the solar tables hold UTC.
+        # (astimezone() on a naive value would assume the machine's own zone.)
+        df_production['datetime'] = pd.to_datetime(df_production['datetime'])
         df_production = df_production.set_index('datetime')
-        
-        # Convert to Istanbul timezone
         istanbul_tz = pytz.timezone('Europe/Istanbul')
-        df_production.index = df_production.index.tz_convert(istanbul_tz)
+        df_production.index = df_production.index.tz_localize(istanbul_tz)
         
         # Process unlicensed solar data
         if unlicensed_data:

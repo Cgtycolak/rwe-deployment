@@ -1,0 +1,28 @@
+{% include 'partials/page_head.html' %}
+
+<div class="container-fluid">
+    <div class="toolbar">
+        <button id="load-rolling-charts" class="btn btn-primary btn-sm">
+            <span class="button-content">Reload charts</span>
+            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+        </button>
+        <button id="toggle-modebar-all" class="btn btn-outline-secondary btn-sm">Hide All Chart Controls</button>
+        <p id="last-update-info" class="push data-freshness text-muted small"
+           title="Generation and demand sync with EPIAS every hour, solar with Meteologica every six hours"></p>
+    </div>
+
+    <div id="loading" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p>Loading charts...</p>
+    </div>
+
+    <div id="status-message" class="alert alert-info" style="display: none;"></div>
+
+    <div class="row" id="charts-container">
+        <!-- Charts will be inserted here -->
+    </div>
+
+    <div id="debug-data"></div>
+</div>

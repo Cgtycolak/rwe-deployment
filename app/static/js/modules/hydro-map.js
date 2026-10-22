@@ -41,8 +41,7 @@ export const hydroMap = {
         if (group) {
             group.querySelectorAll('button[data-type]').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    group.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
+                    group.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
                     this.type = btn.dataset.type;
                     this.load();
                 });
@@ -82,7 +81,7 @@ export const hydroMap = {
 
         try {
             if (button) this.helpers.toggleButtonLoading(button, true);
-            host.innerHTML = '<div class="text-center p-5"><div class="spinner-border text-primary"></div><p class="mt-2">Loading map...</p></div>';
+            if (!host.querySelector('.js-plotly-plot')) host.innerHTML = '<div class="placeholder-note"><p>Loading the map.</p></div>';
 
             const params = new URLSearchParams({ type: this.type });
             if (date) params.set('date', date);
@@ -93,9 +92,9 @@ export const hydroMap = {
             if (this._requestId !== requestId) return;
 
             if (resp.code !== 200) {
-                host.innerHTML = `<div class="alert alert-warning m-3"><i class="fas fa-exclamation-triangle"></i> ${resp.message || 'No data available'}</div>`;
+                host.innerHTML = `<div class="placeholder-note"><p>${resp.message || 'No hydro generation is stored for this day.'} Pick another date.</p></div>`;
                 document.getElementById('hydro_map_table').innerHTML = '';
-                document.getElementById('hydro_map_summary').innerHTML = '';
+                document.getElementById('hydro_map_stats').hidden = true;
                 return;
             }
 
@@ -108,13 +107,12 @@ export const hydroMap = {
             // only ever 404 cannot be chosen in the first place.
             this.applyDateBounds(input, resp.data.date_range, resp.data.available_dates);
 
-            // summary first: it creates the element updateLevelBadge writes into
-            this.renderSummary(resp.data);
+            this.renderStats(resp.data);
             this.plot(geo, resp.data, host);
         } catch (err) {
             if (this._requestId !== requestId) return;
             console.error('hydro map error', err);
-            host.innerHTML = `<div class="alert alert-danger m-3"><i class="fas fa-exclamation-triangle"></i> Could not load the map: ${err.message}</div>`;
+            host.innerHTML = '<div class="placeholder-note is-error"><p>The map could not be loaded. Press Reload to try again.</p></div>';
         } finally {
             if (button) this.helpers.toggleButtonLoading(button, false);
         }
@@ -205,17 +203,17 @@ export const hydroMap = {
 
         const traces = [
             { x: lx, y: ly, mode: 'lines', type: 'scatter', hoverinfo: 'skip',
-              line: { color: '#b9c6d4', width: 1 }, showlegend: false },
+              line: { color: '#C9D3DC', width: 0.8 }, showlegend: false },
             // highlight ring for the hovered bubble (shapes cannot be hovered)
             { x: [], y: [], mode: 'markers', type: 'scatter', hoverinfo: 'skip',
-              marker: { size: [0], color: 'rgba(0,0,0,0)', line: { color: '#0b4c73', width: 3 } },
+              marker: { size: [0], color: 'rgba(0,0,0,0)', line: { color: '#C2702E', width: 3 } },
               showlegend: false },
             // invisible markers carry the tooltips
             { x: [], y: [], mode: 'markers', type: 'scatter', customdata: [],
               marker: { size: [], color: 'rgba(0,0,0,0)' },
               hovertemplate: '%{customdata}<extra></extra>',
-              hoverlabel: { bgcolor: '#ffffff', bordercolor: '#12608f', align: 'left',
-                            font: { size: 12, color: '#20313f' } },
+              hoverlabel: { bgcolor: '#ffffff', bordercolor: '#D5DCE3', align: 'left',
+                            font: { family: "'RWE Sans Web', sans-serif", size: 12, color: '#1B2B3A' } },
               showlegend: false },
         ];
         this.HIGHLIGHT = 1;
@@ -226,12 +224,13 @@ export const hydroMap = {
             xaxis: { visible: false, range: [25.5, 45.2] },
             yaxis: { visible: false, range: [35.5, 42.5], scaleanchor: 'x', scaleratio: this.ASPECT },
             shapes: [],
-            paper_bgcolor: '#ffffff', plot_bgcolor: '#f4f8fb',
+            paper_bgcolor: '#ffffff', plot_bgcolor: '#F7F9FB',
             hovermode: 'closest', dragmode: 'pan',
         };
 
         host.innerHTML = '';
-        Plotly.newPlot(host, traces, layout, { responsive: true, displayModeBar: true, scrollZoom: true })
+        Plotly.newPlot(host, traces, layout, { responsive: true, displaylogo: false, scrollZoom: true,
+                                               modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'] })
             .then(() => {
                 this.redraw(host);
                 this.bindEvents(host);
@@ -257,15 +256,16 @@ export const hydroMap = {
         groups.forEach(g => {
             const rx = this.radiusPx(g.capacity_mw) / pxPerX;   // px -> data units
             const ry = rx / this.ASPECT;
+            // Outline and white body first, then the water on top of it
+            shapes.push({ type: 'circle', xref: 'x', yref: 'y',
+                          x0: g.lon - rx, x1: g.lon + rx, y0: g.lat - ry, y1: g.lat + ry,
+                          line: { color: '#5D7F9E', width: 1 },
+                          fillcolor: 'rgba(255,255,255,0.6)', layer: 'above' });
             const water = this.waterPath(g.lon, g.lat, rx, ry, g.fill);
             if (water) {
                 shapes.push({ type: 'path', path: water, xref: 'x', yref: 'y',
-                              fillcolor: 'rgba(23,131,199,0.78)', line: { width: 0 }, layer: 'above' });
+                              fillcolor: this.waterColor(g.fill), line: { width: 0 }, layer: 'above' });
             }
-            shapes.push({ type: 'circle', xref: 'x', yref: 'y',
-                          x0: g.lon - rx, x1: g.lon + rx, y0: g.lat - ry, y1: g.lat + ry,
-                          line: { color: '#12608f', width: 1.1 },
-                          fillcolor: 'rgba(23,131,199,0.07)', layer: 'above' });
         });
 
         Plotly.relayout(host, { shapes });
@@ -277,6 +277,30 @@ export const hydroMap = {
         }, [this.TARGETS]);
 
         this.updateLevelBadge(level, groups.length);
+    },
+
+    // Capacity factor as colour, on top of the fill level: pale for idle areas, deep for busy ones,
+    // so the eye finds the outliers without reading every bubble. Hydro rarely runs above 50%
+    // over a day, so the scale saturates there. Stops match the legend in hydro-map.html.
+    CF_STOPS: [[0, [160, 188, 211]], [0.2, [46, 127, 192]], [0.5, [18, 60, 99]]],
+
+    waterColor(cf) {
+        const stops = this.CF_STOPS;
+        let i = 0;
+        while (i < stops.length - 2 && cf > stops[i + 1][0]) i++;
+        const [a, ca] = stops[i];
+        const [b, cb] = stops[i + 1];
+        const t = Math.min(Math.max((cf - a) / (b - a), 0), 1);
+        const c = ca.map((v, k) => Math.round(v + (cb[k] - v) * t));
+        return `rgba(${c[0]},${c[1]},${c[2]},0.9)`;
+    },
+
+    /** Ring around one area, from a map hover or a table row hover */
+    highlight(host, g) {
+        if (!host?._fullLayout) return;
+        Plotly.restyle(host, g
+            ? { x: [[g.lon]], y: [[g.lat]], 'marker.size': [[this.radiusPx(g.capacity_mw) * 2.3]] }
+            : { x: [[]], y: [[]] }, [this.HIGHLIGHT]);
     },
 
     hoverText(g, level) {
@@ -309,82 +333,79 @@ export const hydroMap = {
             const p = ev.points?.[0];
             if (!p || p.curveNumber !== this.TARGETS) return;
             const g = this._groups[p.pointIndex];
-            if (!g) return;
-            Plotly.restyle(host, {
-                x: [[g.lon]], y: [[g.lat]],
-                'marker.size': [[this.radiusPx(g.capacity_mw) * 2.3]],   // grows on hover
-            }, [this.HIGHLIGHT]);
+            if (g) this.highlight(host, g);
         });
-        host.on('plotly_unhover', () => {
-            Plotly.restyle(host, { x: [[]], y: [[]] }, [this.HIGHLIGHT]);
-        });
+        host.on('plotly_unhover', () => this.highlight(host, null));
     },
 
     updateLevelBadge(level, count) {
         const el = document.getElementById('hydro_map_level');
         if (!el) return;
         const names = { region: 'Regions', province: 'Provinces', district: 'Districts' };
-        el.textContent = `${names[level.name]} · ${count} bubbles · zoom in for more detail`;
+        el.textContent = `Showing ${count} ${names[level.name].toLowerCase()}`;
     },
 
-    renderSummary(data) {
-        const el = document.getElementById('hydro_map_summary');
+    renderStats(data) {
+        const el = document.getElementById('hydro_map_stats');
         if (!el) return;
         const s = data.summary;
-        const label = { river: 'Run-of-river', dammed: 'Dammed', all: 'All hydro' }[data.type] || data.type;
-        const n = (v) => Number(v).toLocaleString('en-US');
-        el.innerHTML = `<strong>${data.date}</strong> · ${label} · ${s.plants} plants, ${s.districts} districts ·
-            Capacity ${n(s.capacity_mw)} MW · Generation ${n(s.generation_mwh)} MWh
-            <div id="hydro_map_level" class="mt-1"></div>`;
+        const n = (v) => Number(v).toLocaleString('en-GB', { maximumFractionDigits: 0 });
+        const cf = s.capacity_mw > 0 ? s.generation_mwh / (s.capacity_mw * 24) : null;
+        const day = new Date(`${data.date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        el.innerHTML = `
+            <div><dt>Day shown</dt><dd>${day}</dd></div>
+            <div><dt>Plants, in ${n(s.districts)} districts</dt><dd>${n(s.plants)}</dd></div>
+            <div><dt>Installed capacity, MW</dt><dd>${n(s.capacity_mw)}</dd></div>
+            <div><dt>Generation, MWh</dt><dd>${n(s.generation_mwh)}</dd></div>
+            <div><dt>Capacity factor, all plants</dt><dd>${cf != null ? (cf * 100).toFixed(1) + '%' : 'No data'}</dd></div>`;
+        el.hidden = false;
     },
 
     renderTable(groups, level) {
         const el = document.getElementById('hydro_map_table');
         if (!el) return;
-        const n = (v) => Number(v).toLocaleString('en-US', { maximumFractionDigits: 1 });
+        const n = (v) => Number(v).toLocaleString('en-GB', { maximumFractionDigits: 0 });
 
-        // Columns follow the map: at region zoom the table lists regions, not the
-        // 309 districts underneath them, so the two always describe the same thing.
-        const cols = { region: ['Region'], province: ['Region', 'Province'],
-                       district: ['Region', 'Province', 'District'] }[level.name];
-        const cellsFor = (g) => ({
-            region: [g.region || ''], province: [g.region || '', g.province],
-            district: [g.region || '', g.province, g.district],
-        }[level.name]);
+        // Rows follow the map: at region zoom the table lists regions, not the 309 districts
+        // underneath them, so the two always describe the same thing.
+        const areaName = { region: 'Region', province: 'Province', district: 'District' }[level.name];
 
         const shown = groups.slice(0, 40);
-        const body = shown.map(g => `
-            <tr>
-                ${cellsFor(g).map(c => `<td>${c}</td>`).join('')}
-                <td class="text-end">${n(g.capacity_mw)}</td>
-                <td class="text-end">${n(g.generation_mwh)}</td>
-                <td class="text-end">${(g.fill * 100).toFixed(1)}%</td>
-                <td class="text-end">${g.plants.length}</td>
+        const body = shown.map((g, i) => `
+            <tr data-index="${i}">
+                <td>${g.label}</td>
+                <td class="num">${n(g.capacity_mw)}</td>
+                <td class="num">${n(g.generation_mwh)}</td>
+                <td class="num"><span class="cf-cell"><span class="cf-bar" style="--cf:${(g.fill * 100).toFixed(1)}%;--cf-color:${this.waterColor(g.fill)}"></span>${(g.fill * 100).toFixed(0)}%</span></td>
             </tr>`).join('');
 
         const names = { region: 'regions', province: 'provinces', district: 'districts' };
-        const more = groups.length > shown.length
-            ? ` Showing the 40 largest by capacity of ${groups.length}.` : '';
+        const title = document.getElementById('hydro-table-title');
+        if (title) title.textContent = `Largest ${names[level.name]} on the map`;
+        const more = groups.length > shown.length ? ` The 40 largest of ${groups.length} are listed.` : '';
 
         el.innerHTML = `
-            <div class="p-2 small text-muted border-bottom">
-                The same ${names[level.name]} drawn on the map, largest capacity first.
-                <strong>Capacity factor</strong> is generation divided by what the
-                ${names[level.name].slice(0, -1)} could have produced running flat out for 24 h —
-                it is the bubble's fill level. A low value means the plants were idle or
-                water was short, not that data is missing.${more}
-            </div>
-            <div class="table-responsive">
+            <p class="text-muted small">
+                Capacity factor is generation divided by what the area could produce running flat out for 24 hours.
+                A low value means idle plants or little water, not missing data.${more}
+            </p>
+            <div class="table-scroll">
                 <table class="table table-sm table-hover mb-0">
-                    <thead class="table-dark"><tr>
-                        ${cols.map(c => `<th>${c}</th>`).join('')}
-                        <th class="text-end">Capacity (MW)</th>
-                        <th class="text-end">Generation (MWh)</th>
-                        <th class="text-end">Capacity factor</th>
-                        <th class="text-end">Plants</th>
+                    <thead><tr>
+                        <th>${areaName}</th>
+                        <th class="num">Capacity, MW</th>
+                        <th class="num">Generation, MWh</th>
+                        <th class="num">Capacity factor</th>
                     </tr></thead>
                     <tbody>${body}</tbody>
                 </table>
             </div>`;
+
+        // Hovering a row rings its bubble, so the table and the map can be read together
+        const host = document.getElementById('hydro_map_chart');
+        el.querySelectorAll('tbody tr').forEach((row) => {
+            row.addEventListener('mouseenter', () => this.highlight(host, shown[Number(row.dataset.index)]));
+            row.addEventListener('mouseleave', () => this.highlight(host, null));
+        });
     },
 };

@@ -1,3 +1,5 @@
+import { baseLayout, PLOT_CONFIG, SERIES, mw } from '../utils/plot-theme.js';
+
 export const forecasting = {
     // Store the uploaded file
     uploadedFile: null,
@@ -30,115 +32,35 @@ export const forecasting = {
     },
     
     setupEventListeners() {
-        // File upload handling
+        // The upload area is a <label for="forecast_file_input">, so the browser opens the
+        // picker itself; only the file choice and drag-and-drop need handling here.
         const uploadArea = document.getElementById('forecast_upload_area');
         const fileInput = document.getElementById('forecast_file_input');
-        const removeFileBtn = document.getElementById('forecast_remove_file');
-        
-        // Create a dedicated button for file selection
-        if (uploadArea && fileInput) {
-            // First, remove any existing click event listeners
-            const newUploadArea = uploadArea.cloneNode(true);
-            uploadArea.parentNode.replaceChild(newUploadArea, uploadArea);
-            
-            // Function to handle file selection without duplicate dialogs
-            const selectFile = (e) => {
-                if (e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }
-                
-                // Create a new file input each time to avoid browser caching issues
-                const oldInput = document.getElementById('forecast_file_input');
-                const newInput = document.createElement('input');
-                newInput.type = 'file';
-                newInput.id = 'forecast_file_input';
-                newInput.className = 'd-none';
-                newInput.accept = '.xls,.xlsx';
-                
-                // Set up the change event before adding to DOM
-                newInput.addEventListener('change', (event) => {
-                    if (event.target.files.length) {
-                        this.handleFileUpload(event.target.files[0]);
-                    }
-                });
-                
-                // Replace the old input with the new one
-                if (oldInput && oldInput.parentNode) {
-                    oldInput.parentNode.replaceChild(newInput, oldInput);
-                } else {
-                    // If for some reason the old input doesn't exist, append to upload area
-                    document.body.appendChild(newInput);
-                }
-                
-                // Trigger click on the new input
-                setTimeout(() => {
-                    newInput.click();
-                }, 0);
-            };
-            
-            // Set up drag and drop
-            newUploadArea.addEventListener('dragover', (e) => {
+
+        fileInput?.addEventListener('change', () => {
+            if (fileInput.files.length) this.handleFileUpload(fileInput.files[0]);
+            // Clearing lets the same file be chosen again after "Change file"
+            fileInput.value = '';
+        });
+
+        if (uploadArea) {
+            uploadArea.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                newUploadArea.classList.add('drag-over');
+                uploadArea.classList.add('drag-over');
             });
-            
-            newUploadArea.addEventListener('dragleave', () => {
-                newUploadArea.classList.remove('drag-over');
-            });
-            
-            newUploadArea.addEventListener('drop', (e) => {
+            uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+            uploadArea.addEventListener('drop', (e) => {
                 e.preventDefault();
-                newUploadArea.classList.remove('drag-over');
-                
-                if (e.dataTransfer.files.length) {
-                    this.handleFileUpload(e.dataTransfer.files[0]);
-                }
-            });
-            
-            // Use a single click handler for the upload area
-            newUploadArea.addEventListener('click', selectFile);
-        }
-        
-        if (removeFileBtn) {
-            removeFileBtn.addEventListener('click', () => {
-                this.removeUploadedFile();
+                uploadArea.classList.remove('drag-over');
+                if (e.dataTransfer.files.length) this.handleFileUpload(e.dataTransfer.files[0]);
             });
         }
-        
-        // Button click handlers
-        document.getElementById('load_recent_data')?.addEventListener('click', () => {
-            this.loadRecentData();
-        });
-        
-        
-        document.getElementById('run_forecast')?.addEventListener('click', () => {
-            this.runForecast();
-        });
-        
-        document.getElementById('download_forecast')?.addEventListener('click', () => {
-            this.downloadForecast();
-        });
-        
-        // Tab handling
-        const tabs = document.querySelectorAll('#forecastingTabs .nav-link');
-        tabs.forEach(tab => {
-            tab.addEventListener('click', (e) => {
-                // Remove active class from all tabs
-                tabs.forEach(t => t.classList.remove('active'));
-                
-                // Add active class to clicked tab
-                e.target.classList.add('active');
-                
-                // Show the corresponding tab content
-                const tabId = e.target.getAttribute('data-bs-target');
-                document.querySelectorAll('.tab-pane').forEach(pane => {
-                    pane.classList.remove('show', 'active');
-                });
-                document.querySelector(tabId).classList.add('show', 'active');
-            });
-        });
-        
+
+        document.getElementById('forecast_remove_file')?.addEventListener('click', () => this.removeUploadedFile());
+        document.getElementById('load_recent_data')?.addEventListener('click', () => this.loadRecentData());
+        document.getElementById('run_forecast')?.addEventListener('click', () => this.runForecast());
+        document.getElementById('download_forecast')?.addEventListener('click', () => this.downloadForecast());
+
         // Show/hide lagged_hour selector based on selected model
         const forecastModelSelect   = document.getElementById('forecast_model');
         const lagLabel  = document.getElementById('lagged_hour_label');
@@ -165,11 +87,12 @@ export const forecasting = {
     
     async handleFileUpload(file) {
         if (!file.name.match(/\.(xls|xlsx)$/i)) {
-            this.displayMessage('Please upload an Excel file (.xls or .xlsx)', 'warning');
+            this.displayMessage('Upload the report as an Excel file (.xls or .xlsx).', 'warning');
             return;
         }
-        if (file.size > 200 * 1024 * 1024) {
-            this.displayMessage('File size exceeds 200MB limit', 'warning');
+        // Matches MAX_CONTENT_LENGTH in factory.py; larger uploads are rejected by the server
+        if (file.size > 1024 * 1024) {
+            this.displayMessage('The file is larger than 1 MB. Upload the daily report as exported, without extra sheets.', 'warning');
             return;
         }
 
@@ -193,7 +116,7 @@ export const forecasting = {
             fileInfo.classList.remove('d-none');
             uploadArea.classList.add('d-none');
         }
-        this.displayMessage(`File "${file.name}" uploaded successfully`, 'success');
+        this.displayMessage(`${file.name} is ready. Load the recent direction or run a forecast.`, 'success');
     },
 
     removeUploadedFile() {
@@ -202,15 +125,8 @@ export const forecasting = {
         this.uploadedFileName = null;
         
         // Update UI
-        const fileInfo = document.getElementById('forecast_file_info');
-        const uploadArea = document.getElementById('forecast_upload_area');
-        const fileInput = document.getElementById('forecast_file_input');
-        
-        if (fileInfo && uploadArea && fileInput) {
-            fileInfo.classList.add('d-none');
-            uploadArea.classList.remove('d-none');
-            fileInput.value = ''; // Clear the file input
-        }
+        document.getElementById('forecast_file_info')?.classList.add('d-none');
+        document.getElementById('forecast_upload_area')?.classList.remove('d-none');
     },
     
     async loadRecentData() {
@@ -265,106 +181,56 @@ export const forecasting = {
     },
     
     displayRecentDataChart(data) {
-        const dates = data.map(item => item.date);
-        const values = data.map(item => item.system_direction);
-        
+        const x = data.map((item) => item.date);
+        const y = data.map((item) => item.system_direction);
+
+        // Bars coloured by sign read faster than a line when the question is "which way, and how much"
         const trace = {
-            x: dates,
-            y: values,
-            type: 'scatter',
-            mode: 'lines+markers',
-            name: 'System Direction',
-            line: {
-                color: 'rgb(255, 0, 0)',
-                width: 2
-            },
-            marker: {
-                size: 6,
-                color: 'rgb(255, 0, 0)'
-            }
+            name: 'System direction',
+            type: 'bar',
+            x, y,
+            marker: { color: y.map((v) => (v < 0 ? SERIES.gapDown : SERIES.gapUp)) },
+            hovertemplate: '%{x|%d %b %H:%M}<br>%{y:,.0f} MW<extra></extra>',
         };
-        
-        const layout = {
-            title: 'Recent System Direction',
-            yaxis: {
-                title: 'System Direction (MW)',
-                zeroline: true,
-                zerolinecolor: 'black',
-                zerolinewidth: 2     
-            },
+        const layout = baseLayout({
+            height: 420,
+            bargap: 0.15,
+            showlegend: false,
             hovermode: 'closest',
-            plot_bgcolor: 'white',
-            paper_bgcolor: 'white'
-        };
-        
-        Plotly.newPlot('recent_data_chart', [trace], layout, {responsive: true});
-        
-        // Add table display with heatmap coloring
+            yaxis: { ...baseLayout().yaxis, title: { text: 'MW' }, zeroline: true, zerolinewidth: 1.5 },
+        });
+        Plotly.react('recent_data_chart', [trace], layout, PLOT_CONFIG);
+
         const tableContainer = document.getElementById('recent_data_table_container');
-        if (tableContainer) {
-            // Find min and max values for system direction to create color scale
-            const systemDirectionValues = data.map(item => item.system_direction);
-            const minValue = Math.min(...systemDirectionValues);
-            const maxValue = Math.max(...systemDirectionValues);
-            
-            let tableHtml = `
-                <div class="table-responsive mt-4">
-                    <table class="table table-striped table-hover">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>DATE & TIME</th>
-                                <th>SYSTEM DIRECTION (MW)</th>
-                                <th>WIND (MW)</th>
-                                <th>HYDRO (MW)</th>
-                                <th>SOLAR (MW)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
-            
-            data.forEach(item => {
-                // Format date for display
-                const date = new Date(item.date);
-                const formattedDate = date.toLocaleString();
-                
-                // Calculate color for system direction (red for negative, green for positive)
-                let backgroundColor, textColor;
-                
-                if (item.system_direction < 0) {
-                    // Red gradient for negative values - more intense
-                    const intensity = Math.min(Math.abs(item.system_direction) / Math.abs(minValue), 1);
-                    backgroundColor = `rgba(255, 0, 0, ${0.3 + intensity * 0.6})`;
-                    textColor = 'black';
-                } else {
-                    // Green gradient for positive values - more intense
-                    const intensity = Math.min(item.system_direction / maxValue, 1);
-                    backgroundColor = `rgba(0, 180, 0, ${0.3 + intensity * 0.6})`;
-                    textColor = 'black';
-                }
-                
-                tableHtml += `
-                    <tr>
-                        <td>${formattedDate}</td>
-                        <td style="background-color: ${backgroundColor}; color: ${textColor}; text-align: right;">
-                            ${item.system_direction.toFixed(2)}
-                        </td>
-                        <td style="text-align: right;">${item.wind ? item.wind.toFixed(2) : '0.00'}</td>
-                        <td style="text-align: right;">${item.hydro ? item.hydro.toFixed(2) : '0.00'}</td>
-                        <td style="text-align: right;">${item.solar ? item.solar.toFixed(2) : '0.00'}</td>
-                    </tr>
-                `;
-            });
-            
-            tableHtml += `
-                        </tbody>
-                    </table>
-                </div>
-            `;
-            
-            tableContainer.innerHTML = tableHtml;
-        }
+        if (!tableContainer) return;
+
+        const maxAbs = Math.max(1, ...y.map((v) => Math.abs(v)));
+        const fmtTime = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        const cell = (v) => `<td class="num">${v != null ? mw.format(v) : '–'}</td>`;
+        const rows = data.slice().reverse().map((item) => {
+            const v = item.system_direction;
+            // Tint strength follows the size of the value; the hue follows its sign
+            const alpha = (0.12 + 0.5 * Math.abs(v) / maxAbs).toFixed(2);
+            const tint = v < 0 ? `rgba(180, 83, 42, ${alpha})` : `rgba(44, 122, 91, ${alpha})`;
+            return `<tr>
+                <td>${fmtTime.format(new Date(item.date))}</td>
+                <td class="num" style="background:${tint}">${mw.format(v)}</td>
+                ${cell(item.wind)}${cell(item.hydro)}${cell(item.solar)}
+            </tr>`;
+        }).join('');
+
+        tableContainer.innerHTML = `
+            <div class="table-scroll mt-4">
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr>
+                        <th>Hour</th><th class="num">System direction, MW</th>
+                        <th class="num">Wind, MW</th><th class="num">Hydro, MW</th><th class="num">Solar, MW</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
     },
-    
+
     async runForecast() {
         if (!this.uploadedBlob) {
             this.displayMessage('Please upload an Excel file first', 'warning');
@@ -443,148 +309,105 @@ export const forecasting = {
 
         if (!validation.x || !forecast.x || !forecast.median) {
             console.error('Invalid chart data:', result);
-            this.displayMessage('No forecast data available', 'warning');
+            this.displayMessage('The forecast came back without chart data. Run it again, or try the other model.', 'warning');
             return;
         }
 
+        const hover = '%{y:,.0f} MW';
         const traces = [
-            // Validation section: actual values (blue solid)
-            {
-                x: validation.x,
-                y: validation.actual,
-                type: 'scatter',
-                mode: 'lines',
-                name: 'Actual Values',
-                line: { color: 'rgb(0, 0, 255)', width: 2 }
-            },
-            // Validation section: predicted values (green dashed)
-            {
-                x: validation.x,
-                y: validation.predicted,
-                type: 'scatter',
-                mode: 'lines',
-                name: 'Model Prediction (Validation)',
-                line: { color: 'rgb(0, 128, 0)', width: 2, dash: 'dash' }
-            },
-            // Forecast section: lower bound (gray, no visibility)
-            {
-                x: forecast.x,
-                y: forecast.lower,
-                type: 'scatter',
-                mode: 'lines',
-                name: 'Confidence Band',
-                line: { color: 'rgba(128, 128, 128, 0)', width: 0 },
-                showlegend: true
-            },
-            // Forecast section: upper bound (gray, fill to lower)
-            {
-                x: forecast.x,
-                y: forecast.upper,
-                type: 'scatter',
-                mode: 'lines',
-                name: 'Upper Confidence Bound',
-                fill: 'tonexty',
-                fillcolor: 'rgba(128, 128, 128, 0.3)',
-                line: { color: 'rgba(128, 128, 128, 0)', width: 0 },
-                showlegend: false
-            },
-            // Forecast section: median (red solid)
-            {
-                x: forecast.x,
-                y: forecast.median,
-                type: 'scatter',
-                mode: 'lines',
-                name: 'Median Forecast',
-                line: { color: 'rgb(255, 0, 0)', width: 2 }
-            }
+            { name: 'Actual', x: validation.x, y: validation.actual, type: 'scatter', mode: 'lines',
+              line: { color: SERIES.capacity, width: 1.8 }, hovertemplate: hover },
+            { name: 'Model on past hours', x: validation.x, y: validation.predicted, type: 'scatter', mode: 'lines',
+              line: { color: SERIES.plan, width: 1.6, dash: 'dot' }, hovertemplate: hover },
+            // Lower bound first so the upper bound can fill down to it
+            { name: 'Lower bound', x: forecast.x, y: forecast.lower, type: 'scatter', mode: 'lines',
+              line: { width: 0 }, showlegend: false, hoverinfo: 'skip' },
+            { name: 'Forecast range', x: forecast.x, y: forecast.upper, type: 'scatter', mode: 'lines',
+              fill: 'tonexty', fillcolor: 'rgba(194, 112, 46, 0.18)', line: { width: 0 }, hoverinfo: 'skip' },
+            { name: 'Forecast (median)', x: forecast.x, y: forecast.median, type: 'scatter', mode: 'lines',
+              line: { color: SERIES.actual, width: 2.2 }, hovertemplate: hover },
         ];
 
-        // Default view: last 72h of validation + full forecast, range slider for full history
-        const forecastStart = forecast.x.length ? new Date(forecast.x[0]) : null;
-        const forecastEnd   = forecast.x.length ? new Date(forecast.x[forecast.x.length - 1]) : null;
-        const zoomStart     = forecastStart
-            ? new Date(forecastStart.getTime() - 72 * 60 * 60 * 1000)
-            : undefined;
+        // Open on the last 72 hours of history plus the whole forecast; the slider reaches the rest
+        const start = new Date(forecast.x[0]);
+        const zoomStart = new Date(start.getTime() - 72 * 3600 * 1000);
+        const zoomEnd = forecast.x[forecast.x.length - 1];
 
-        const layout = {
-            title: `${result.model_name} | MAE: ${result.mae} | R²: ${result.r2} | Best Q: ${result.best_quantile ?? '-'} | Forecast: ${result.known_price_length}h`,
-            xaxis: {
-                type: 'date',
-                title: 'Date & Time',
-                tickangle: -45,
-                rangeslider: { visible: true, thickness: 0.08 },
-            },
-            yaxis: {
-                title: 'System Direction (MW)',
-                zeroline: true,
-                zerolinecolor: 'black',
-                zerolinewidth: 2
-            },
-            hovermode: 'closest',
-            plot_bgcolor: 'rgba(255,255,255,1)',
-            paper_bgcolor: 'rgba(255,255,255,1)',
-            legend: { x: 0, y: 1, orientation: 'h' },
-            margin: { l: 60, r: 30, t: 80, b: 60 }
-        };
+        const base = baseLayout();
+        const layout = baseLayout({
+            height: 520,
+            margin: { t: 40, r: 16, b: 40, l: 64 },
+            xaxis: { ...base.xaxis, range: [zoomStart, zoomEnd], rangeslider: { visible: true, thickness: 0.08 } },
+            yaxis: { ...base.yaxis, title: { text: 'MW' }, zeroline: true, zerolinewidth: 1.5 },
+            // Marks where history ends and the forecast begins
+            shapes: [{ type: 'line', xref: 'x', yref: 'paper', x0: forecast.x[0], x1: forecast.x[0], y0: 0, y1: 1,
+                       line: { color: '#8A96A3', width: 1, dash: 'dash' } }],
+            annotations: [{ xref: 'x', yref: 'paper', x: forecast.x[0], y: 1, yanchor: 'bottom', xanchor: 'left',
+                            text: 'Forecast', showarrow: false, font: { size: 11, color: '#5B6773' } }],
+        });
+
+        const stats = document.getElementById('forecast_stats');
+        if (stats) {
+            stats.innerHTML = `
+                <div><dt>Mean absolute error on past hours, MW</dt><dd>${result.mae != null ? mw.format(result.mae) : '–'}</dd></div>
+                <div><dt>R² on past hours</dt><dd>${result.r2 ?? '–'}</dd></div>
+                <div><dt>Hours forecast</dt><dd>${result.known_price_length ?? '–'}</dd></div>`;
+            stats.hidden = false;
+        }
 
         try {
-            Plotly.newPlot('forecast_chart', traces, layout, { responsive: true });
+            Plotly.react('forecast_chart', traces, layout, PLOT_CONFIG);
         } catch (error) {
             console.error('Chart rendering error:', error);
-            this.displayMessage('Error rendering chart: ' + error.message, 'danger');
+            this.displayMessage('The forecast chart could not be drawn. Reload the page and run it again.', 'danger');
         }
     },
-    
+
     displayConfusionMatrix(confusionData, chartDivId = 'confusion_matrix_chart') {
         if (!confusionData || !confusionData.z) {
             console.warn('No confusion matrix data available');
             return;
         }
-        
-        // Format text annotations for the heatmap cells
-        const textAnnotations = confusionData.z.map(row => 
-            row.map(v => v.toFixed(2))
-        );
-        
-        const heatmapTrace = {
-            z: confusionData.z,
-            x: confusionData.x_labels,
-            y: confusionData.y_labels,
+        const { z, x_labels: xLabels, y_labels: yLabels } = confusionData;
+
+        // Shares, not raw counts: each column (one predicted direction) adds up to 100%.
+        // Empty cells stay blank so the pattern along the diagonal stands out.
+        const text = z.map((row) => row.map((v) => (v > 0 ? `${Math.round(v * 100)}%` : '')));
+        const trace = {
             type: 'heatmap',
-            colorscale: 'Reds',
-            text: textAnnotations,
+            z, x: xLabels, y: yLabels, text,
             texttemplate: '%{text}',
-            showscale: true,
-            hoverongaps: false
-        };
-        
-        const layout = {
-            title: '<b>YAL-YAT Prediction Heatmap</b>',
-            autosize: true,
-            xaxis: {
-                title: '<b>Predicted</b>',
-                tickfont: { size: 12 },
-                side: 'bottom',
-                tickangle: -35
-            },
-            yaxis: {
-                title: '<b>Actual</b>',
-                tickfont: { size: 12 },
-                autorange: 'reversed'
-            },
-            margin: {
-                l: 180,
-                r: 80,
-                t: 80,
-                b: 180
-            },
-            plot_bgcolor: 'white',
-            paper_bgcolor: 'white'
+            colorscale: [[0, '#FFFFFF'], [1, '#1F5F99']],
+            zmin: 0,
+            zmax: 1,
+            showscale: false,
+            xgap: 2,
+            ygap: 2,
+            hoverongaps: false,
+            hovertemplate: 'Predicted %{x}<br>Actual %{y}<br>%{z:.0%} of these predictions<extra></extra>',
         };
 
-        Plotly.newPlot(chartDivId, [heatmapTrace], layout, {responsive: true, displayModeBar: false});
+        // Outline the cells where the prediction matched what happened
+        const shapes = xLabels.map((label, i) => yLabels.includes(label) ? {
+            type: 'rect', xref: 'x', yref: 'y',
+            x0: i - 0.5, x1: i + 0.5, y0: yLabels.indexOf(label) - 0.5, y1: yLabels.indexOf(label) + 0.5,
+            line: { color: '#C2702E', width: 2 },
+        } : null).filter(Boolean);
+
+        const layout = {
+            font: { family: "'RWE Sans Web', -apple-system, 'Segoe UI', sans-serif", size: 12, color: '#1F2933' },
+            height: 520,
+            xaxis: { title: { text: 'Predicted' }, side: 'bottom', tickangle: -30, tickfont: { size: 11 } },
+            yaxis: { title: { text: 'Actual' }, autorange: 'reversed', tickfont: { size: 11 } },
+            margin: { l: 150, r: 16, t: 16, b: 130 },
+            shapes,
+            plot_bgcolor: 'white',
+            paper_bgcolor: 'white',
+        };
+
+        Plotly.react(chartDivId, [trace], layout, { responsive: true, displayModeBar: false });
     },
-    
+
     async downloadForecast() {
         if (!this.uploadedBlob) {
             this.displayMessage('Please upload an Excel file first', 'warning');
@@ -671,33 +494,6 @@ export const forecasting = {
         }
     },
     
-    init() {
-        console.log('Initializing forecasting module');
-        
-        // Add CSS for the upload area
-        const style = document.createElement('style');
-        style.textContent = `
-            .upload-area {
-                border: 2px dashed #ccc;
-                border-radius: 8px;
-                padding: 30px;
-                text-align: center;
-                cursor: pointer;
-                transition: all 0.3s;
-            }
-            
-            .upload-area:hover, .upload-area.drag-over {
-                border-color: #007bff;
-                background-color: rgba(0, 123, 255, 0.05);
-            }
-            
-            .upload-prompt {
-                color: #6c757d;
-            }
-        `;
-        document.head.appendChild(style);
-        
-        // Set up event listeners
-        this.setupEventListeners();
-    }
+    // Listeners are bound once in setup(); nothing to do when the tab opens
+    init() {}
 }; 

@@ -1,0 +1,167 @@
+<header class="page-head">
+    <h2>Planned and realtime generation by plant</h2>
+    <p>Hourly planned generation (DPP) for the organisations and generation units you choose, and realtime output for the power plants you choose. Set the dates first, then follow the steps for either source.</p>
+</header>
+
+<div class="dpp-layout" id="app">
+    <aside class="dpp-controls" aria-label="Choose what to show">
+        <fieldset class="control-group">
+            <legend>Dates</legend>
+            <div class="date-pair">
+                <div class="field">
+                    <label for="global_start">From</label>
+                    <input id="global_start" data-prop="start" class="form-control form-control-sm" type="date">
+                </div>
+                <div class="field">
+                    <label for="global_end">To</label>
+                    <input id="global_end" data-prop="end" class="form-control form-control-sm" type="date">
+                </div>
+            </div>
+        </fieldset>
+
+        <fieldset class="control-group">
+            <legend>Planned generation (DPP)</legend>
+            <ol class="steps">
+                <li>
+                    <button type="button" id="load_orgs" class="btn btn-outline-primary btn-sm">Load organisations</button>
+                </li>
+            </ol>
+            <div id="dpp_args" style="display: none">
+                <ol class="steps" start="2">
+                    <li>
+                        <div class="picker">
+                            <label class="picker-label" for="org_select">Organisations</label>
+                            <input type="search" class="form-control form-control-sm" id="org_search" placeholder="Search by name" aria-label="Search organisations" data-filter-select="org_select">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="select_all_orgs" data-select-all="org_select">
+                                <label class="form-check-label" for="select_all_orgs">Select all</label>
+                            </div>
+                            <select class="form-select" name="org" id="org_select" multiple></select>
+                        </div>
+                        <button type="button" id="load_uevcbids" class="btn btn-outline-primary btn-sm">Load their generation units</button>
+                    </li>
+                    <li>
+                        <div class="picker">
+                            <label class="picker-label" for="adi_select">Generation units (UEVCB)</label>
+                            <input type="search" class="form-control form-control-sm" id="uevcbid_search" placeholder="Search by unit name" aria-label="Search generation units" data-filter-select="adi_select">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="select_all_uevcbids" data-select-all="adi_select">
+                                <label class="form-check-label" for="select_all_uevcbids">Select all</label>
+                            </div>
+                            <select class="form-select" id="adi_select" multiple></select>
+                        </div>
+                        <button type="button" class="btn btn-primary btn-sm" id="load_dpp">Show DPP table</button>
+                    </li>
+                </ol>
+                <div id="org_filters" class="d-flex flex-wrap gap-1"></div>
+            </div>
+        </fieldset>
+
+        <fieldset class="control-group">
+            <legend>Realtime generation</legend>
+            <ol class="steps">
+                <li>
+                    <button type="button" id="load_powerplants" class="btn btn-outline-primary btn-sm">Load power plants</button>
+                </li>
+            </ol>
+            <div id="realtime_args_content" style="display: none">
+                <ol class="steps" start="2">
+                    <li>
+                        <div class="picker">
+                            <label class="picker-label" for="powerplant_select">Power plants</label>
+                            <input type="search" class="form-control form-control-sm" id="powerplant_search" placeholder="Search by plant name" aria-label="Search power plants" data-filter-select="powerplant_select">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="select_all_plants" data-select-all="powerplant_select">
+                                <label class="form-check-label" for="select_all_plants">Select all</label>
+                            </div>
+                            <select class="form-select" name="powerplant" id="powerplant_select" multiple></select>
+                        </div>
+                        <button type="button" class="btn btn-primary btn-sm" id="load_realtime">Show realtime table</button>
+                    </li>
+                </ol>
+            </div>
+        </fieldset>
+
+        <div id="table_filters"></div>
+    </aside>
+
+    <section class="dpp-results" id="tables_cont" aria-label="Results">
+        <div class="placeholder-note results-empty">
+            <p>Set the dates, then load organisations for planned generation or power plants for realtime output. Results appear here.</p>
+        </div>
+
+        <!-- Planned generation (DPP) -->
+        <div class="table_args" data-table="dpp">
+            <div class="dpp_options" style="display: none">
+                <div class="results-toolbar">
+                    <h3>Planned generation (DPP)</h3>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="DPP view">
+                        <button type="button" class="btn btn-outline-primary switch_selector" data-group="dpp_nested" data-switch="fuel_types_chart" title="Chart of one day for a fuel">Chart</button>
+                        <button type="button" class="btn btn-primary switch_selector" data-group="dpp_nested" data-switch="fuel_types_table" title="One table per fuel">By fuel</button>
+                        <button type="button" class="btn btn-outline-primary switch_selector" data-group="dpp_nested" data-switch="all_table" title="Every row, all fuels">All rows</button>
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm push" id="download_dpp_excel">Download Excel</button>
+                </div>
+            </div>
+            <div class="dpp_options" style="display: none">
+                <div class="switch_arg" data-switch="fuel_types_chart" data-group="dpp_nested" style="display: none">
+                    <div id="plotly_chart" class="results-chart"></div>
+                </div>
+            </div>
+            <div class="dpp_options" style="display: none">
+                <div class="switch_arg" data-switch="fuel_types_table" data-group="dpp_nested">
+                    <div id="dpp_chart_btns"></div>
+                    <div id="fuel_types_report_table_cont" class="table-responsive dynamic_table_cont">
+                        <table id="dpp_fuel_types_table" class="table table-hover table-bordered"></table>
+                    </div>
+                </div>
+            </div>
+            <div id="all_dpp_data_table_cont" class="table-responsive dynamic_table_cont switch_arg" data-switch="all_table" data-group="dpp_nested" style="display: none">
+                <table id="dpp_table" class="table table-hover table-bordered">
+                    <thead class="table-dark"></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Realtime generation -->
+        <div class="table_args" data-table="realtime">
+            <div class="realtime_options" style="display: none">
+                <div class="results-toolbar">
+                    <h3>Realtime generation</h3>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Realtime view">
+                        <button type="button" class="btn btn-outline-primary switch_selector" data-group="realtime_nested" data-switch="realtime_chart" title="Realtime chart">Chart</button>
+                        <button type="button" class="btn btn-primary switch_selector" data-group="realtime_nested" data-switch="realtime_fuel_types" title="One table per fuel">By fuel</button>
+                        <button type="button" class="btn btn-outline-primary switch_selector" data-group="realtime_nested" data-switch="realtime_all" title="Every row, all fuels">All rows</button>
+                        <button type="button" class="btn btn-outline-primary switch_selector" data-group="realtime_nested" data-switch="realtime_difference" title="Realtime minus plan">Difference</button>
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm push" id="download_realtime_excel">Download Excel</button>
+                </div>
+            </div>
+            <div class="realtime_options" style="display: none">
+                <div class="switch_arg" data-switch="realtime_chart" data-group="realtime_nested" style="display: none">
+                    <div id="realtime_plotly_chart" class="results-chart"></div>
+                </div>
+            </div>
+            <div class="realtime_options" style="display: none">
+                <div class="switch_arg" data-switch="realtime_fuel_types" data-group="realtime_nested">
+                    <div id="realtime_fuel_buttons"></div>
+                    <div id="realtime_fuel_types_table_cont" class="table-responsive dynamic_table_cont">
+                        <table id="realtime_fuel_types_table" class="table table-hover table-bordered"></table>
+                    </div>
+                </div>
+            </div>
+            <div id="realtime_all_table_cont" class="table-responsive dynamic_table_cont switch_arg" data-switch="realtime_all" data-group="realtime_nested" style="display: none">
+                <table id="realtime_table" class="table table-hover table-bordered">
+                    <thead class="table-dark"></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="switch_arg" data-switch="realtime_difference" data-group="realtime_nested">
+                <div class="difference-chart-container">
+                    <div id="difference_chart"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>

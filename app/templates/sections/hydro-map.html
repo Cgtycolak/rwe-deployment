@@ -1,0 +1,52 @@
+{% include 'partials/page_head.html' %}
+
+<div class="container-fluid">
+    <div class="toolbar">
+        <div class="field">
+            <label for="hydro_map_date">Date</label>
+            <input type="date" id="hydro_map_date" class="form-control form-control-sm">
+            <small class="text-muted">Defaults to the latest loaded day</small>
+        </div>
+        <div class="field">
+            <span class="field-label" id="hydro_map_type_label">Plant type</span>
+            <div class="segmented" role="group" aria-labelledby="hydro_map_type_label" id="hydro_map_type">
+                <button type="button" data-type="river" aria-pressed="true">Run-of-river</button>
+                <button type="button" data-type="dammed" aria-pressed="false">Dammed</button>
+                <button type="button" data-type="all" aria-pressed="false">All</button>
+            </div>
+        </div>
+        <button id="load_hydro_map" class="btn btn-outline-secondary btn-sm push">
+            <span class="button-content">Reload</span>
+            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+        </button>
+    </div>
+
+    <dl class="stat-row" id="hydro_map_stats" hidden></dl>
+
+    <div class="hydro-layout">
+        <figure class="hydro-map-figure">
+            <div class="hydro-legend" aria-hidden="true">
+                <span class="hydro-legend-size"><i class="dot sm"></i><i class="dot lg"></i>Size is installed capacity</span>
+                <span class="hydro-legend-fill">
+                    Fill level and colour are capacity factor
+                    <i class="swatch" style="background:#A0BCD3"></i>0%
+                    <i class="swatch" style="background:#2E7FC0"></i>20%
+                    <i class="swatch" style="background:#123C63"></i>50% and above
+                </span>
+                <span id="hydro_map_level" class="hydro-legend-level"></span>
+            </div>
+            <div id="hydro_map_chart" class="hydro-map-chart">
+                <div class="placeholder-note"><p>Loading the map.</p></div>
+            </div>
+            <figcaption class="text-muted small">
+                Licence data places plants only to province and district, so plants are grouped by area.
+                Scroll to zoom: the map splits regions into provinces, then districts.
+            </figcaption>
+        </figure>
+
+        <section class="hydro-table" aria-labelledby="hydro-table-title">
+            <h3 id="hydro-table-title">Largest areas on the map</h3>
+            <div id="hydro_map_table"></div>
+        </section>
+    </div>
+</div>

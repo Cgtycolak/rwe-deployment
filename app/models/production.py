@@ -54,3 +54,17 @@ class ProductionData(db.Model):
             'Total': self.total,
             'WasteHeat': self.wasteheat
         } 
+
+class ProductionRevision(db.Model):
+    """One row each time EPIAS changes an hour that production_data already held.
+
+    Like demand_revisions: shows how late EPIAS revises realtime generation, so the
+    re-check windows in app/tasks/scheduler.py can be set from evidence.
+    """
+    __tablename__ = 'production_revisions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    datetime = db.Column(db.DateTime, nullable=False, index=True)  # the hour that changed
+    old_total = db.Column(db.Float, nullable=False)
+    new_total = db.Column(db.Float, nullable=False)
+    detected_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))

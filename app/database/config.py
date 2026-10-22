@@ -19,8 +19,8 @@ def init_db(app):
     # Import all models here so they're registered with SQLAlchemy
     from ..models.heatmap import HydroHeatmapData, NaturalGasHeatmapData, ImportedCoalHeatmapData, SourceHeatmapData, UnlicensedGenerationData
     from ..models.realtime import HydroRealtimeData, NaturalGasRealtimeData
-    from ..models.production import ProductionData
-    from ..models.demand import DemandData
+    from ..models.production import ProductionData, ProductionRevision
+    from ..models.demand import DemandData, DemandRevision
     from ..models.forecasting import UnlicensedSolar, LicensedSolar, Wind, DamHydro, RunOfRiverHydro, Demand, SystemDirection
     from ..models.hydro_map import HydroPlant, HydroDailyGeneration
     

@@ -1,9 +1,4 @@
-{% extends 'base.html' %}
-{% block title %}Method not Allowed{% endblock %}
-{% block page_description %}The page you are in not accept method used{% endblock %}
-{% block body %}
-<div class="container text-center shadow-lg pt-4 pb-4 mt-2">
-    <img src="{{url_for('static', filename='images/error-icon.png')}}" height="300">
-    <h5>Method Not Allowed</h5>
-</div>
-{% endblock %}
+{% extends 'errors/_layout.html' %}
+{% block title %}Method not allowed{% endblock %}
+{% block code %}405{% endblock %}
+{% block message %}This address does not accept that kind of request.{% endblock %}

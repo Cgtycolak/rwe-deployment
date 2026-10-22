@@ -128,7 +128,6 @@ def main():
         ("check-demand-completeness",   "GET",  "/check-demand-completeness",    {}),
         ("get_demand_data",             "GET",  "/get_demand_data",              {}),
         ("get_monthly_demand_data",     "GET",  "/get_monthly_demand_data",      {}),
-        ("check_demand_updates",        "GET",  "/check_demand_updates",         {}),
 
         # --- Data completeness ---
         ("check-data-completeness",     "GET",  "/check-data-completeness",      {}),
@@ -148,10 +147,8 @@ def main():
 
     # Data-update routes — excluded by default, run with --mutations
     MUTATION_ROUTES = [
-        ("update-rolling-data",          "GET", "/update-rolling-data",          {}),
-        ("update-unlicensed-solar-data", "GET", "/update-unlicensed-solar-data", {}),
-        ("update-licensed-solar-data",   "GET", "/update-licensed-solar-data",   {}),
-        ("update_demand_data_api",       "GET", "/update_demand_data_api",       {}),
+        # The CAO chart tables (production, demand, solar) are synced by the scheduler
+        # and app/scripts/cao_charts/sync_data.py, not by routes
     ]
 
     # File-upload routes — cannot be smoke tested without real Excel files

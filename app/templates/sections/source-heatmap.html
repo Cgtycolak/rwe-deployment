@@ -1,0 +1,75 @@
+{% include 'partials/page_head.html' %}
+
+<div class="container-fluid px-0">
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="form-group">
+                <label for="source_date">Date</label>
+                <input type="date" id="source_date" class="form-control">
+            </div>
+        </div>
+        <div class="col-md-4 d-flex align-items-end gap-2">
+            <button id="load_source_heatmap" class="btn btn-primary position-relative" style="min-width: 120px;">
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                <span class="button-content">Load Heatmap</span>
+            </button>
+            <button id="toggle_source_realtime" class="btn btn-secondary" style="min-width: 120px;" disabled>
+                Show Realtime
+            </button>
+        </div>
+    </div>
+    <div class="row">
+        <div id="source_heatmap_container" class="col-12" style="display: none;">
+            <p class="text-muted small">
+                System-wide DPP (KGÜP) per source. First, final and realtime views colour each
+                column against its own range so small sources stay readable; difference views
+                share one scale centred on zero. Solar covers licensed and unlicensed plants.
+            </p>
+            <div class="mb-4">
+                <h5 class="text-center">Generation by Source DPP First Version</h5>
+                <div id="source_heatmap_first_version"></div>
+            </div>
+            <div class="mb-4">
+                <h5 class="text-center">Generation by Source DPP Final Version</h5>
+                <div id="source_heatmap_current"></div>
+            </div>
+            <div class="mb-4">
+                <h5 class="text-center">Generation by Source DPP Difference (Final - First)</h5>
+                <div id="source_heatmap_difference"></div>
+            </div>
+            <div class="mb-4" style="display: none;">
+                <h5 class="text-center">Generation by Source Realtime Values</h5>
+                <p id="source_estimate_note" class="text-muted small text-center d-none">
+                    * Unlicensed solar for these hours is Meteologica's estimate; EPIAS publishes
+                    metered unlicensed generation monthly, a month or more late. Blank cells have no data yet.
+                </p>
+                <div id="source_heatmap_realtime"></div>
+            </div>
+            <div class="mb-4" style="display: none;">
+                <h5 class="text-center">Generation by Source Difference (Realtime - Final)</h5>
+                <div id="source_heatmap_realtime_difference"></div>
+            </div>
+
+            <div class="mb-4">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="source_comparison_date">Compare with</label>
+                            <input type="date" id="source_comparison_date" class="form-control">
+                        </div>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button id="load_source_comparison" class="btn btn-primary position-relative" style="min-width: 140px;">
+                            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            <span class="button-content">Compare Dates</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="source_comparison_container" style="display: none;">
+                    <h5 class="text-center">Generation by Source Date Comparison (First Version Only)</h5>
+                    <div id="source_heatmap_date_comparison"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
