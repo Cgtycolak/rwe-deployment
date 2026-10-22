@@ -282,22 +282,3 @@ class Demand(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
-
-class SystemDirection(db.Model):
-    __tablename__ = 'epias_yal'
-    __table_args__ = {'schema': 'epias'}
-    
-    id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.DateTime, nullable=False, index=True)
-    net = db.Column(db.Float, nullable=True)  # This is the system direction value
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'date': self.date.isoformat() if self.date else None,
-            'net': self.net,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
-        } 

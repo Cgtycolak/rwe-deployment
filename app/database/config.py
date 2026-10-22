@@ -21,7 +21,7 @@ def init_db(app):
     from ..models.realtime import HydroRealtimeData, NaturalGasRealtimeData
     from ..models.production import ProductionData, ProductionRevision
     from ..models.demand import DemandData, DemandRevision
-    from ..models.forecasting import UnlicensedSolar, LicensedSolar, Wind, DamHydro, RunOfRiverHydro, Demand, SystemDirection
+    from ..models.forecasting import UnlicensedSolar, LicensedSolar, Wind, DamHydro, RunOfRiverHydro, Demand
     from ..models.hydro_map import HydroPlant, HydroDailyGeneration
     
     # Create all tables

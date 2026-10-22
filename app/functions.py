@@ -155,6 +155,6 @@ def login_required(f):
             )
             if request.path.startswith('/api/') or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 return jsonify({'error': 'Not authenticated'}), 401
-            return redirect(url_for('main.login'))
+            return redirect(url_for('pages.login'))
         return f(*args, **kwargs)
     return decorated_function

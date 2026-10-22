@@ -14,14 +14,13 @@ import time
 from datetime import date, datetime, timedelta
 
 import requests
-from flask import current_app
 from requests.adapters import HTTPAdapter
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 from urllib3.util.retry import Retry
 
 from app.database.config import db
-from app.functions import get_tgt_token
+from app.services.epias import epias_token
 from app.models.demand import DemandData, DemandRevision
 
 URL = 'https://seffaflik.epias.com.tr/electricity-service/v1/consumption/data/realtime-consumption'
@@ -63,7 +62,7 @@ def sync_demand(start: date, end: date):
 
     Returns {'checked', 'added', 'revised', 'by_month': {'2026-06': revised, ...}}.
     """
-    tgt = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+    tgt = epias_token()
     session = requests.Session()
     session.mount('https://', HTTPAdapter(max_retries=Retry(
         total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504], allowed_methods=['POST'])))

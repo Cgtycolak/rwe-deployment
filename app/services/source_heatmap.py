@@ -15,7 +15,8 @@ from flask import current_app
 from sqlalchemy import text
 
 from ..database.config import db
-from ..functions import get_tgt_token
+from ..database.supabase import get_supabase_engine
+from .epias import epias_token
 from ..models.heatmap import SourceHeatmapData, UnlicensedGenerationData
 from ..models.production import ProductionData
 
@@ -84,7 +85,7 @@ def populate_source_plan(start, end, versions=('first', 'current'), token=None):
     untouched rather than wiped, so a not-yet-published tomorrow cannot erase
     an earlier fetch. Returns the number of rows written.
     """
-    token = token or get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+    token = token or epias_token()
     written = 0
     for version in versions:
         url = current_app.config['DPP_FIRST_VERSION_URL'] if version == 'first' else current_app.config['DPP_URL']
@@ -114,7 +115,7 @@ def populate_unlicensed_generation(start, end, token=None):
     """Fetch EPIAS metered unlicensed generation for [start, end] and replace
     what is stored. Unpublished months come back empty and are skipped.
     Returns the number of rows written."""
-    token = token or get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+    token = token or epias_token()
     written = 0
     for chunk_start, chunk_end in _chunks(start, end):
         items = _epias_post(UNLICENSED_URL, chunk_start, chunk_end, token)
@@ -161,15 +162,13 @@ def _meteologica_unlicensed(day):
     """{hour: MW} from Meteologica's unlicensed PV forecast (Supabase). It tracks
     EPIAS metered data at ~0.997 correlation, close enough to stand in until
     EPIAS publishes."""
-    from ..main import _get_supabase_engine  # main imports this module's callers
-
     query = text("""
         SELECT EXTRACT(HOUR FROM CAST("From-yyyy-mm-dd-hh-mm" AS TIMESTAMP))::int AS hour,
                unlicensed_forecast
         FROM meteologica.unlicensed_solar
         WHERE "From-yyyy-mm-dd-hh-mm" >= :start AND "From-yyyy-mm-dd-hh-mm" < :end
     """)
-    with _get_supabase_engine().connect() as conn:
+    with get_supabase_engine().connect() as conn:
         rows = conn.execute(query, {
             'start': f'{day:%Y-%m-%d} 00:00',
             'end': f'{day + timedelta(days=1):%Y-%m-%d} 00:00',
@@ -204,7 +203,7 @@ def fill_production_data(day):
     if len(present) == 24:
         return
 
-    token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
+    token = epias_token()
     items = _epias_post(REALTIME_URL, day, day, token, {'region': 'TR1'})
     for item in items:
         _, hour = _item_date_hour(item)

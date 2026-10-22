@@ -1,9 +1,9 @@
 import pandas as pd
-import numpy as np
 import pytz
 from datetime import datetime, timedelta
-from sqlalchemy import create_engine, pool, text
-import os
+from sqlalchemy import text
+
+from app.database.supabase import get_supabase_engine
 from dotenv import load_dotenv
 import time
 import random
@@ -12,27 +12,9 @@ import random
 # Load environment variables
 load_dotenv()
 
-_engine = None
-
 def get_database_connection():
-    """Return the module-level Supabase engine, creating it once on first call."""
-    global _engine
-    if _engine is None:
-        sb_user = os.getenv("SUPABASE_USER")
-        sb_password = os.getenv("SUPABASE_PASSWORD")
-        if not sb_user or not sb_password:
-            raise ValueError("Database credentials not found in environment variables")
-        _engine = create_engine(
-            f"postgresql+psycopg2://{sb_user}:{sb_password}"
-            "@aws-0-us-east-2.pooler.supabase.com:5432/postgres",
-            poolclass=pool.QueuePool,
-            pool_size=3,
-            max_overflow=5,
-            pool_timeout=30,
-            pool_recycle=1800,
-            pool_pre_ping=True,
-        )
-    return _engine
+    """The shared Supabase engine (app/database/supabase.py), so the app keeps one pool."""
+    return get_supabase_engine()
 
 def fetch_with_retry(query, engine, max_retries=3):
     """Fetch data with retry logic to handle connection issues."""

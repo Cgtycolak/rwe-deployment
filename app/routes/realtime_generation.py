@@ -1,12 +1,7 @@
-from flask import Blueprint, jsonify, request, current_app, session
-from datetime import datetime, timedelta
-import requests
+from flask import Blueprint, jsonify, request, current_app
 from dateutil.relativedelta import relativedelta
-import logging
-from requests import Session
-from requests.adapters import HTTPAdapter
-from urllib3 import Retry
-from ..functions import get_tgt_token, asutc, invalidates_or_none, login_required
+from ..functions import asutc, invalidates_or_none, login_required
+from ..services.epias import epias_session
 import pandas as pd
 
 realtime_generation_bp = Blueprint('realtime_generation', __name__)
@@ -14,43 +9,35 @@ realtime_generation_bp = Blueprint('realtime_generation', __name__)
 def fetch_realtime_data(start_date, end_date):
     """Fetch realtime generation data from EPIAS API"""
     try:
-        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
-        retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
         payload = {"startDate": asutc(start_date), "endDate": asutc(end_date)}
 
-        with Session() as session:
-            session.mount('https://', HTTPAdapter(max_retries=retries))
+        with epias_session() as session:
             res = session.post(
                 current_app.config['REALTIME_URL'],
                 json=payload,
-                headers={"TGT": tgt_token},
                 timeout=30
             )
             res.raise_for_status()
             return res.json()
     except Exception as e:
-        logging.error(f"Error From fetch_realtime_data: {str(e)}")
+        current_app.logger.error("Error in fetch_realtime_data: %s", e, exc_info=True)
         return None
 
 def fetch_dpp_data(start_date, end_date):
     """Fetch DPP data from EPIAS API"""
     try:
-        tgt_token = get_tgt_token(current_app.config.get('USERNAME'), current_app.config.get('PASSWORD'))
-        retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
         payload = {"startDate": asutc(start_date), "endDate": asutc(end_date), "region": "TR1"}
 
-        with Session() as session:
-            session.mount('https://', HTTPAdapter(max_retries=retries))
+        with epias_session() as session:
             res = session.post(
                 current_app.config['DPP_URL'],
                 json=payload,
-                headers={"TGT": tgt_token},
                 timeout=30
             )
             res.raise_for_status()
             return res.json()
     except Exception as e:
-        logging.error(f"Error From fetch_dpp_data: {str(e)}")
+        current_app.logger.error("Error in fetch_dpp_data: %s", e, exc_info=True)
         return None
 
 def calculate_period_averages(data, period='daily'):
@@ -136,7 +123,7 @@ def fetch_data_in_chunks(start_date, end_date, fetch_func):
                 else:
                     all_data['totals'][key] = value
             except (TypeError, ValueError) as e:
-                logging.warning(f"Could not process total for key {key}: {str(e)}")
+                current_app.logger.warning(f"Could not process total for key {key}: {str(e)}")
                 all_data['totals'][key] = 0
         
         # Move to next chunk
@@ -210,7 +197,7 @@ def get_generation_comparison():
         return jsonify({'code': 200, 'data': processed_data})
         
     except Exception as e:
-        print('Error From get_generation_comparison:{}.'.format(str(e)))
+        current_app.logger.error("Error in get_generation_comparison: %s", e, exc_info=True)
         return jsonify({
             'code': 500,
             'message': 'unknown error unable to load comparison data.'

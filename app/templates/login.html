@@ -27,7 +27,7 @@
             <p class="login-error" role="alert">{{ error }}. Check both fields and try again.</p>
             {% endif %}
 
-            <form method="POST" action="{{ url_for('main.login') }}">
+            <form method="POST" action="{{ url_for('pages.login') }}">
                 <label for="username">Username</label>
                 <input type="text" id="username" name="username" autocomplete="username" required autofocus>
 

@@ -6,9 +6,14 @@ from flask import Flask, render_template, request
 from flask_session import Session
 from flask_cors import CORS
 from dotenv import load_dotenv
+import pandas as pd
 from .database.config import init_db, db
-from .routes.realtime_generation import realtime_generation_bp
-from .routes.forecasting import forecasting_bp
+
+# Opt in to pandas 3 behaviour where available (pandas 2.1+)
+try:
+    pd.set_option('future.no_silent_downcasting', True)
+except pd._config.config.OptionError:
+    pass
 
 def _normalise_db_url(url):
     """Pin the connection URL to the driver this project actually installs.
@@ -177,11 +182,8 @@ def create_app():
         app.register_error_handler(
             code, lambda e, code=code: (render_template(f'errors/error_{code}.html'), code))
 
-    # Register blueprints
-    from .main import main
-    app.register_blueprint(main)
-    app.register_blueprint(realtime_generation_bp)
-    app.register_blueprint(forecasting_bp)
+    from .routes import register_blueprints
+    register_blueprints(app)
 
     # Start background scheduler.
     # Dev (flask run with reloader): only start in the reloader child, not the parent watcher.

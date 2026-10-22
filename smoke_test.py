@@ -90,13 +90,8 @@ def main():
         ("get_orgs",                    "POST", "/get_orgs",                     {"json": {"start": week_ago, "end": yesterday}}),
         ("get_orgs_uevcbids",           "POST", "/get_orgs_uevcbids",            {"json": {"start": week_ago, "end": yesterday, "orgIds": []}}),
         ("get_aic_data",                "GET",  "/get_aic_data",                 {"params": {"range": "week"}}),
-        ("production_data",             "POST", "/production_data",              {"json": {"start_date": week_ago, "end_date": yesterday}}),
 
         # --- Market prices ---
-        ("get_order_summary",           "GET",  "/get_order_summary",            {}),
-        ("get_smp_data",                "GET",  "/get_smp_data",                 {}),
-        ("get_pfc_data",                "GET",  "/get_pfc_data",                 {}),
-        ("get_sfc_data",                "GET",  "/get_sfc_data",                 {}),
         ("get_all_table_data",          "GET",  "/get_all_table_data",           {}),
         ("supply_demand_price",         "GET",  "/api/supply_demand_price",      {"params": {"date": gen_date}}),
 
@@ -125,12 +120,8 @@ def main():
         ("get-solar-weekly-data",       "GET",  "/get-solar-weekly-data",        {}),
 
         # --- Demand ---
-        ("check-demand-completeness",   "GET",  "/check-demand-completeness",    {}),
         ("get_demand_data",             "GET",  "/get_demand_data",              {}),
         ("get_monthly_demand_data",     "GET",  "/get_monthly_demand_data",      {}),
-
-        # --- Data completeness ---
-        ("check-data-completeness",     "GET",  "/check-data-completeness",      {}),
 
         # --- Forecast performance ---
         ("forecast-perf d+1",           "GET",  "/forecast-performance-data",    {"params": {"horizon": "d+1", "period": "7"}}),
@@ -159,7 +150,6 @@ def main():
         "api/forecasting/download-forecast(needs prior predict run)",
         "download-forecast-performance-excel (needs prior run)",
         "download-merit-order-excel       (needs prior run)",
-        "merit-order-power-plant-results  (needs specific plant name)",
         "dpp_table                        (needs full orgsData payload)",
         "realtime_data                    (needs valid powerPlantId)",
     ]

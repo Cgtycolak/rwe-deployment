@@ -328,12 +328,12 @@ class EmailService:
             return False
 
 
-# Helper functions to fetch heatmap data (these will be imported from main.py)
+# Helper functions to fetch heatmap data
 def fetch_natural_gas_heatmap_data(date, version):
     """Fetch natural gas heatmap data"""
     from app.models.heatmap import NaturalGasHeatmapData
     from app.mappings import plant_mapping
-    from app.main import process_heatmap_data
+    from app.services.heatmap_table import process_heatmap_data
     
     heatmap_data = NaturalGasHeatmapData.query.filter_by(
         date=date,
@@ -365,7 +365,7 @@ def fetch_import_coal_heatmap_data(date, version):
     """Fetch import coal heatmap data"""
     from app.models.heatmap import ImportedCoalHeatmapData
     from app.mappings import import_coal_mapping
-    from app.main import process_heatmap_data
+    from app.services.heatmap_table import process_heatmap_data
     
     heatmap_data = ImportedCoalHeatmapData.query.filter_by(
         date=date,
@@ -397,7 +397,7 @@ def fetch_hydro_heatmap_data(date, version):
     """Fetch hydro heatmap data"""
     from app.models.heatmap import HydroHeatmapData
     from app.mappings import hydro_mapping
-    from app.main import process_heatmap_data
+    from app.services.heatmap_table import process_heatmap_data
     
     heatmap_data = HydroHeatmapData.query.filter_by(
         date=date,
@@ -429,7 +429,7 @@ def fetch_lignite_heatmap_data(date, version):
     """Fetch lignite heatmap data"""
     from app.models.heatmap import LigniteHeatmapData
     from app.mappings import lignite_mapping
-    from app.main import process_heatmap_data
+    from app.services.heatmap_table import process_heatmap_data
     
     heatmap_data = LigniteHeatmapData.query.filter_by(
         date=date,
