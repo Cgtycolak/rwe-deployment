@@ -213,7 +213,7 @@ export function loadXLSX() {
 const PAST_DAY_CACHE_LIMIT = 200;
 const pastDayResponses = new Map();
 
-function istanbulDate(daysAgo = 0) {
+export function istanbulDate(daysAgo = 0) {
     // en-CA formats as YYYY-MM-DD, which compares correctly as a string
     const day = new Date(Date.now() - daysAgo * 86400000);
     return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul" }).format(day);

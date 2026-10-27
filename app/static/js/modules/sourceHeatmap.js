@@ -1,4 +1,4 @@
-import { fetchPastDayCached } from '../utils/helpers.js';
+import { fetchPastDayCached, istanbulDate } from '../utils/helpers.js';
 
 // Generation by Source heatmap: system-wide DPP first/final versions vs realtime,
 // one column per source. Mirrors ligniteHeatmap.js, with three differences:
@@ -38,7 +38,7 @@ export const sourceHeatmap = {
 
         const dateInput = document.getElementById('source_date');
         if (dateInput) {
-            dateInput.valueAsDate = new Date();
+            dateInput.value = istanbulDate();
         }
 
         document.getElementById('load_source_heatmap')?.addEventListener('click', () => {
@@ -81,8 +81,8 @@ export const sourceHeatmap = {
             spinner.classList.remove('d-none');
             buttonText.textContent = 'Loading...';
 
-            const selectedDate = date || new Date().toISOString().split('T')[0];
-            const today = new Date().toISOString().split('T')[0];
+            const selectedDate = date || istanbulDate();
+            const today = istanbulDate();
 
             if (toggleButton) {
                 toggleButton.textContent = 'Show Realtime';

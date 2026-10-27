@@ -20,6 +20,8 @@ import { supplyDemandPrice } from './modules/supply-demand-price.js';
 import { gasGm } from './modules/gas-gm.js';
 import { startRouter } from './router.js';
 import { setupSidebar, setupSelectFilters } from './shell.js';
+import { setupDateStepper } from './utils/date-stepper.js';
+import { setupDatePickers } from './utils/date-picker.js';
 
 // Main app object
 const app = {
@@ -130,6 +132,8 @@ const app = {
 
             setupSidebar();
             setupSelectFilters();
+            setupDateSteppers();
+            setupDatePickers();
             autoloadOnFirstVisit();
 
             // Started last so the first 'section:activated' reaches every module
@@ -157,6 +161,23 @@ const AUTOLOAD = {
     'merit-order': 'load_merit_order',
     'supply-demand-price': 'load_sdp',
 };
+
+// Single-day tabs: previous/next-day buttons and arrow keys load the next day with the tab's button
+const DATE_STEPPERS = {
+    'generation-heatmap': ['heatmap_date', 'load_heatmap'],
+    'import-coal-heatmap': ['import_coal_date', 'load_import_coal_heatmap'],
+    'hydro-heatmap': ['hydro_date', 'load_hydro_heatmap'],
+    'lignite-heatmap': ['lignite_date', 'load_lignite_heatmap'],
+    'source-heatmap': ['source_date', 'load_source_heatmap'],
+};
+
+function setupDateSteppers() {
+    for (const [section, [inputId, buttonId]] of Object.entries(DATE_STEPPERS)) {
+        const root = document.getElementById(inputId)?.closest('[data-date-stepper]');
+        const loadButton = document.getElementById(buttonId);
+        if (root && loadButton) setupDateStepper(root, { section, loadButton });
+    }
+}
 
 function autoloadOnFirstVisit() {
     const visited = new Set();

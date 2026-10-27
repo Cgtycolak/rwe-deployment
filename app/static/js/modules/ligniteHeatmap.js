@@ -1,4 +1,4 @@
-import { fetchPastDayCached } from '../utils/helpers.js';
+import { fetchPastDayCached, istanbulDate } from '../utils/helpers.js';
 
 export const ligniteHeatmap = {
     // Helper functions
@@ -18,7 +18,7 @@ export const ligniteHeatmap = {
         // Set default date to today
         const dateInput = document.getElementById('lignite_date');
         if (dateInput) {
-            dateInput.valueAsDate = new Date();
+            dateInput.value = istanbulDate();
         }
 
         // Add event listeners
@@ -60,10 +60,10 @@ export const ligniteHeatmap = {
             spinner.classList.remove('d-none');
             buttonText.textContent = 'Loading...';
             
-            const selectedDate = date || new Date().toISOString().split('T')[0];
+            const selectedDate = date || istanbulDate();
             
             // Check if selected date is today
-            const today = new Date().toISOString().split('T')[0];
+            const today = istanbulDate();
             const isToday = selectedDate === today;
 
             // Reset toggle button and realtime state

@@ -1,0 +1,10 @@
+{# Date input with previous/next-day buttons; wired up by utils/date-stepper.js. Needs date_id. #}
+<div class="date-stepper" data-date-stepper>
+    <button type="button" class="btn btn-outline-secondary" data-step="-1" aria-label="Previous day" title="Previous day (Left arrow)">
+        <i class="fas fa-chevron-left" aria-hidden="true"></i>
+    </button>
+    <input type="date" id="{{ date_id }}" class="form-control">
+    <button type="button" class="btn btn-outline-secondary" data-step="1" aria-label="Next day" title="Next day (Right arrow)">
+        <i class="fas fa-chevron-right" aria-hidden="true"></i>
+    </button>
+</div>

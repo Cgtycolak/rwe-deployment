@@ -1,4 +1,4 @@
-import { fetchPastDayCached } from '../utils/helpers.js';
+import { fetchPastDayCached, istanbulDate } from '../utils/helpers.js';
 
 export const importCoalHeatmap = {
     // Helper functions
@@ -28,7 +28,7 @@ export const importCoalHeatmap = {
             spinner.classList.remove('d-none');
             buttonText.textContent = 'Loading...';
             
-            const selectedDate = date || new Date().toISOString().split('T')[0];
+            const selectedDate = date || istanbulDate();
             this.selectedDate = selectedDate; // Store for comparison
             
             // Hide comparison section when loading new main data
@@ -330,7 +330,7 @@ export const importCoalHeatmap = {
             // Set default date to today
             const dateInput = document.getElementById('import_coal_date');
             if (dateInput) {
-                dateInput.valueAsDate = new Date();
+                dateInput.value = istanbulDate();
             }
 
             // Add event listeners

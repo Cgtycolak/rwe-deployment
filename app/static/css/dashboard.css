@@ -1521,3 +1521,170 @@ td.is-best {
 
 .demand-period dd.up { color: var(--load); }
 .demand-period dd.down { color: var(--deload); }
+
+/* Date with previous/next-day buttons (partials/date_stepper.html) */
+.date-stepper {
+  display: flex;
+  align-items: stretch;
+}
+
+.date-stepper input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-radius: 0;
+}
+
+.date-stepper .btn {
+  flex: 0 0 auto;
+  padding-left: var(--sp-3);
+  padding-right: var(--sp-3);
+}
+
+.date-stepper .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  margin-right: -1px;
+}
+
+.date-stepper .btn:last-child {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: -1px;
+}
+
+/* Calendar for every date field (flatpickr, see utils/date-picker.js), on the design tokens */
+.flatpickr-calendar {
+  font-family: inherit;
+  width: 296px;
+  padding: var(--sp-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(27, 43, 58, 0.14);
+}
+
+.flatpickr-calendar.arrowTop::before,
+.flatpickr-calendar.arrowTop::after,
+.flatpickr-calendar.arrowBottom::before,
+.flatpickr-calendar.arrowBottom::after {
+  display: none;
+}
+
+.flatpickr-months {
+  align-items: center;
+  margin-bottom: var(--sp-2);
+}
+
+.flatpickr-months .flatpickr-month {
+  height: 36px;
+  color: var(--text);
+}
+
+.flatpickr-current-month {
+  padding-top: 8px;
+  font-size: var(--fs-md);
+  font-weight: 500;
+}
+
+.flatpickr-current-month .cur-month {
+  font-weight: 500;
+}
+
+.flatpickr-current-month input.cur-year {
+  font-weight: 500;
+}
+
+.flatpickr-months .flatpickr-prev-month,
+.flatpickr-months .flatpickr-next-month {
+  top: var(--sp-2);
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0 var(--sp-1);
+  color: var(--text-muted);
+  border-radius: var(--radius);
+}
+
+.flatpickr-months .flatpickr-prev-month:hover,
+.flatpickr-months .flatpickr-next-month:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.flatpickr-innerContainer,
+.flatpickr-rContainer,
+.flatpickr-days,
+.dayContainer {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
+.flatpickr-weekdays {
+  height: 28px;
+}
+
+span.flatpickr-weekday {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.flatpickr-day {
+  max-width: none;
+  height: 36px;
+  line-height: 34px;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  border-radius: var(--radius);
+}
+
+.flatpickr-day:hover,
+.flatpickr-day:focus {
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+
+.flatpickr-day.today {
+  border-color: var(--rule);
+  font-weight: 500;
+}
+
+.flatpickr-day.today:hover {
+  color: var(--text);
+  background: var(--accent-soft);
+  border-color: var(--rule);
+}
+
+.flatpickr-day.selected,
+.flatpickr-day.selected:hover,
+.flatpickr-day.selected:focus {
+  color: #FFFFFF;
+  font-weight: 500;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.flatpickr-day.prevMonthDay,
+.flatpickr-day.nextMonthDay {
+  color: #A6B1BC;
+}
+
+.flatpickr-day.flatpickr-disabled,
+.flatpickr-day.flatpickr-disabled:hover {
+  color: #C9D1D9;
+  background: transparent;
+}
+
+/* The visible field: same height as the Bootstrap controls next to it, with a calendar icon */
+/* flatpickr puts the visible field right after the hidden original */
+.flatpickr-input + input.form-control {
+  background-color: var(--surface);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%235B6B7A'%3E%3Cpath d='M4 .5a.5.5 0 0 1 1 0V1h6V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5ZM2 5v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5H2Z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
+  padding-right: 32px;
+  cursor: pointer;
+}

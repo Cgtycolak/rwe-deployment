@@ -5,7 +5,7 @@
         <div class="col-md-4">
             <div class="form-group">
                 <label for="lignite_date">Date</label>
-                <input type="date" id="lignite_date" class="form-control">
+                {% with date_id='lignite_date' %}{% include 'partials/date_stepper.html' %}{% endwith %}
             </div>
         </div>
         <div class="col-md-4 d-flex align-items-end gap-2">
