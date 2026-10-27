@@ -35,9 +35,6 @@ services:
         sync: false
       - key: DASHBOARD_PASSWORD
         sync: false
-      # CORS — set to the deployed frontend origin
-      - key: ALLOWED_ORIGINS
-        sync: false
       # Supabase analytics store
       - key: SUPABASE_USER
         sync: false

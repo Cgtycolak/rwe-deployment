@@ -1,3 +1,5 @@
+import { fetchPastDayCached } from '../utils/helpers.js';
+
 export const hydroHeatmap = {
     // Helper functions
     toggleLoading: null,
@@ -82,7 +84,7 @@ export const hydroHeatmap = {
 
             // Fetch both versions of the data
             const [firstVersionResponse, currentVersionResponse] = await Promise.all([
-                fetch("/hydro_heatmap_data", {
+                fetchPastDayCached("/hydro_heatmap_data", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ 
@@ -90,7 +92,7 @@ export const hydroHeatmap = {
                         version: 'first'
                     })
                 }),
-                fetch("/hydro_heatmap_data", {
+                fetchPastDayCached("/hydro_heatmap_data", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ 
@@ -169,7 +171,7 @@ export const hydroHeatmap = {
             buttonText.textContent = 'Loading...';
             
             // Fetch first version data for comparison date
-            const comparisonResponse = await fetch("/hydro_heatmap_data", {
+            const comparisonResponse = await fetchPastDayCached("/hydro_heatmap_data", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ 
@@ -234,7 +236,7 @@ export const hydroHeatmap = {
             toggleButton.textContent = 'Loading...';
 
             // Fetch realtime data
-            const realtimeResponse = await fetch("/hydro_realtime_heatmap_data", {
+            const realtimeResponse = await fetchPastDayCached("/hydro_realtime_heatmap_data", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ date: this.selectedDate })

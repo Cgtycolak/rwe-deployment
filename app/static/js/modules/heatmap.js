@@ -1,3 +1,5 @@
+import { fetchPastDayCached } from '../utils/helpers.js';
+
 export const heatmap = {
     // Helper functions
     toggleLoading: null,
@@ -49,7 +51,7 @@ export const heatmap = {
 
             // Fetch KGUP versions only
             const [firstVersionResponse, currentVersionResponse] = await Promise.all([
-                fetch("/heatmap_data", {
+                fetchPastDayCached("/heatmap_data", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ 
@@ -57,7 +59,7 @@ export const heatmap = {
                         version: 'first'
                     })
                 }),
-                fetch("/heatmap_data", {
+                fetchPastDayCached("/heatmap_data", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ 
@@ -139,7 +141,7 @@ export const heatmap = {
             buttonText.textContent = 'Loading...';
             
             // Fetch first version data for comparison date
-            const comparisonResponse = await fetch("/heatmap_data", {
+            const comparisonResponse = await fetchPastDayCached("/heatmap_data", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ 
@@ -388,7 +390,7 @@ export const heatmap = {
             toggleButton.textContent = 'Loading...';
 
             // Fetch realtime data
-            const realtimeResponse = await fetch("/realtime_heatmap_data", {
+            const realtimeResponse = await fetchPastDayCached("/realtime_heatmap_data", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ date: this.selectedDate })

@@ -1,3 +1,5 @@
+import { fetchPastDayCached } from '../utils/helpers.js';
+
 // Generation by Source heatmap: system-wide DPP first/final versions vs realtime,
 // one column per source. Mirrors ligniteHeatmap.js, with three differences:
 // - absolute views colour each column against its own min/max, since sources
@@ -51,7 +53,7 @@ export const sourceHeatmap = {
     },
 
     async fetchPlan(date, version) {
-        const response = await fetch('/source_heatmap_data', {
+        const response = await fetchPastDayCached('/source_heatmap_data', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ date, version })
@@ -144,7 +146,7 @@ export const sourceHeatmap = {
             toggleButton.disabled = true;
             toggleButton.textContent = 'Loading...';
 
-            const response = await fetch('/source_realtime_heatmap_data', {
+            const response = await fetchPastDayCached('/source_realtime_heatmap_data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ date: this.selectedDate })

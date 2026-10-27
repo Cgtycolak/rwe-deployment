@@ -1,3 +1,5 @@
+import { fetchPastDayCached } from '../utils/helpers.js';
+
 export const ligniteHeatmap = {
     // Helper functions
     toggleLoading: null,
@@ -82,7 +84,7 @@ export const ligniteHeatmap = {
             
             // Fetch lignite versions
             const [firstVersionResponse, currentVersionResponse] = await Promise.all([
-                fetch("/lignite_heatmap_data", {
+                fetchPastDayCached("/lignite_heatmap_data", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ 
@@ -90,7 +92,7 @@ export const ligniteHeatmap = {
                         version: 'first'
                     })
                 }),
-                fetch("/lignite_heatmap_data", {
+                fetchPastDayCached("/lignite_heatmap_data", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ 
@@ -164,7 +166,7 @@ export const ligniteHeatmap = {
             toggleButton.textContent = 'Loading...';
 
             // Fetch realtime data
-            const realtimeResponse = await fetch("/lignite_realtime_heatmap_data", {
+            const realtimeResponse = await fetchPastDayCached("/lignite_realtime_heatmap_data", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ date: this.selectedDate })
@@ -233,7 +235,7 @@ export const ligniteHeatmap = {
             buttonText.textContent = 'Loading...';
             
             // Fetch first version data for comparison date
-            const comparisonResponse = await fetch("/lignite_heatmap_data", {
+            const comparisonResponse = await fetchPastDayCached("/lignite_heatmap_data", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ 

@@ -4,7 +4,6 @@ import logging
 from datetime import timedelta
 from flask import Flask, render_template, request
 from flask_session import Session
-from flask_cors import CORS
 from dotenv import load_dotenv
 import pandas as pd
 from .database.config import init_db, db
@@ -45,13 +44,22 @@ def create_app():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-    app = Flask(__name__, template_folder='templates', static_folder='static')
+    # On Render every deploy gets its own static URL prefix (/static/v/<commit>/),
+    # so browsers can keep JS, CSS and fonts until the next deploy instead of
+    # asking again on every page load. ES module imports are relative, so the
+    # modules imported by app.js inherit the prefix. Locally there is no
+    # prefix and files revalidate, so edits show up on reload.
+    static_version = (os.getenv('RENDER_GIT_COMMIT') or '')[:12]
+    static_url_path = f'/static/v/{static_version}' if static_version else '/static'
+    app = Flask(__name__, template_folder='templates', static_folder='static',
+                static_url_path=static_url_path)
+    if static_version:
+        # Paths hardcoded in JS (e.g. /static/data/...) keep working unversioned
+        app.add_url_rule('/static/<path:filename>', endpoint='static_unversioned',
+                         view_func=app.send_static_file)
     
-    # CORS — restrict to the deployed origin only; no cross-origin callers are legitimate
-    allowed_origins = [o.strip() for o in os.getenv('ALLOWED_ORIGINS', '').split(',') if o.strip()]
-    if allowed_origins:
-        CORS(app, origins=allowed_origins, supports_credentials=True)
-    # If ALLOWED_ORIGINS is not set (local dev), CORS is disabled entirely
+    # No CORS: the pages and the API share one origin, so browsers block every
+    # other site from reading the API.
 
     # Configure app
     app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
@@ -130,23 +138,25 @@ def create_app():
         'SENDER_EMAIL':       'Automated email reports will not send',
         'SENDER_PASSWORD':    'Automated email reports will not send',
         'RECIPIENT_EMAILS':   'Automated email reports will not send',
-        'ALLOWED_ORIGINS':    'CORS is disabled (all cross-origin requests blocked)',
     }
     for _var, _consequence in _optional_vars.items():
         if not os.getenv(_var):
             app.logger.warning(f"Missing env var {_var!r}: {_consequence}")
 
     @app.after_request
-    def cache_static_data(response):
-        """Long-cache the reference data under /static/data/.
+    def cache_static_files(response):
+        """Cache headers for static files.
 
-        tr-provinces.geojson is 242 KB and is refetched on every map load because
-        Flask serves static files with Cache-Control: no-cache. These files are
-        build artifacts that change only when regenerated, unlike the JS/CSS next
-        to them — which deliberately keeps its revalidating default so a deploy is
-        picked up immediately.
+        Versioned paths never change content, so browsers keep them for a year.
+        The reference data under /static/data/ (tr-provinces.geojson is 242 KB)
+        is long-cached at its unversioned path too, since it changes only when
+        regenerated. Everything else keeps Flask's revalidating default.
         """
-        if request.path.startswith('/static/data/') and response.status_code == 200:
+        if response.status_code != 200:
+            return response
+        if static_version and request.path.startswith(static_url_path + '/'):
+            response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        elif request.path.startswith('/static/data/'):
             response.headers['Cache-Control'] = 'public, max-age=86400'
         return response
 

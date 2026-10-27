@@ -73,7 +73,6 @@ The dashboard is a web-based analytics platform accessed exclusively by authoriz
 | Pandas | ≥ 2.0.0 | Data manipulation and analysis |
 | NumPy | ≥ 1.16.0, < 2.0 | Numerical computing |
 | Requests | ≥ 2.28.1 | HTTP client for external API communication |
-| Flask-CORS | ≥ 4.0.0 | Cross-Origin Resource Sharing |
 | Flask-Session | 0.8.0 | Server-side session management |
 | psycopg2 | ≥ 2.9.9 | PostgreSQL database adapter |
 | python-dotenv | 1.0.1 | Environment variable management |

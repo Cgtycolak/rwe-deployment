@@ -203,3 +203,51 @@ export function loadXLSX() {
     }
     return xlsxPromise;
 }
+
+// A finished day's heatmap never changes, so its responses are kept for the
+// life of the page and a date opened again is answered without the ~250 ms
+// round trip to the server. Today and later are always fetched, since their
+// plans still change. Realtime keeps filling in for a day after midnight
+// (EPIAS lag, solar estimates replaced by metered values), so realtime is
+// kept only from the day before yesterday back, and only once it has values.
+const PAST_DAY_CACHE_LIMIT = 200;
+const pastDayResponses = new Map();
+
+function istanbulDate(daysAgo = 0) {
+    // en-CA formats as YYYY-MM-DD, which compares correctly as a string
+    const day = new Date(Date.now() - daysAgo * 86400000);
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul" }).format(day);
+}
+
+function isFinal(url, date, result) {
+    const realtime = url.includes("realtime");
+    if (date >= istanbulDate(realtime ? 1 : 0)) return false;
+    if (result?.code !== 200 || result.data?.solar_estimated?.length) return false;
+    // an all-empty matrix means the data was not there yet, not that the day was zero
+    return (result.data?.values || []).some(row => row.some(v => v !== null && v !== 0));
+}
+
+// Drop-in for fetch() on the heatmap routes (POST with a JSON body holding `date`)
+export async function fetchPastDayCached(url, init) {
+    const date = JSON.parse(init?.body || "{}").date;
+    const key = `${url} ${init?.body}`;
+    if (!pastDayResponses.has(key)) {
+        if (!date || date >= istanbulDate()) return fetch(url, init);
+        const response = await fetch(url, init);
+        if (!response.ok) return response;
+        const text = await response.text();
+        let result = null;
+        try { result = JSON.parse(text); } catch { /* not JSON: pass it through */ }
+        if (isFinal(url, date, result)) {
+            if (pastDayResponses.size >= PAST_DAY_CACHE_LIMIT) {
+                pastDayResponses.delete(pastDayResponses.keys().next().value);
+            }
+            pastDayResponses.set(key, text);
+        }
+        return new Response(text, { status: response.status, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response(pastDayResponses.get(key), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+    });
+}

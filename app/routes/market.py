@@ -1,4 +1,6 @@
 """Market prices: the home page tables, SFC Price and Supply Demand Price tabs."""
+import threading
+import time
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, current_app
 from ..functions import login_required
@@ -114,113 +116,132 @@ def get_sfc_chart_data():
         return api_error("get_sfc_chart_data", e)
 
 
+# The home page tables change a few times a day; their four EPIAS calls take ~2 s.
+# Kept per process, and per Istanbul day, since the tables are windows around today.
+TABLES_CACHE_SECONDS = 10 * 60
+_tables_cache = {'payload': None, 'expires': 0.0, 'day': None}
+_tables_lock = threading.Lock()
+
+
 @market_bp.route('/get_all_table_data', methods=['GET'])
 @login_required
 def get_all_table_data():
     try:
-        # Get current time in Turkey timezone
-        tz = pytz.timezone('Europe/Istanbul')
-        current_time = datetime.now(tz)
-        
-        # Prepare dates for different endpoints
-        yesterday = current_time - timedelta(days=1)
-        tomorrow = current_time + timedelta(days=1)
-        two_days_after = current_time + timedelta(days=2)
-
-        with epias_session(total=3, backoff_factor=0.5) as session:
-
-            order_summary_response = session.post(
-                'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/order-summary-up',
-                json={
-                    "startDate": yesterday.strftime("%Y-%m-%dT00:00:00+03:00"),
-                    "endDate": tomorrow.strftime("%Y-%m-%dT23:59:59+03:00")
-                },
-                timeout=30,
-            )
-
-            smp_response = session.post(
-                'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/system-marginal-price',
-                json={
-                    "startDate": yesterday.strftime("%Y-%m-%dT00:00:00+03:00"),
-                    "endDate": yesterday.strftime("%Y-%m-%dT23:59:59+03:00")
-                },
-                timeout=30,
-            )
-
-            pfc_response = session.post(
-                'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/primary-frequency-capacity-price',
-                json={
-                    "startDate": current_time.strftime("%Y-%m-%dT00:00:00+03:00"),
-                    "endDate": two_days_after.strftime("%Y-%m-%dT23:59:59+03:00")
-                },
-                timeout=30,
-            )
-
-            sfc_response = session.post(
-                'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/secondary-frequency-capacity-price',
-                json={
-                    "startDate": current_time.strftime("%Y-%m-%dT00:00:00+03:00"),
-                    "endDate": two_days_after.strftime("%Y-%m-%dT23:59:59+03:00")
-                },
-                timeout=30,
-            )
-        
-        # Process order summary data
-        order_data = order_summary_response.json().get('items', [])
-        cutoff_time = current_time - timedelta(hours=4)
-        order_summary = []
-        
-        for item in order_data:
-            item_datetime = datetime.strptime(item['date'], "%Y-%m-%dT%H:%M:%S+03:00")
-            item_datetime = tz.localize(item_datetime)
-            if item_datetime <= cutoff_time:
-                order_summary.append({
-                    'datetime': f"{item_datetime.strftime('%Y-%m-%d')} {item['hour']}",
-                    'value': item['net']
-                })
-        
-        # Process SMP data
-        smp_data = smp_response.json()
-        smp_processed = [{
-            'datetime': f"{datetime.strptime(item['date'], '%Y-%m-%dT%H:%M:%S+03:00').strftime('%Y-%m-%d')} {datetime.strptime(item['date'], '%Y-%m-%dT%H:%M:%S+03:00').strftime('%H:%M')}",
-            'value': item['systemMarginalPrice']
-        } for item in smp_data.get('items', [])]
-        
-        # Process PFC data
-        pfc_data = pfc_response.json()
-        pfc_processed = [{
-            'datetime': f"{datetime.strptime(item['date'], '%Y-%m-%dT%H:%M:%S+03:00').strftime('%Y-%m-%d')} {str(item['hour']).zfill(2)}:00",
-            'value': item['price']
-        } for item in pfc_data.get('items', [])]
-        
-        # Process SFC data
-        sfc_data = sfc_response.json()
-        sfc_processed = [{
-            'datetime': f"{datetime.strptime(item['date'], '%Y-%m-%dT%H:%M:%S+03:00').strftime('%Y-%m-%d')} {str(item['hour']).zfill(2)}:00",
-            'value': item['price']
-        } for item in sfc_data.get('items', [])]
-        
-        return jsonify({
-            'code': 200,
-            'data': {
-                'orderSummary': order_summary,
-                'smp': {
-                    'data': smp_processed,
-                    'average': smp_data.get('statistics', {}).get('smpArithmeticalAverage', 0)
-                },
-                'pfc': {
-                    'data': pfc_processed,
-                    'average': pfc_data.get('statistics', {}).get('priceAvg', 0)
-                },
-                'sfc': {
-                    'data': sfc_processed,
-                    'average': sfc_data.get('statistics', {}).get('priceAvg', 0)
-                }
-            }
-        })
-        
+        # One request refreshes at a time; the others wait and reuse its result
+        with _tables_lock:
+            today = datetime.now(pytz.timezone('Europe/Istanbul')).date()
+            if (_tables_cache['payload'] is not None and _tables_cache['day'] == today
+                    and time.monotonic() < _tables_cache['expires']):
+                return jsonify({'code': 200, 'data': _tables_cache['payload']})
+            payload, complete = _fetch_all_tables()
+            if complete:  # a failed EPIAS call is retried on the next visit, not kept for 10 minutes
+                _tables_cache.update(payload=payload, day=today,
+                                     expires=time.monotonic() + TABLES_CACHE_SECONDS)
+        return jsonify({'code': 200, 'data': payload})
     except Exception as e:
         return api_error("get_all_table_data", e)
+
+
+def _fetch_all_tables():
+    """(tables, whether every EPIAS call succeeded) for the order summary, SMP, PFC and SFC tables."""
+    # Get current time in Turkey timezone
+    tz = pytz.timezone('Europe/Istanbul')
+    current_time = datetime.now(tz)
+    
+    # Prepare dates for different endpoints
+    yesterday = current_time - timedelta(days=1)
+    tomorrow = current_time + timedelta(days=1)
+    two_days_after = current_time + timedelta(days=2)
+
+    with epias_session(total=3, backoff_factor=0.5) as session:
+
+        order_summary_response = session.post(
+            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/order-summary-up',
+            json={
+                "startDate": yesterday.strftime("%Y-%m-%dT00:00:00+03:00"),
+                "endDate": tomorrow.strftime("%Y-%m-%dT23:59:59+03:00")
+            },
+            timeout=30,
+        )
+
+        smp_response = session.post(
+            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/system-marginal-price',
+            json={
+                "startDate": yesterday.strftime("%Y-%m-%dT00:00:00+03:00"),
+                "endDate": yesterday.strftime("%Y-%m-%dT23:59:59+03:00")
+            },
+            timeout=30,
+        )
+
+        pfc_response = session.post(
+            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/primary-frequency-capacity-price',
+            json={
+                "startDate": current_time.strftime("%Y-%m-%dT00:00:00+03:00"),
+                "endDate": two_days_after.strftime("%Y-%m-%dT23:59:59+03:00")
+            },
+            timeout=30,
+        )
+
+        sfc_response = session.post(
+            'https://seffaflik.epias.com.tr/electricity-service/v1/markets/ancillary-services/data/secondary-frequency-capacity-price',
+            json={
+                "startDate": current_time.strftime("%Y-%m-%dT00:00:00+03:00"),
+                "endDate": two_days_after.strftime("%Y-%m-%dT23:59:59+03:00")
+            },
+            timeout=30,
+        )
+    
+    # Process order summary data
+    order_data = order_summary_response.json().get('items', [])
+    cutoff_time = current_time - timedelta(hours=4)
+    order_summary = []
+    
+    for item in order_data:
+        item_datetime = datetime.strptime(item['date'], "%Y-%m-%dT%H:%M:%S+03:00")
+        item_datetime = tz.localize(item_datetime)
+        if item_datetime <= cutoff_time:
+            order_summary.append({
+                'datetime': f"{item_datetime.strftime('%Y-%m-%d')} {item['hour']}",
+                'value': item['net']
+            })
+    
+    # Process SMP data
+    smp_data = smp_response.json()
+    smp_processed = [{
+        'datetime': f"{datetime.strptime(item['date'], '%Y-%m-%dT%H:%M:%S+03:00').strftime('%Y-%m-%d')} {datetime.strptime(item['date'], '%Y-%m-%dT%H:%M:%S+03:00').strftime('%H:%M')}",
+        'value': item['systemMarginalPrice']
+    } for item in smp_data.get('items', [])]
+    
+    # Process PFC data
+    pfc_data = pfc_response.json()
+    pfc_processed = [{
+        'datetime': f"{datetime.strptime(item['date'], '%Y-%m-%dT%H:%M:%S+03:00').strftime('%Y-%m-%d')} {str(item['hour']).zfill(2)}:00",
+        'value': item['price']
+    } for item in pfc_data.get('items', [])]
+    
+    # Process SFC data
+    sfc_data = sfc_response.json()
+    sfc_processed = [{
+        'datetime': f"{datetime.strptime(item['date'], '%Y-%m-%dT%H:%M:%S+03:00').strftime('%Y-%m-%d')} {str(item['hour']).zfill(2)}:00",
+        'value': item['price']
+    } for item in sfc_data.get('items', [])]
+    
+    complete = all(r.ok for r in (order_summary_response, smp_response, pfc_response, sfc_response))
+    return {
+        'orderSummary': order_summary,
+        'smp': {
+            'data': smp_processed,
+            'average': smp_data.get('statistics', {}).get('smpArithmeticalAverage', 0)
+        },
+        'pfc': {
+            'data': pfc_processed,
+            'average': pfc_data.get('statistics', {}).get('priceAvg', 0)
+        },
+        'sfc': {
+            'data': sfc_processed,
+            'average': sfc_data.get('statistics', {}).get('priceAvg', 0)
+        }
+    }, complete
 
 
 @market_bp.route('/api/supply_demand_price', methods=['GET'])

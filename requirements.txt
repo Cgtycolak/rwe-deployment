@@ -2,7 +2,6 @@
 # Flask 2.2.0 / Werkzeug 2.2.0 had CVE-2023-25577 (DoS) and CVE-2023-46136 (path traversal).
 Flask>=3.0,<4
 Flask-Session>=0.8.0
-Flask-CORS>=4.0.0
 Flask-SQLAlchemy>=3.0.0
 Flask-Migrate>=4.0.0
 Werkzeug>=3.0,<4

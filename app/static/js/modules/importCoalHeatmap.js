@@ -1,3 +1,5 @@
+import { fetchPastDayCached } from '../utils/helpers.js';
+
 export const importCoalHeatmap = {
     // Helper functions
     toggleLoading: null,
@@ -35,7 +37,7 @@ export const importCoalHeatmap = {
             
             // Fetch KGUP versions
             const [firstVersionResponse, currentVersionResponse] = await Promise.all([
-                fetch("/import_coal_heatmap_data", {
+                fetchPastDayCached("/import_coal_heatmap_data", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ 
@@ -43,7 +45,7 @@ export const importCoalHeatmap = {
                         version: 'first'
                     })
                 }),
-                fetch("/import_coal_heatmap_data", {
+                fetchPastDayCached("/import_coal_heatmap_data", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ 
@@ -119,7 +121,7 @@ export const importCoalHeatmap = {
             buttonText.textContent = 'Loading...';
             
             // Fetch first version data for comparison date
-            const comparisonResponse = await fetch("/import_coal_heatmap_data", {
+            const comparisonResponse = await fetchPastDayCached("/import_coal_heatmap_data", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ 

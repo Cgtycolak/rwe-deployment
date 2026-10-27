@@ -3,7 +3,6 @@ import pytz
 import logging
 from flask import Flask, render_template
 from flask_session import Session
-from flask_cors import CORS
 from dotenv import load_dotenv
 from .database.config import init_db, db
 from .routes.realtime_generation import realtime_generation_bp
