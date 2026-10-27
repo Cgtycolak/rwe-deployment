@@ -17,6 +17,7 @@ from app.mappings import hydro_mapping, plant_mapping, import_coal_mapping, lign
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 # Global configuration
 CHUNK_SIZE = 90  # Days per chunk
@@ -26,6 +27,24 @@ TYPE_MAPPINGS = {
     'imported_coal': (ImportedCoalHeatmapData, import_coal_mapping),
     'lignite': (LigniteHeatmapData, lignite_mapping)
 }
+
+def upsert_rows(session, model, rows):
+    """Insert rows, overwriting any that already exist for the same date, hour, plant and version.
+
+    The delete before each fetch is not enough on its own: during a Render deploy the
+    old and new instance can run the same job at once, and the second insert then hit
+    the unique constraint for every plant.
+    """
+    # one statement cannot update the same row twice, so a repeated hour keeps its last value
+    rows = list({(r['date'], r['hour'], r['plant_name'], r['version']): r for r in rows}.values())
+    if not rows:
+        return
+    now = datetime.utcnow()
+    stmt = pg_insert(model).values([{**r, 'created_at': now} for r in rows])
+    session.execute(stmt.on_conflict_do_update(
+        index_elements=['date', 'hour', 'plant_name', 'version'],
+        set_={'value': stmt.excluded.value, 'created_at': stmt.excluded.created_at},
+    ))
 
 def get_local_session():
     """Create a session for the local database"""
@@ -145,6 +164,7 @@ def populate_heatmap_data(plant_type: str, start_date: datetime.date, end_date: 
                             
                             if response and 'items' in response and response['items']:
                                 # Store new data in both databases
+                                rows = []
                                 for item in response['items']:
                                     try:
                                         date_str = item.get('date', '').split('T')[0]
@@ -152,26 +172,8 @@ def populate_heatmap_data(plant_type: str, start_date: datetime.date, end_date: 
                                         hour = int(item.get('time', '00:00').split(':')[0])
                                         value = float(item.get('toplam', 0))
                                         
-                                        # Create record for deployed database
-                                        deployed_record = model(
-                                            date=date,
-                                            hour=hour,
-                                            plant_name=plant_name,
-                                            value=value,
-                                            version=version
-                                        )
-                                        db.session.add(deployed_record)
-                                        
-                                        # Create record for local database
-                                        if local_db:
-                                            local_record = model(
-                                                date=date,
-                                                hour=hour,
-                                                plant_name=plant_name,
-                                                value=value,
-                                                version=version
-                                            )
-                                            local_session.add(local_record)
+                                        rows.append(dict(date=date, hour=hour, plant_name=plant_name,
+                                                         value=value, version=version))
                                         
                                     except (ValueError, TypeError, AttributeError) as e:
                                         print(f"Error processing item for {plant_name}: {str(e)}")
@@ -179,8 +181,10 @@ def populate_heatmap_data(plant_type: str, start_date: datetime.date, end_date: 
                                 
                                 # Commit to both databases
                                 try:
+                                    upsert_rows(db.session, model, rows)
                                     db.session.commit()
                                     if local_db:
+                                        upsert_rows(local_session, model, rows)
                                         local_session.commit()
                                 except Exception as e:
                                     print(f"Error committing data: {str(e)}")
@@ -283,6 +287,7 @@ def populate_multiple_types(date, local_db=True, versions=['first', 'current']):
                             
                             if response and 'items' in response and response['items']:
                                 # Store new data in both databases
+                                rows = []
                                 for item in response['items']:
                                     try:
                                         date_str = item.get('date', '').split('T')[0]
@@ -290,26 +295,8 @@ def populate_multiple_types(date, local_db=True, versions=['first', 'current']):
                                         hour = int(item.get('time', '00:00').split(':')[0])
                                         value = float(item.get('toplam', 0))
                                         
-                                        # Create record for deployed database
-                                        deployed_record = model(
-                                            date=item_date,
-                                            hour=hour,
-                                            plant_name=plant_name,
-                                            value=value,
-                                            version=version
-                                        )
-                                        db.session.add(deployed_record)
-                                        
-                                        # Create record for local database
-                                        if local_db:
-                                            local_record = model(
-                                                date=item_date,
-                                                hour=hour,
-                                                plant_name=plant_name,
-                                                value=value,
-                                                version=version
-                                            )
-                                            local_session.add(local_record)
+                                        rows.append(dict(date=item_date, hour=hour, plant_name=plant_name,
+                                                         value=value, version=version))
                                         
                                     except (ValueError, TypeError, AttributeError) as e:
                                         print(f"Error processing item for {plant_name}: {str(e)}")
@@ -317,8 +304,10 @@ def populate_multiple_types(date, local_db=True, versions=['first', 'current']):
                                 
                                 # Commit to both databases
                                 try:
+                                    upsert_rows(db.session, model, rows)
                                     db.session.commit()
                                     if local_db:
+                                        upsert_rows(local_session, model, rows)
                                         local_session.commit()
                                 except Exception as e:
                                     print(f"Error committing data: {str(e)}")
