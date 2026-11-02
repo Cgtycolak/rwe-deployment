@@ -1476,7 +1476,7 @@ td.is-best {
 }
 
 .confusion-chart {
-  max-width: 760px;
+  width: 100%;
 }
 
 /* CAO Charts: month- and year-to-date demand above the demand charts */

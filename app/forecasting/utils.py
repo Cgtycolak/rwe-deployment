@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytz
 from datetime import datetime, timedelta
@@ -121,16 +122,62 @@ def process_excel_data(excel_data):
     settled['yat'] = settled['YAT0(MWh)'] + settled['YAT1(MWh)'] - settled['YAT TeslimEdilemeyenMiktar(MWh)']
     settled['system_direction'] = settled['yal'] - settled['yat']
 
-    # Assign timestamps starting from yesterday midnight, one per settled hour
-    n          = len(settled)
-    time_range = pd.date_range(start=d1_start, periods=n, freq='h')
-    settled    = settled.reset_index(drop=True)
-    settled['date'] = pd.to_datetime(time_range).tz_localize(None)
+    # Row i of the report is hour i counted from yesterday midnight. Use the row's own
+    # position, not a count of settled rows, so a skipped hour does not shift the rest.
+    n = len(settled)
+    settled['date'] = d1_start + pd.to_timedelta(settled.index.to_numpy(), unit='h')
     settled = settled[['date', 'system_direction']]
     settled['system_direction'] = settled['system_direction'].fillna(0)
 
     print(f"Processed Excel data: {n} rows from {d1_start} to {settled['date'].max()}")
     return settled
+
+def direction_feature_cols(lag=1):
+    """Columns derived from past system direction (the Model 2 covariates)."""
+    return [
+        f'system_direction_lag{lag}',
+        f'system_direction_lag{lag + 1}',
+        f'system_direction_lag{lag + 2}',
+        f'system_direction_lag{lag + 23}',
+        'system_direction_diff1',
+        'system_direction_diff2',
+        'system_direction_ma3',
+        'system_direction_ma6',
+        'system_direction_ma12',
+    ]
+
+
+def add_direction_features(df, lag=1):
+    """Add lag/diff/moving-average columns of system_direction (hourly rows, in order).
+
+    A row whose inputs reach an hour with unknown direction gets NaN, so in a forecast
+    window only the first `lag` hours carry these covariates.
+    """
+    s = df['system_direction']
+    df[f'system_direction_lag{lag}']      = s.shift(lag)
+    df[f'system_direction_lag{lag + 1}']  = s.shift(lag + 1)
+    df[f'system_direction_lag{lag + 2}']  = s.shift(lag + 2)
+    df[f'system_direction_lag{lag + 23}'] = s.shift(lag + 23)
+    df['system_direction_diff1'] = df[f'system_direction_lag{lag}'] - df[f'system_direction_lag{lag + 1}']
+    df['system_direction_diff2'] = df[f'system_direction_lag{lag + 1}'] - df[f'system_direction_lag{lag + 2}']
+    df['system_direction_ma3']   = s.rolling(3).mean().shift(lag)
+    df['system_direction_ma6']   = s.rolling(6).mean().shift(lag)
+    df['system_direction_ma12']  = s.rolling(12).mean().shift(lag)
+    return df
+
+
+def backtest_covariates(known, horizon, model_name, lag=1):
+    """Covariates for the last `horizon` known rows, as they would be at the forecast origin.
+
+    The direction features of those rows are rebuilt with their own direction hidden, so a
+    backtest sees the same information a live forecast does instead of the actual values.
+    """
+    window = known.copy()
+    if model_name == "Model 2":
+        window.loc[window.index[-horizon:], 'system_direction'] = np.nan
+        window = add_direction_features(window, lag)
+    return window.tail(horizon)
+
 
 def build_chronos_features(engine, excel_data, model_name, lagged_hour_selection=1):
     """Build a fully feature-engineered flat DataFrame for Chronos-2 predict_df.
@@ -170,7 +217,10 @@ def build_chronos_features(engine, excel_data, model_name, lagged_hour_selection
     # 4. Holiday flags using the `holidays` package (no Darts dependency needed)
     import holidays as _holidays_lib
     tr_holidays = _holidays_lib.Turkey(years=sorted(df.index.year.unique().tolist()))
-    df['is_holiday'] = df.index.normalize().isin(tr_holidays).astype(float)
+    # Compare as Timestamps: pandas 3 no longer matches datetime.date keys, so passing
+    # the holidays dict directly flags no day at all.
+    holiday_days = pd.to_datetime(list(tr_holidays.keys()))
+    df['is_holiday'] = df.index.normalize().isin(holiday_days).astype(float)
 
     # 5. Ramadan flag
     df['is_ramadan'] = df.index.normalize().isin(ramadan_dates).astype(float)
@@ -195,22 +245,9 @@ def build_chronos_features(engine, excel_data, model_name, lagged_hour_selection
     # Keep ptf (used for known_price_length) but drop raw smf and smf_ptf_diff
     df.drop(columns=['smf', 'smf_ptf_diff'], inplace=True, errors='ignore')
 
-    # 9. System direction lags and rolling averages
-    lagged_hour_selection = 1
-    df[f'system_direction_lag{lagged_hour_selection}'] = df['system_direction'].shift(lagged_hour_selection)
-    df[f'system_direction_lag{lagged_hour_selection+1}'] = df['system_direction'].shift(lagged_hour_selection+1)
-    df[f'system_direction_lag{lagged_hour_selection+2}'] = df['system_direction'].shift(lagged_hour_selection+2)
-    df[f'system_direction_lag{lagged_hour_selection+23}'] = df['system_direction'].shift(lagged_hour_selection+23)
-    df['system_direction_diff1'] = df[f'system_direction_lag{lagged_hour_selection}'] - df[f'system_direction_lag{lagged_hour_selection+1}']
-    df['system_direction_diff2'] = df[f'system_direction_lag{lagged_hour_selection+1}'] - df[f'system_direction_lag{lagged_hour_selection+2}']
-    df['system_direction_ma3']  = df['system_direction'].rolling(3).mean().shift(lagged_hour_selection)
-    df['system_direction_ma6']  = df['system_direction'].rolling(6).mean().shift(lagged_hour_selection)
-    df['system_direction_ma12'] = df['system_direction'].rolling(12).mean().shift(lagged_hour_selection)
-
-    if model_name == "Model 1":
-        df.drop(columns=[f'system_direction_lag{lagged_hour_selection}',f'system_direction_lag{lagged_hour_selection+1}',
-                         f'system_direction_lag{lagged_hour_selection+2}', f'system_direction_lag{lagged_hour_selection+23}',
-                         'system_direction_diff1', 'system_direction_diff2' ,'system_direction_ma3', 'system_direction_ma6', 'system_direction_ma12'], inplace=True, errors='ignore')
+    # 9. System direction lags and rolling averages (Model 2 only)
+    if model_name == "Model 2":
+        df = add_direction_features(df, lagged_hour_selection)
 
     # 10. Drop warmup rows needed for smf_lag168
     df = df.iloc[168:].copy()

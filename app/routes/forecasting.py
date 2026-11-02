@@ -15,6 +15,8 @@ from ..forecasting.utils import (
     fetch_dgp_data,
     process_excel_data,
     build_chronos_features,
+    backtest_covariates,
+    direction_feature_cols,
     CONTEXT_LENGTHS,
 )
 from ..forecasting.model_testing import compute_confusion_matrix
@@ -47,26 +49,11 @@ def _get_modal_url():
 EVAL_PERIOD = 72  # validation window shown before the forecast (3 days)
 
 def _covariate_drop_cols(model_name, lagged_hour_selection=1):
-    """Columns to remove from covariates (match notebook behavior).
-
-    Model 1: lag/MA cols are NOT useful covariates — drop them all.
-    Model 2: lag/MA cols ARE covariates (they carry recent direction info) — only drop system_direction.
-    """
+    """Columns that must not be sent as covariates: the target itself, plus the
+    direction features for Model 1 (build_chronos_features only adds them for Model 2)."""
     if model_name == 'Model 2':
         return ['system_direction']
-    # Model 1
-    return [
-        'system_direction',
-        f'system_direction_lag{lagged_hour_selection}',
-        f'system_direction_lag{lagged_hour_selection+1}',
-        f'system_direction_lag{lagged_hour_selection+2}',
-        f'system_direction_lag{lagged_hour_selection+23}',
-        'system_direction_diff1',
-        'system_direction_diff2',
-        'system_direction_ma3',
-        'system_direction_ma6',
-        'system_direction_ma12',
-    ]
+    return ['system_direction'] + direction_feature_cols(lagged_hour_selection)
 
 
 def _build_system_direction_series(engine, excel_data):
@@ -112,6 +99,8 @@ def _call_modal(train_df, cov_df, prediction_length, model_name):
         if isinstance(obj, (np.floating,)):
             v = float(obj)
             return None if not math.isfinite(v) else v
+        if isinstance(obj, (pd.Timestamp, datetime)):
+            return str(obj)
         if isinstance(obj, (np.ndarray,)):
             return obj.tolist()
         if isinstance(obj, float) and not math.isfinite(obj):
@@ -120,7 +109,9 @@ def _call_modal(train_df, cov_df, prediction_length, model_name):
 
     def df_to_records(df):
         out = df.copy()
-        for col in out.select_dtypes(include=['datetime64[ns]', 'datetimetz']).columns:
+        # 'datetime' matches every resolution: pandas 3 builds datetime64[us] columns,
+        # which a 'datetime64[ns]' filter misses (then json.dumps fails on Timestamp).
+        for col in out.select_dtypes(include=['datetime', 'datetimetz']).columns:
             out[col] = out[col].astype(str)
         return out.to_dict(orient='records')
 
@@ -231,7 +222,8 @@ def evaluate():
         test_rows  = known.tail(forecast_period)
         ctx_end    = len(known) - forecast_period
         train_df   = known.iloc[max(0, ctx_end - ctx_len):ctx_end].copy()
-        cov_df     = test_rows.drop(columns=drop_cols, errors='ignore').copy()
+        cov_df     = (backtest_covariates(known, forecast_period, model_name, lag=1)
+                      .drop(columns=drop_cols, errors='ignore'))
 
         chronos_result = _call_modal(train_df, cov_df, forecast_period, model_name)
 
@@ -301,30 +293,30 @@ def predict():
 
         drop_cols = _covariate_drop_cols(model_name, lagged_hour_selection)
 
-        # Validation slice (last EVAL_PERIOD known rows)
+        # Validation: a backtest whose context ends EVAL_PERIOD hours ago. Its covariates
+        # hide the direction of the hours being predicted, as a live forecast would.
         eval_rows = known.tail(EVAL_PERIOD).copy()
-        pre_eval  = known.iloc[:-EVAL_PERIOD]
-        train_df  = pre_eval.tail(ctx_len).copy()
+        val_train = known.iloc[:-EVAL_PERIOD].tail(ctx_len).copy()
+        val_cov   = (backtest_covariates(known, EVAL_PERIOD, model_name, lagged_hour_selection)
+                     .drop(columns=drop_cols, errors='ignore'))
+        val_result = _call_modal(val_train, val_cov, EVAL_PERIOD, model_name)
 
-        # Covariates = eval period + future (both without system_direction cols)
-        eval_cov   = eval_rows.drop(columns=drop_cols, errors='ignore')
+        # Forecast: context runs up to the last settled hour (uploaded report included).
+        train_df   = known.tail(ctx_len).copy()
         future_cov = future.drop(columns=drop_cols, errors='ignore').head(known_price_length)
-        cov_df     = pd.concat([eval_cov, future_cov], ignore_index=True)
+        fc_result  = _call_modal(train_df, future_cov, known_price_length, model_name)
 
-        total_length   = EVAL_PERIOD + known_price_length
-        chronos_result = _call_modal(train_df, cov_df, total_length, model_name)
-
-        quantiles_dict = chronos_result['quantiles']  # {q_str: [values]}
-        all_dates      = chronos_result['dates']
+        val_quantiles = val_result['quantiles']   # {q_str: [values]}
+        fc_quantiles  = fc_result['quantiles']
 
         val_dates  = [d.strftime('%Y-%m-%d %H:%M:%S') for d in pd.to_datetime(eval_rows['date'])]
         val_actual = eval_rows['system_direction'].tolist()
         a = np.array(val_actual)
 
-        # Find best quantile by RMSE on the validation portion (notebook: best_q)
+        # Find best quantile by RMSE on the validation backtest (notebook: best_q)
         best_q_key  = None
         best_rmse   = float('inf')
-        for q_key, vals in quantiles_dict.items():
+        for q_key, vals in val_quantiles.items():
             p = np.array(vals[:EVAL_PERIOD])
             rmse = float(np.sqrt(np.mean((a - p) ** 2)))
             if rmse < best_rmse:
@@ -335,14 +327,11 @@ def predict():
         q_low_val  = round(max(0.05, best_q - 0.25), 2)
         q_high_val = round(min(0.95, best_q + 0.25), 2)
 
-        q_low_key  = _find_q_key(quantiles_dict, q_low_val)
-        q_high_key = _find_q_key(quantiles_dict, q_high_val)
-
-        val_predicted = quantiles_dict[best_q_key][:EVAL_PERIOD]
-        future_median = quantiles_dict[best_q_key][EVAL_PERIOD:]
-        future_lower  = quantiles_dict[q_low_key][EVAL_PERIOD:]
-        future_upper  = quantiles_dict[q_high_key][EVAL_PERIOD:]
-        future_dates  = all_dates[EVAL_PERIOD:]
+        val_predicted = val_quantiles[best_q_key][:EVAL_PERIOD]
+        future_median = fc_quantiles[_find_q_key(fc_quantiles, best_q)]
+        future_lower  = fc_quantiles[_find_q_key(fc_quantiles, q_low_val)]
+        future_upper  = fc_quantiles[_find_q_key(fc_quantiles, q_high_val)]
+        future_dates  = fc_result['dates']
 
         # MAE / R² on validation section using best_q
         p      = np.array(val_predicted)

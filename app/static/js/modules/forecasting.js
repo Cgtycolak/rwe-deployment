@@ -292,8 +292,10 @@ export const forecasting = {
         this.displayForecastChart(result);
         const cmContainer = document.getElementById('forecast_confusion_matrix_container');
         if (result.confusion_matrix) {
-            this.displayConfusionMatrix(result.confusion_matrix, 'forecast_confusion_matrix_chart');
+            // Show the container before drawing: Plotly sizes a hidden element at its
+            // 700px default, so the matrix would not fill the card.
             if (cmContainer) cmContainer.classList.remove('d-none');
+            this.displayConfusionMatrix(result.confusion_matrix, 'forecast_confusion_matrix_chart');
         } else {
             if (cmContainer) cmContainer.classList.add('d-none');
             Plotly.purge('forecast_confusion_matrix_chart');
@@ -377,6 +379,7 @@ export const forecasting = {
             type: 'heatmap',
             z, x: xLabels, y: yLabels, text,
             texttemplate: '%{text}',
+            textfont: { size: 14 },
             colorscale: [[0, '#FFFFFF'], [1, '#1F5F99']],
             zmin: 0,
             zmax: 1,
@@ -396,10 +399,10 @@ export const forecasting = {
 
         const layout = {
             font: { family: "'RWE Sans Web', -apple-system, 'Segoe UI', sans-serif", size: 12, color: '#1F2933' },
-            height: 520,
-            xaxis: { title: { text: 'Predicted' }, side: 'bottom', tickangle: -30, tickfont: { size: 11 } },
-            yaxis: { title: { text: 'Actual' }, autorange: 'reversed', tickfont: { size: 11 } },
-            margin: { l: 150, r: 16, t: 16, b: 130 },
+            height: 640,
+            xaxis: { title: { text: 'Predicted' }, side: 'bottom', tickangle: 0, tickfont: { size: 12 } },
+            yaxis: { title: { text: 'Actual' }, autorange: 'reversed', tickfont: { size: 12 } },
+            margin: { l: 150, r: 16, t: 16, b: 90 },
             shapes,
             plot_bgcolor: 'white',
             paper_bgcolor: 'white',
