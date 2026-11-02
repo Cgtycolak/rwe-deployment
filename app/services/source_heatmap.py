@@ -93,6 +93,12 @@ def populate_source_plan(start, end, versions=('first', 'current'), token=None):
             items = _epias_post(url, chunk_start, chunk_end, token, {'region': 'TR1'})
             rows = []
             for item in items:
+                # Before a version is published EPIAS can answer with every field
+                # at 0 (seen for dpp-first-version at 16:05). Storing that would
+                # stand in for the real plan for good, so it is skipped like a
+                # missing hour; the system total is never really zero.
+                if not item.get(TOTAL_FIELD):
+                    continue
                 item_date, hour = _item_date_hour(item)
                 for field in PLAN_FIELDS:
                     if item.get(field) is not None:
@@ -142,18 +148,24 @@ def plan_matrix(day, version):
     """24 x len(LABELS) plan values for one day, or None if nothing is stored.
 
     Fetches from EPIAS on a miss (and stores it), like the other heatmaps do.
+    A day missing hours, or stored as EPIAS's all-zero placeholder, counts as a
+    miss too; hours whose total is still zero are left blank, never shown as 0.
     """
+    def published_hours(records):
+        return {r.hour for r in records if r.source == TOTAL_FIELD and r.value}
+
     records = SourceHeatmapData.query.filter_by(date=day, version=version).all()
-    if not records:
+    if len(published_hours(records)) < 24:
         populate_source_plan(day, day, versions=(version,))
         records = SourceHeatmapData.query.filter_by(date=day, version=version).all()
-    if not records:
+    hours = published_hours(records)
+    if not hours:
         return None
 
     index = {field: i for i, field in enumerate(PLAN_FIELDS)}
     values = [[None] * len(PLAN_FIELDS) for _ in range(24)]
     for r in records:
-        if r.source in index and 0 <= r.hour < 24:
+        if r.source in index and r.hour in hours:
             values[r.hour][index[r.source]] = r.value
     return values
 
