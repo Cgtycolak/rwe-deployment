@@ -89,7 +89,11 @@ export const sourceHeatmap = {
                 toggleButton.disabled = selectedDate >= today; // no realtime for today onwards
             }
             this.realtimeVisible = false;
-            this.selectedDate = selectedDate;
+            // Set again only once this day has loaded, so a failed load never leaves
+            // the previous day's plan behind under the new date (Compare Dates used it).
+            this.selectedDate = null;
+            this.firstVersionData = null;
+            this.currentVersionData = null;
 
             document.getElementById(ELEMENT_IDS.realtime).parentElement.style.display = 'none';
             document.getElementById(ELEMENT_IDS.realtime_difference).parentElement.style.display = 'none';
@@ -102,6 +106,7 @@ export const sourceHeatmap = {
 
             if (firstResult.code === 200 && currentResult.code === 200) {
                 heatmapContainer.style.display = 'block';
+                this.selectedDate = selectedDate;
                 this.firstVersionData = firstResult.data;
                 this.currentVersionData = currentResult.data;
 
@@ -193,8 +198,14 @@ export const sourceHeatmap = {
             this.displayMessage('Please select a comparison date', 'warning');
             return;
         }
-        if (!this.selectedDate) {
-            this.displayMessage('Please load the main heatmap first', 'warning');
+        // Compare against the day shown in the date field. If that day is not the one
+        // loaded (a load still running, or one that failed), load it first.
+        const mainDate = document.getElementById('source_date').value;
+        if (mainDate && mainDate !== this.selectedDate) {
+            await this.loadHeatmapData(mainDate);
+        }
+        if (!this.selectedDate || !this.firstVersionData) {
+            this.displayMessage(`No first version plan for ${mainDate || 'the main date'} yet, so it cannot be compared`, 'warning');
             return;
         }
         if (comparisonDate === this.selectedDate) {
