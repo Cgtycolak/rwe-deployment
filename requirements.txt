@@ -13,7 +13,7 @@ gunicorn==21.2.0             # NEEDS-CONTEXT: gunicorn@21.2.0 — verify no open
 # Data
 # numpy <2.0 / pandas <2.0 constraints were stale; venv confirmed 2.x works.
 numpy>=2.0.0
-pandas>=2.0.0
+pandas>=2.0.0,<3            # pandas 3 broke the forecast (datetime64[us] columns, date isin); code now handles it, but upgrade only after re-testing /api/forecasting
 python-dateutil>=2.9.0       # directly used (relativedelta); also pandas transitive
 pytz>=2023.3                 # directly used throughout; provides Istanbul/UTC conversions
 tzdata>=2024.2               # IANA timezone data, required by pytz on some platforms
