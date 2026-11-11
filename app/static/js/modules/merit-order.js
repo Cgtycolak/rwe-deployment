@@ -420,17 +420,13 @@ export const meritOrder = {
 
     renderEditableAICTable(data, container) {
         if (!data || !data.plants || data.plants.length === 0) {
-            container.innerHTML = '<div class="alert alert-info">No AIC data available.</div>';
+            container.innerHTML = '<div class="alert alert-info">No KGUP data available.</div>';
             return;
         }
 
         const { plants, hours, ref_dates, values } = data;
 
         let html = `
-        <div class="text-muted small m-2">
-            Switching a plant or hour on fills in its KGUP on that hour's reference date.
-            Cells marked with a dashed border had no KGUP that day; type a value to use one.
-        </div>
         <div class="table-responsive">
             <table class="table table-sm table-bordered table-hover" id="aic_editable_table">
                 <thead>
