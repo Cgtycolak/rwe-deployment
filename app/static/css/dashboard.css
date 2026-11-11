@@ -716,7 +716,8 @@ select option {
 }
 
 .aic-toggle-btn,
-.aic-col-toggle-btn {
+.aic-col-toggle-btn,
+.aic-all-toggle-btn {
   border: none;
   background: #e9ecef;
   color: #6c757d;
@@ -729,11 +730,13 @@ select option {
 }
 
 .aic-toggle-btn:hover,
-.aic-col-toggle-btn:hover {
+.aic-col-toggle-btn:hover,
+.aic-all-toggle-btn:hover {
   background: var(--rule);
 }
 
-.aic-toggle-btn.active {
+.aic-toggle-btn.active,
+.aic-all-toggle-btn.active {
   background: var(--load);
   color: white;
 }

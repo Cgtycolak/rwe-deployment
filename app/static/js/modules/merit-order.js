@@ -442,7 +442,11 @@ export const meritOrder = {
                             </th>`).join('')}
                     </tr>
                     <tr class="table-secondary">
-                        <td class="text-center" style="font-size:0.7rem; color:#6c757d;">↓ row / col →</td>
+                        <td class="text-center p-1">
+                            <button class="aic-all-toggle-btn" title="Fill every plant's KGUP for all hours">
+                                <i class="fas fa-power-off"></i> All ON
+                            </button>
+                        </td>
                         ${hours.map((h, hIdx) => `
                             <td class="text-center p-1">
                                 <button class="aic-col-toggle-btn" data-hour-idx="${hIdx}" data-hour="${h}" title="Fill every plant's KGUP for ${h}">
@@ -681,6 +685,24 @@ export const meritOrder = {
             }
         }, { signal });
 
+        // The button listeners below take the signal too: resetAicToZero binds
+        // again on the same elements, and a second listener would undo each click.
+
+        // ── All-plants toggle ─────────────────────────────────────────────
+        container.querySelector('.aic-all-toggle-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            const turnOn = !e.currentTarget.classList.contains('active');
+            container.querySelectorAll('.aic-toggle-btn').forEach(btn => {
+                btn.classList.toggle('active', turnOn);
+                this.setPlantAicValues(parseInt(btn.dataset.plantIdx), turnOn ? null : 0);
+            });
+            if (!turnOn) {
+                container.querySelectorAll('.aic-col-toggle-btn').forEach(btn => btn.classList.remove('active'));
+            }
+            this.syncAllToggle();
+            this.recalculateFromAic();
+        }, { signal });
+
         // ── Row toggle buttons ────────────────────────────────────────────
         container.querySelectorAll('.aic-toggle-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -689,8 +711,9 @@ export const meritOrder = {
                 const isActive = btn.classList.contains('active');
                 btn.classList.toggle('active', !isActive);
                 this.setPlantAicValues(plantIdx, isActive ? 0 : null);
+                this.syncAllToggle();
                 this.recalculateFromAic();
-            });
+            }, { signal });
         });
 
         // ── Column toggle buttons ─────────────────────────────────────────
@@ -703,8 +726,15 @@ export const meritOrder = {
                 btn.classList.toggle('active', !isActive);
                 this.setHourAicValues(hourIdx, hour, isActive ? 0 : null);
                 this.recalculateFromAic();
-            });
+            }, { signal });
         });
+    },
+
+    // "All ON" shows as on exactly when every plant row is on
+    syncAllToggle() {
+        const rows = [...document.querySelectorAll('.aic-toggle-btn')];
+        document.querySelector('.aic-all-toggle-btn')?.classList.toggle(
+            'active', rows.length > 0 && rows.every(btn => btn.classList.contains('active')));
     },
 
     setPlantAicValues(plantIdx, value) {
@@ -760,7 +790,7 @@ export const meritOrder = {
             input.classList.remove('aic-nonzero');
         });
 
-        document.querySelectorAll('.aic-toggle-btn, .aic-col-toggle-btn').forEach(btn => {
+        document.querySelectorAll('.aic-toggle-btn, .aic-col-toggle-btn, .aic-all-toggle-btn').forEach(btn => {
             btn.classList.remove('active');
         });
 
@@ -1256,6 +1286,7 @@ export const meritOrder = {
             btn.classList.add('active');
             this.setHourAicValues(parseInt(btn.dataset.hourIdx), btn.dataset.hour, null);
         });
+        this.syncAllToggle();
     },
 
     _getCurrentCapacityDeltas() {
