@@ -3,10 +3,9 @@ from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, current_app, send_file
 from ..functions import login_required
 import pandas as pd
-import pytz
 from sqlalchemy import text, bindparam
 import os
-from ..services.epias import epias_session
+from ..services.plant_heatmaps import FUELS, HOURS, plan_values
 from .common import api_error
 from ..database.supabase import get_supabase_engine
 
@@ -474,97 +473,71 @@ def get_merit_order_similar_days():
         return api_error("get_merit_order_similar_days", e)
 
 
-AIC_URL = 'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/aic'
+def _tracked_kgup(ref_dates, ref_by_hour):
+    """Reference-day DPP (KGUP, current version) for every unit in uevcb.xlsx.
 
+    Each hour takes the value from its own section's reference date, the same
+    stitching the results table uses, so switching a plant on in the AIC table
+    adds what it planned to generate on the day that hour is compared against.
+    Returns a DataFrame indexed by unit name with 'HH:00' columns, plus the names
+    of tracked units missing from the natural gas mapping. Raises FileNotFoundError
+    when uevcb.xlsx is missing.
+    """
+    uevcb_path = os.path.join(current_app.static_folder, 'data', 'uevcb.xlsx')
+    if not os.path.exists(uevcb_path):
+        raise FileNotFoundError(uevcb_path)
+    uevcb = pd.read_excel(uevcb_path, sheet_name='Sheet2')
 
-def _fetch_tracked_aic(session, uevcb, day_start):
-    """Today's AIC rows for every unit in uevcb.xlsx, tagged with uevcbId. Returns (items, failed units)."""
-    items, failures = [], 0
-    for _, row in uevcb.iterrows():
-        try:
-            response = session.post(AIC_URL, timeout=15, headers={"Accept-Language": "en"}, json={
-                "startDate": day_start.isoformat(),
-                "endDate": day_start.isoformat(),
-                "region": "TR1",
-                "organizationId": int(row['organizationId']),
-                "uevcbId": int(row['id'])
-            })
-            if response.status_code != 200:
-                failures += 1
-                continue
-            unit_items = response.json().get("items", [])
-            for item in unit_items:
-                item["uevcbId"] = int(row['id'])
-            items.extend(unit_items)
-        except Exception as e:
-            current_app.logger.warning(f"Error fetching AIC for {row['name']}: {e}")
-            failures += 1
-    return items, failures
+    fuel = FUELS['natural_gas']
+    column_by_uevcb = {int(u): i for i, u in enumerate(fuel.mapping['uevcb_ids'])}
+    matrices = {day: plan_values(fuel, day, 'current') for day in sorted(set(ref_dates))}
+
+    rows, unmapped = {}, []
+    for _, unit in uevcb.iterrows():
+        col = column_by_uevcb.get(int(unit['id']))
+        if col is None:
+            unmapped.append(unit['name'])
+            continue
+        rows[unit['name']] = [matrices[ref_by_hour[hour]][h][col] for h, hour in enumerate(HOURS)]
+    if unmapped:
+        current_app.logger.warning("Merit order units without a natural gas DPP mapping: %s", unmapped)
+
+    return pd.DataFrame.from_dict(rows, orient='index', columns=HOURS), unmapped
 
 
 @merit_order_bp.route('/merit-order-aic-data')
 @login_required
 def get_merit_order_aic_data():
-    """Get AIC data for tracked power plants"""
+    """Reference-day KGUP of the tracked plants, per hour (see _tracked_kgup).
+
+    Takes the same gen_dates/b1/b2 as /merit-order-data.
+    """
     try:
-        # Read the uevcb plant list
-        uevcb_path = os.path.join(current_app.static_folder, 'data', 'uevcb.xlsx')
-        if not os.path.exists(uevcb_path):
-            return jsonify({'code': 404, 'error': 'UEVCB plant list file not found'}), 404
-        
-        uevcb = pd.read_excel(uevcb_path, sheet_name='Sheet2')
-        
-        # Use today's date for AIC
-        tz = pytz.timezone('Europe/Istanbul')
-        today_start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        with epias_session(total=3, backoff_factor=0.5) as session:
-            org_response = session.post(
-                'https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/organization-list',
-                json={
-                    "startDate": today_start.isoformat(),
-                    "endDate": today_start.isoformat()
-                },
-                headers={"Accept-Language": "en"},
-                timeout=30
-            )
+        try:
+            sections = _parse_merit_order_splits(request.args)
+            ref_dates, ref_by_hour = _parse_merit_order_ref_dates(request.args, sections)
+        except ValueError as e:
+            return jsonify({'code': 400, 'message': str(e)}), 400
 
-            if org_response.status_code == 200:
-                org_df = pd.DataFrame.from_records(org_response.json().get('items', []))
-                if not org_df.empty:
-                    uevcb = uevcb.merge(
-                        org_df[['organizationId', 'organizationName']],
-                        left_on="organizationId", right_on="organizationId", how="left"
-                    )
+        try:
+            kgup_df, unmapped = _tracked_kgup(ref_dates, ref_by_hour)
+        except FileNotFoundError:
+            return jsonify({'code': 404, 'message': 'UEVCB plant list file not found'}), 404
 
-            all_response, aic_fetch_failures = _fetch_tracked_aic(session, uevcb, today_start)
-
-        if not all_response:
-            return jsonify({'code': 404, 'message': 'No AIC data available'}), 404
-
-        # Process AIC data into pivot table
-        eak_df = pd.DataFrame.from_records(all_response)
-        eak_df = eak_df[['date', 'uevcbId', 'toplam']].copy()
-        eak_df = eak_df.merge(uevcb[["id", "name"]], left_on="uevcbId", right_on="id", how="left").drop(columns=['id', 'uevcbId'])
-
-        eak_df['date'] = pd.to_datetime(eak_df['date'])
-        eak_df['hour'] = eak_df['date'].dt.strftime('%H:%M')
-        pivot_df = eak_df.pivot(index="name", columns="hour", values="toplam")
-        pivot_df = pivot_df.fillna(0)
-
-        base_date = today_start.strftime('%Y-%m-%d')
+        if kgup_df.empty:
+            return jsonify({'code': 404, 'message': 'No KGUP data available for the tracked plants'}), 404
 
         return jsonify({
             'code': 200,
             'data': {
-                'plants': pivot_df.index.tolist(),
-                'hours': pivot_df.columns.tolist(),
-                'values': pivot_df.values.tolist(),
-                'base_date': base_date,
-                'fetch_failures': aic_fetch_failures,
+                'plants': kgup_df.index.tolist(),
+                'hours': HOURS,
+                'ref_dates': [ref_by_hour[h].isoformat() for h in HOURS],
+                'values': kgup_df.values.tolist(),
+                'unmapped': unmapped,
             }
         })
-        
+
     except Exception as e:
         return api_error("get_merit_order_aic_data", e)
 
@@ -782,29 +755,16 @@ def download_merit_order_excel():
         if not failure_df.empty:
             failure_df.set_index('uevcbName', inplace=True)
         
-        # --- Sheet 2: AIC ---
-        uevcb_path = os.path.join(current_app.static_folder, 'data', 'uevcb.xlsx')
-        aic_pivot_df = pd.DataFrame()
-        
-        if os.path.exists(uevcb_path):
-            try:
-                uevcb = pd.read_excel(uevcb_path, sheet_name='Sheet2')
-                tz = pytz.timezone('Europe/Istanbul')
-                today_start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
-                
-                with epias_session(total=3, backoff_factor=0.5) as session_api:
-                    all_aic, _ = _fetch_tracked_aic(session_api, uevcb, today_start)
-                
-                if all_aic:
-                    eak_df = pd.DataFrame.from_records(all_aic)
-                    eak_df = eak_df[['date', 'uevcbId', 'toplam']].copy()
-                    eak_df = eak_df.merge(uevcb[["id", "name"]], left_on="uevcbId", right_on="id", how="left").drop(columns=['id', 'uevcbId'])
-                    eak_df['date'] = pd.to_datetime(eak_df['date'])
-                    eak_df['hour'] = eak_df['date'].dt.strftime('%H:%M')
-                    aic_pivot_df = eak_df.pivot(index="name", columns="hour", values="toplam").fillna(0)
-            except Exception as e:
-                current_app.logger.warning(f"AIC processing error: {str(e)}")
-        
+        # --- Sheet 2: KGUP of the tracked plants on each hour's reference date ---
+        kgup_sheet_df = pd.DataFrame()
+        try:
+            kgup_sheet_df, _ = _tracked_kgup(ref_dates, ref_by_hour)
+            kgup_sheet_df.columns = [f"{ref_by_hour[h].isoformat()} {h}" for h in kgup_sheet_df.columns]
+        except Exception:
+            # The sheet is an extra; the Results sheet still downloads without it
+            current_app.logger.exception("KGUP sheet failed, Excel export has no KGUP sheet")
+            kgup_sheet_df = pd.DataFrame()
+
         # --- Write Excel ---
         output = BytesIO()
 
@@ -844,11 +804,12 @@ def download_merit_order_excel():
         # Reorder sheets: Results first
         workbook.worksheets_objs.sort(key=lambda x: x.name != 'Results')
         
-        # Sheet 2: AIC
-        if not aic_pivot_df.empty:
-            aic_pivot_df.to_excel(writer, sheet_name='AIC')
-            aic_worksheet = writer.sheets['AIC']
-            aic_worksheet.set_column(0, 0, 40)
+        # Sheet 2: KGUP
+        if not kgup_sheet_df.empty:
+            kgup_sheet_df.to_excel(writer, sheet_name='KGUP')
+            kgup_worksheet = writer.sheets['KGUP']
+            kgup_worksheet.set_column(0, 0, 40)
+            kgup_worksheet.set_column(1, len(kgup_sheet_df.columns), 17)
         
         # Sheet 3: Outages
         if not failure_df.empty:

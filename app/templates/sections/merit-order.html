@@ -1,4 +1,4 @@
-{% set page_note = "Set a prediction date and up to three reference days. The tables compare the reference days' generation with the forecast for the prediction date, with available capacity (AIC) and active outages." %}
+{% set page_note = "Set a prediction date and up to three reference days. The tables compare the reference days' generation with the forecast for the prediction date, with the tracked gas plants' KGUP on those reference days and active outages." %}
 {% include 'partials/page_head.html' %}
 
 <div class="container-fluid">
@@ -13,7 +13,7 @@
                 <div class="col-md-6 text-end">
                     <button id="load_merit_order" class="btn btn-primary">
                         <span class="button-content">
-                            <i class="fas fa-sync-alt"></i> Load AIC &amp; Outages
+                            <i class="fas fa-sync-alt"></i> Load KGUP &amp; Outages
                         </span>
                         <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                     </button>
@@ -32,7 +32,7 @@
                 </div>
                 <div class="col-md-4 d-flex align-items-end">
                     <button id="reset_aic_values" class="btn btn-outline-secondary" disabled>
-                        <i class="fas fa-undo"></i> Reset AIC to Zero
+                        <i class="fas fa-undo"></i> Reset KGUP to Zero
                     </button>
                 </div>
             </div>
@@ -95,16 +95,16 @@
         </div>
     </div>
 
-    <!-- AIC Table -->
+    <!-- AIC table: reference-day KGUP of the tracked plants -->
     <div class="card mb-4">
         <div class="card-header">
-            <h5 class="mb-0"><i class="fas fa-industry"></i> Available Installed Capacity (AIC)</h5>
+            <h5 class="mb-0"><i class="fas fa-industry"></i> Reference-Day KGUP (AIC)</h5>
         </div>
         <div class="card-body p-0">
             <div id="merit_order_aic">
                 <div class="text-center p-4 text-muted">
                     <i class="fas fa-industry fa-3x mb-3"></i>
-                    <p>AIC data for tracked natural gas power plants will appear here.</p>
+                    <p>KGUP of the tracked natural gas plants on the reference dates will appear here.</p>
                 </div>
             </div>
         </div>

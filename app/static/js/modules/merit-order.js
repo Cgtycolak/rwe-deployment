@@ -1,7 +1,7 @@
 export const meritOrder = {
     helpers: null,
     currentData: null,
-    originalAicValues: null,  // Original AIC values from API
+    originalAicValues: null,  // Reference-day KGUP per plant and hour, from the API
     supplyDemandCurves: null, // Supply/demand curves for client-side MCP calc
     baseCapacityDeltas: null, // Base capacity deltas before AIC adjustments
     // Hours (0–24) where sections 2 and 3 start. Sections left empty are dropped,
@@ -155,10 +155,11 @@ export const meritOrder = {
         this._refreshTimer = setTimeout(() => this.refreshResults(), 250);
     },
 
-    // Rebuilds the results table from the current inputs. Only /merit-order-data
-    // depends on the dates and sections — AIC and outages are fetched for today
-    // — so this stays fast enough to run on every change.
-    async refreshResults() {
+    // Rebuilds the results table from the current inputs. The AIC table holds
+    // the KGUP of each hour's reference date, so once it has been loaded it is
+    // refetched alongside the results (from the first Load on, even if that
+    // request is superseded); outages are for today and stay as loaded.
+    async refreshResults({ includeKgup = this._kgupRequested } = {}) {
         const resultsContainer = document.getElementById('merit_order_results');
         const spinner = document.getElementById('merit_results_updating');
         const downloadBtn = document.getElementById('download_merit_order_excel');
@@ -183,10 +184,14 @@ export const meritOrder = {
                 gen_dates: genDates.join(','), pred_date: predDate,
                 b1: splitPoints.b1, b2: splitPoints.b2
             });
-            const response = await fetch(`/merit-order-data?${params}`);
-            const resultsData = await response.json();
+            const [resultsData, kgupData] = await Promise.all([
+                fetch(`/merit-order-data?${params}`).then(r => r.json()),
+                includeKgup ? this.fetchKgup(params) : null,
+            ]);
 
             if (this._resultsRequestId !== requestId) return;
+
+            if (kgupData) this.applyKgupData(kgupData);
 
             if (resultsData.code === 200 && resultsData.data) {
                 this.supplyDemandCurves = resultsData.data.supply_demand_curves || {};
@@ -194,11 +199,10 @@ export const meritOrder = {
                 this.currentData = { ...this.currentData, results: resultsData, genDates, predDate, splitPoints };
                 this.renderResultsTable(resultsData.data, resultsContainer);
 
-                // AIC edits are independent of the reference dates, so carry them
-                // over onto the new baseline
-                const hasAicEdits = [...document.querySelectorAll('.aic-editable-input')]
+                // Plants left switched on were refilled for the new dates above
+                const hasAicValues = [...document.querySelectorAll('.aic-editable-input')]
                     .some(input => (parseFloat(input.value) || 0) !== 0);
-                if (hasAicEdits) this.recalculateFromAic();
+                if (hasAicValues) this.recalculateFromAic();
 
                 if (downloadBtn) downloadBtn.disabled = false;
             } else {
@@ -334,54 +338,29 @@ export const meritOrder = {
         });
     },
 
-    // AIC and outages come from EPIAS for today and do not depend on the dates or
-    // sections, so they load once on demand; the results table refreshes itself.
+    // Loads the AIC (reference-day KGUP) table together with the results, and
+    // today's outages, which do not depend on the dates or sections.
     async loadMeritOrderData() {
         const loadButton = document.getElementById('load_merit_order');
         const aicContainer = document.getElementById('merit_order_aic');
         const failureContainer = document.getElementById('merit_order_failure');
 
-        // Capture any existing AIC edits before wiping the table
-        const savedAicEdits = this._captureAicEdits();
+        this._kgupRequested = true;
 
         try {
             if (loadButton) {
                 this.helpers.toggleButtonLoading(loadButton, true);
             }
 
-            if (aicContainer) aicContainer.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading AIC data...</p></div>';
+            if (aicContainer && !this.originalAicValues) aicContainer.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading KGUP data...</p></div>';
             if (failureContainer) failureContainer.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading failure data...</p></div>';
 
-            const [aicResponse, failureResponse] = await Promise.all([
-                fetch('/merit-order-aic-data'),
-                fetch('/merit-order-failure-data'),
-                this.refreshResults()
+            const [failureData] = await Promise.all([
+                fetch('/merit-order-failure-data').then(r => r.json()),
+                this.refreshResults({ includeKgup: true })
             ]);
 
-            const aicData = await aicResponse.json();
-            const failureData = await failureResponse.json();
-
-            // Store original AIC values (including base_date for column headers)
-            if (aicData.code === 200 && aicData.data) {
-                this.originalAicValues = {
-                    plants: aicData.data.plants,
-                    hours: aicData.data.hours,
-                    values: aicData.data.values.map(row => [...row]),
-                    base_date: aicData.data.base_date || null
-                };
-            }
-
-            this.currentData = { ...this.currentData, aic: aicData, failure: failureData };
-
-            if (aicData.code === 200) {
-                this.renderEditableAICTable(aicData.data, aicContainer);
-                if (Object.keys(savedAicEdits).length > 0) {
-                    this._restoreAicEdits(savedAicEdits, aicContainer);
-                    this.recalculateFromAic();
-                }
-            } else {
-                aicContainer.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${aicData.error || aicData.message || 'No AIC data available'}</div>`;
-            }
+            this.currentData = { ...this.currentData, failure: failureData };
 
             if (failureData.code === 200) {
                 this.renderFailureTable(failureData.data, failureContainer);
@@ -390,15 +369,14 @@ export const meritOrder = {
             }
 
             const resetBtn = document.getElementById('reset_aic_values');
-            if (resetBtn) resetBtn.disabled = false;
+            if (resetBtn) resetBtn.disabled = !this.originalAicValues;
 
-            this.helpers.displayMessage('AIC and outage data loaded successfully!', 'success');
+            this.helpers.displayMessage('KGUP and outage data loaded successfully!', 'success');
 
         } catch (error) {
-            console.error('Error loading AIC/outage data:', error);
+            console.error('Error loading KGUP/outage data:', error);
             this.helpers.displayMessage(`Error: ${error.message}`, 'danger');
 
-            if (aicContainer) aicContainer.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Failed to load data: ${error.message}</div>`;
             if (failureContainer) failureContainer.innerHTML = '';
         } finally {
             if (loadButton) {
@@ -407,32 +385,67 @@ export const meritOrder = {
         }
     },
 
+    // Never rejects: a failed KGUP request is shown in the AIC card and must not
+    // take the results table down with it.
+    async fetchKgup(params) {
+        try {
+            const response = await fetch(`/merit-order-aic-data?${params}`);
+            return await response.json();
+        } catch (error) {
+            console.error('Error loading KGUP data:', error);
+            return { code: 500, message: `Failed to load KGUP data: ${error.message}` };
+        }
+    },
+
+    // Renders a fresh KGUP table. Plants and hours switched on stay on and are
+    // refilled from the new reference dates; hand-typed values belonged to the
+    // old dates and are dropped.
+    applyKgupData(kgupData) {
+        const aicContainer = document.getElementById('merit_order_aic');
+        if (!aicContainer) return;
+
+        if (kgupData.code !== 200 || !kgupData.data) {
+            this.originalAicValues = null;
+            aicContainer.innerHTML = `<div class="alert alert-warning m-3"><i class="fas fa-exclamation-triangle"></i> ${kgupData.error || kgupData.message || 'No KGUP data available'}</div>`;
+            return;
+        }
+
+        const toggles = this._captureAicToggles();
+        const { plants, hours, ref_dates, values } = kgupData.data;
+        this.originalAicValues = { plants, hours, ref_dates, values: values.map(row => [...row]) };
+        this.currentData = { ...this.currentData, aic: kgupData };
+        this.renderEditableAICTable(this.originalAicValues, aicContainer);
+        this._applyAicToggles(toggles);
+    },
+
     renderEditableAICTable(data, container) {
         if (!data || !data.plants || data.plants.length === 0) {
             container.innerHTML = '<div class="alert alert-info">No AIC data available.</div>';
             return;
         }
 
-        const { plants, hours, base_date } = data;
-        const dateLabel = base_date ? `<div class="text-muted small mb-1">AIC Date: <strong>${base_date}</strong></div>` : '';
+        const { plants, hours, ref_dates, values } = data;
 
         let html = `
-        ${dateLabel}
+        <div class="text-muted small m-2">
+            Switching a plant or hour on fills in its KGUP on that hour's reference date.
+            Cells marked with a dashed border had no KGUP that day; type a value to use one.
+        </div>
         <div class="table-responsive">
             <table class="table table-sm table-bordered table-hover" id="aic_editable_table">
                 <thead>
                     <tr class="table-dark">
                         <th class="text-center" style="min-width: 240px;">Plant Name</th>
-                        ${hours.map(h => {
-                            const label = base_date ? `<span style="font-size:0.65rem;opacity:0.75;display:block;">${base_date}</span>${h}` : h;
-                            return `<th class="text-center" style="white-space:nowrap;">${label}</th>`;
-                        }).join('')}
+                        ${hours.map((h, hIdx) => `
+                            <th class="text-center" style="white-space:nowrap;">
+                                <span style="font-size:0.65rem;opacity:0.75;display:block;">${ref_dates[hIdx]}</span>${h}
+                            </th>`).join('')}
                     </tr>
                     <tr class="table-secondary">
                         <td class="text-center" style="font-size:0.7rem; color:#6c757d;">↓ row / col →</td>
                         ${hours.map((h, hIdx) => `
                             <td class="text-center p-1">
-                                <button class="aic-col-toggle-btn" data-hour-idx="${hIdx}" data-hour="${h}" title="Toggle all plants for ${h}">
+                                <button class="aic-col-toggle-btn" data-hour-idx="${hIdx}" data-hour="${h}" title="Fill every plant's KGUP for ${h}">
                                     <i class="fas fa-power-off"></i> ON
                                 </button>
                             </td>
@@ -444,7 +457,7 @@ export const meritOrder = {
         plants.forEach((plant, idx) => {
             html += `<tr data-plant-idx="${idx}">
                 <td class="fw-bold" style="white-space: nowrap;">
-                    <button class="aic-toggle-btn me-1" data-plant-idx="${idx}" title="Toggle 100% capacity for all hours">
+                    <button class="aic-toggle-btn me-1" data-plant-idx="${idx}" title="Fill this plant's KGUP for all hours">
                         <i class="fas fa-power-off"></i> ON
                     </button>
                     ${plant}
@@ -452,7 +465,8 @@ export const meritOrder = {
                 ${hours.map((h, hIdx) => `
                     <td class="text-center p-1">
                         <input type="number"
-                            class="aic-editable-input"
+                            class="aic-editable-input${(values[idx]?.[hIdx] || 0) === 0 ? ' aic-kgup-zero' : ''}"
+                            title="KGUP ${ref_dates[hIdx]} ${h}: ${Math.round(values[idx]?.[hIdx] || 0)} MW"
                             data-plant-idx="${idx}"
                             data-hour-idx="${hIdx}"
                             data-hour="${h}"
@@ -1218,31 +1232,29 @@ export const meritOrder = {
         }
     },
 
-    _captureAicEdits() {
-        // Returns { plantName: { hour: value } } for all currently visible AIC inputs
-        const edits = {};
-        document.querySelectorAll('.aic-editable-input').forEach(input => {
-            const plantIdx = parseInt(input.dataset.plantIdx);
-            const hour = input.dataset.hour;
-            const plantName = this.originalAicValues?.plants[plantIdx];
-            if (plantName) {
-                if (!edits[plantName]) edits[plantName] = {};
-                edits[plantName][hour] = parseFloat(input.value) || 0;
-            }
+    _captureAicToggles() {
+        // Plant names and hour labels currently switched on
+        const plants = new Set();
+        const hours = new Set();
+        document.querySelectorAll('.aic-toggle-btn.active').forEach(btn => {
+            const name = this.originalAicValues?.plants[parseInt(btn.dataset.plantIdx)];
+            if (name) plants.add(name);
         });
-        return edits;
+        document.querySelectorAll('.aic-col-toggle-btn.active').forEach(btn => hours.add(btn.dataset.hour));
+        return { plants, hours };
     },
 
-    _restoreAicEdits(edits, container) {
-        // Re-applies saved edits to the freshly rendered AIC table
-        container.querySelectorAll('.aic-editable-input').forEach(input => {
-            const plantIdx = parseInt(input.dataset.plantIdx);
-            const hour = input.dataset.hour;
-            const plantName = this.originalAicValues?.plants[plantIdx];
-            if (plantName && edits[plantName]?.[hour] !== undefined) {
-                input.value = edits[plantName][hour];
-                input.classList.toggle('aic-nonzero', parseFloat(input.value) !== 0);
-            }
+    _applyAicToggles({ plants, hours }) {
+        // Switches the same plants and hours back on in a freshly rendered table
+        this.originalAicValues?.plants.forEach((name, plantIdx) => {
+            if (!plants.has(name)) return;
+            document.querySelector(`.aic-toggle-btn[data-plant-idx="${plantIdx}"]`)?.classList.add('active');
+            this.setPlantAicValues(plantIdx, null);
+        });
+        document.querySelectorAll('.aic-col-toggle-btn').forEach(btn => {
+            if (!hours.has(btn.dataset.hour)) return;
+            btn.classList.add('active');
+            this.setHourAicValues(parseInt(btn.dataset.hourIdx), btn.dataset.hour, null);
         });
     },
 

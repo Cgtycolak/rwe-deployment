@@ -709,6 +709,12 @@ select option {
   font-weight: 600;
 }
 
+/* No KGUP on the reference date: switching the plant on adds nothing here */
+.aic-editable-input.aic-kgup-zero {
+  border-style: dashed;
+  color: var(--text-muted);
+}
+
 .aic-toggle-btn,
 .aic-col-toggle-btn {
   border: none;
