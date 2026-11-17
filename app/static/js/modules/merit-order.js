@@ -3,7 +3,7 @@ export const meritOrder = {
     currentData: null,
     originalAicValues: null,  // Reference-day KGUP per plant and hour, from the API
     supplyDemandCurves: null, // Supply/demand curves for client-side MCP calc
-    baseCapacityDeltas: null, // Base capacity deltas before AIC adjustments
+    baseCapacityDeltas: null, // Base capacity deltas before KGUP is added
     // Hours (0–24) where sections 2 and 3 start. Sections left empty are dropped,
     // so both boundaries at the edges leaves one full-day section.
     splitPoints: { b1: 8, b2: 16 },
@@ -820,7 +820,9 @@ export const meritOrder = {
         for (const hour of Object.keys(this.baseCapacityDeltas)) {
             const baseDelta = this.baseCapacityDeltas[hour];
             const aicAdj = aicAdjustments[hour] || 0;
-            adjustedCapacityDeltas[hour] = baseDelta - aicAdj;
+            // A plant switched on adds its reference-day KGUP to the capacity
+            // delta, which moves the price up the curve
+            adjustedCapacityDeltas[hour] = baseDelta + aicAdj;
         }
 
         // Recalculate MCP merit using client-side supply/demand curves
@@ -1301,7 +1303,7 @@ export const meritOrder = {
 
         const result = {};
         for (const hour of Object.keys(this.baseCapacityDeltas)) {
-            result[hour] = this.baseCapacityDeltas[hour] - (aicAdjustments[hour] || 0);
+            result[hour] = this.baseCapacityDeltas[hour] + (aicAdjustments[hour] || 0);
         }
         return result;
     }

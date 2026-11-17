@@ -474,11 +474,15 @@ def get_merit_order_similar_days():
 
 
 def _tracked_kgup(ref_dates, ref_by_hour):
-    """Reference-day DPP (KGUP, current version) for every unit in uevcb.xlsx.
+    """Reference-day DPP (KGUP, first version) for every unit in uevcb.xlsx.
+
+    The first version is the plan published right after the day-ahead market
+    clears, the dpp-first-version endpoint; the analysts compare against that one.
 
     Each hour takes the value from its own section's reference date, the same
-    stitching the results table uses, so switching a plant on in the AIC table
-    adds what it planned to generate on the day that hour is compared against.
+    stitching the results table uses, so switching a plant on in the KGUP table
+    adds what it planned to generate on the day that hour is compared against
+    to that hour's capacity delta.
     Returns a DataFrame indexed by unit name with 'HH:00' columns, plus the names
     of tracked units missing from the natural gas mapping. Raises FileNotFoundError
     when uevcb.xlsx is missing.
@@ -490,7 +494,7 @@ def _tracked_kgup(ref_dates, ref_by_hour):
 
     fuel = FUELS['natural_gas']
     column_by_uevcb = {int(u): i for i, u in enumerate(fuel.mapping['uevcb_ids'])}
-    matrices = {day: plan_values(fuel, day, 'current') for day in sorted(set(ref_dates))}
+    matrices = {day: plan_values(fuel, day, 'first') for day in sorted(set(ref_dates))}
 
     rows, unmapped = {}, []
     for _, unit in uevcb.iterrows():
