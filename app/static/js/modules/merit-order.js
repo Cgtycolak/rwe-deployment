@@ -3,7 +3,7 @@ export const meritOrder = {
     currentData: null,
     originalAicValues: null,  // Reference-day KGUP per plant and hour, from the API
     supplyDemandCurves: null, // Supply/demand curves for client-side MCP calc
-    baseCapacityDeltas: null, // Base capacity deltas before KGUP is added
+    baseCapacityDeltas: null, // Base capacity deltas before the table's supply changes
     // Hours (0–24) where sections 2 and 3 start. Sections left empty are dropped,
     // so both boundaries at the edges leaves one full-day section.
     splitPoints: { b1: 8, b2: 16 },
@@ -368,9 +368,6 @@ export const meritOrder = {
                 failureContainer.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${failureData.error || failureData.message || 'No failure data available'}</div>`;
             }
 
-            const resetBtn = document.getElementById('reset_aic_values');
-            if (resetBtn) resetBtn.disabled = !this.originalAicValues;
-
             this.helpers.displayMessage('KGUP and outage data loaded successfully!', 'success');
 
         } catch (error) {
@@ -404,7 +401,13 @@ export const meritOrder = {
         const aicContainer = document.getElementById('merit_order_aic');
         if (!aicContainer) return;
 
-        if (kgupData.code !== 200 || !kgupData.data) {
+        // Set here rather than after Load: when a newer refresh supersedes
+        // Load's own request, the table only arrives with that later one
+        const resetBtn = document.getElementById('reset_aic_values');
+        const ok = kgupData.code === 200 && kgupData.data;
+        if (resetBtn) resetBtn.disabled = !ok;
+
+        if (!ok) {
             this.originalAicValues = null;
             aicContainer.innerHTML = `<div class="alert alert-warning m-3"><i class="fas fa-exclamation-triangle"></i> ${kgupData.error || kgupData.message || 'No KGUP data available'}</div>`;
             return;
@@ -471,7 +474,6 @@ export const meritOrder = {
                             data-hour-idx="${hIdx}"
                             data-hour="${h}"
                             value="0"
-                            min="0"
                             step="1">
                     </td>
                 `).join('')}
@@ -738,9 +740,9 @@ export const meritOrder = {
 
         inputs.forEach((input, hIdx) => {
             if (value === null) {
-                // Use original AIC value
+                // Switched on: the plant's KGUP comes off the supply, so negative
                 const origVal = this.originalAicValues?.values[plantIdx]?.[hIdx] ?? 0;
-                input.value = Math.round(origVal);
+                input.value = -Math.round(origVal) || 0;
             } else {
                 input.value = value;
             }
@@ -760,7 +762,7 @@ export const meritOrder = {
             const plantIdx = parseInt(input.dataset.plantIdx);
             if (value === null) {
                 const origVal = this.originalAicValues?.values[plantIdx]?.[hourIdx] ?? 0;
-                input.value = Math.round(origVal);
+                input.value = -Math.round(origVal) || 0;
             } else {
                 input.value = value;
             }
@@ -820,9 +822,10 @@ export const meritOrder = {
         for (const hour of Object.keys(this.baseCapacityDeltas)) {
             const baseDelta = this.baseCapacityDeltas[hour];
             const aicAdj = aicAdjustments[hour] || 0;
-            // A plant switched on adds its reference-day KGUP to the capacity
-            // delta, which moves the price up the curve
-            adjustedCapacityDeltas[hour] = baseDelta + aicAdj;
+            // Table values are supply changes: negative is supply lost (a plant
+            // switched on shows its KGUP as negative, i.e. taken off), which
+            // raises the capacity delta and moves the price up the curve
+            adjustedCapacityDeltas[hour] = baseDelta - aicAdj;
         }
 
         // Recalculate MCP merit using client-side supply/demand curves
@@ -1303,7 +1306,7 @@ export const meritOrder = {
 
         const result = {};
         for (const hour of Object.keys(this.baseCapacityDeltas)) {
-            result[hour] = this.baseCapacityDeltas[hour] + (aicAdjustments[hour] || 0);
+            result[hour] = this.baseCapacityDeltas[hour] - (aicAdjustments[hour] || 0);
         }
         return result;
     }
